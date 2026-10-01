@@ -1,0 +1,104 @@
+name: ManualBot
+options:
+  bundleIdPrefix: com.manualbot
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "2"
+    SUPPORTS_MACCATALYST: NO
+    SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+    GENERATE_INFOPLIST_FILE: YES
+packages:
+  Ports:
+    path: Packages/Ports
+  Core:
+    path: Packages/Core
+  Adapters:
+    path: Packages/Adapters
+targets:
+  ManualBot:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      # The embedding model ships inside the app: a folder reference is copied into the bundle as-is.
+      - path: BundledModels
+        type: folder
+        optional: true
+    preBuildScripts:
+      - name: Check bundled models
+        script: '"$SRCROOT/scripts/check-bundled-models.sh"'
+        basedOnDependencyAnalysis: false
+    dependencies:
+      - package: Ports
+      - package: Ports
+        product: PortsTesting   # only used by the UI-test stub in AppEnvironment
+      - package: Core
+      - package: Adapters
+    entitlements:
+      path: App/ManualBot.entitlements
+      properties:
+        com.apple.developer.kernel.increased-memory-limit: true
+        com.apple.security.application-groups:
+          - group.com.manualbot.app
+    info:
+      path: App/Info.plist
+      properties:
+        UIBackgroundModes:
+          - processing
+        BGTaskSchedulerPermittedIdentifiers:
+          - com.manualbot.app.ingestion
+        UILaunchScreen: {}
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Documents
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.adobe.pdf
+              - public.plain-text
+              - org.openxmlformats.wordprocessingml.document
+              - net.daringfireball.markdown
+        LSSupportsOpeningDocumentsInPlace: false
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.manualbot.app
+        GENERATE_INFOPLIST_FILE: NO
+        INFOPLIST_FILE: App/Info.plist
+  ManualBotTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources: [AppTests]
+    dependencies:
+      - target: ManualBot
+      - package: Adapters
+      - package: Core
+      - package: Ports
+      - package: Ports
+        product: PortsTesting
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.manualbot.app.tests
+  ManualBotUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [AppUITests]
+    dependencies:
+      - target: ManualBot
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.manualbot.app.uitests
+schemes:
+  ManualBot:
+    build:
+      targets:
+        ManualBot: all
+    test:
+      targets: [ManualBotTests, ManualBotUITests]

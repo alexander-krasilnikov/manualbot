@@ -1,0 +1,8 @@
+.build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+.DS_Store
+BundledModels/
+ManualBot.xcodeproj/

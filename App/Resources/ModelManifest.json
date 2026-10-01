@@ -1,0 +1,26 @@
+{
+  "models": [
+    {
+      "id": "embeddinggemma-300m",
+      "version": "1",
+      "role": "embedder",
+      "displayName": "EmbeddingGemma 300M",
+      "url": "https://huggingface.co/valindotai/embeddinggemma-300m-coreml/tree/d1dc305086782e958f91fa278de97e4af9caeaf0",
+      "bytes": 344031805,
+      "sha256": "62e84aaaa99bc7950668742301eaadb0b1a23204b5b9204dfaf20bfdd02bdf9d",
+      "fileName": "encoder.mlmodelc",
+      "packaging": "bundled"
+    },
+    {
+      "id": "gemma-4-e4b",
+      "version": "1",
+      "role": "generator",
+      "displayName": "Gemma 4 E4B",
+      "url": "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm",
+      "bytes": 3659530240,
+      "sha256": "0b2a8980ce155fd97673d8e820b4d29d9c7d99b8fa6806f425d969b145bd52e0",
+      "fileName": "gemma-4-E4B-it.litertlm",
+      "packaging": "file"
+    }
+  ]
+}
