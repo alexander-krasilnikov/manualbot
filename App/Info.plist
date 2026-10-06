@@ -23,6 +23,10 @@
 				<string>public.plain-text</string>
 				<string>org.openxmlformats.wordprocessingml.document</string>
 				<string>net.daringfireball.markdown</string>
+				<string>public.jpeg</string>
+				<string>public.png</string>
+				<string>public.heic</string>
+				<string>public.heif</string>
 			</array>
 		</dict>
 	</array>
@@ -42,6 +46,8 @@
 	<string>1</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>ManualBot uses the camera so you can photograph a nameplate or a part and find it in your documents. Photos are analyzed on this iPad and never leave it.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>

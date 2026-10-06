@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Ports
 
@@ -27,6 +28,9 @@ public enum ChatEvent: Sendable, Equatable {
 public actor ChatService {
     public static let notFoundText = "I couldn't find an answer to that in your documents."
     public static let notFoundWithSuggestionsText = notFoundText + " The closest passages are listed below."
+    /// The reply to a photo sent without a question: what in the library matches it, with nothing generated.
+    public static let photoMatchesText = "Here is what matches your photo in your documents."
+    static let photoTitle = "Photo question"
     public static let untitled = "New chat"
     static let defaultTitle = untitled
 
@@ -53,11 +57,12 @@ public actor ChatService {
 
     /// Streams events for one question. Ending iteration early (the user pressing stop) stops
     /// generation; the partial answer is kept and marked as stopped.
-    public nonisolated func ask(_ question: String, in chatId: String) -> AsyncThrowingStream<ChatEvent, Error> {
+    /// A photo may come with the question or alone. It is read on the device and never given to the language model.
+    public nonisolated func ask(_ question: String, in chatId: String, photo: CGImage? = nil) -> AsyncThrowingStream<ChatEvent, Error> {
         AsyncThrowingStream { continuation in
             let task = Task {
                 do {
-                    try await self.answer(question, in: chatId) { continuation.yield($0) }
+                    try await self.answer(question, in: chatId, photo: photo) { continuation.yield($0) }
                     continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
@@ -70,38 +75,57 @@ public actor ChatService {
     // MARK: Pipeline
 
     /// Runs one question as its own traced operation, so everything it causes is grouped under it.
-    private func answer(_ raw: String, in chatId: String, emit: @Sendable (ChatEvent) -> Void) async throws {
-        guard tracer.isEnabled else { return try await respond(raw, in: chatId, emit: emit) }
-        let title = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        let operation = TraceOperation(id: "ask-\(UUID().uuidString)", kind: .ask, title: title)
-        try await TraceContext.$operation.withValue(operation) { try await respond(raw, in: chatId, emit: emit) }
+    private func answer(_ raw: String, in chatId: String, photo: CGImage?, emit: @Sendable (ChatEvent) -> Void) async throws {
+        guard tracer.isEnabled else { return try await respond(raw, in: chatId, photo: photo, emit: emit) }
+        let typed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let operation = TraceOperation(id: "ask-\(UUID().uuidString)", kind: .ask, title: typed.isEmpty ? Self.photoTitle : typed)
+        try await TraceContext.$operation.withValue(operation) { try await respond(raw, in: chatId, photo: photo, emit: emit) }
     }
 
-    private func respond(_ raw: String, in chatId: String, emit: @Sendable (ChatEvent) -> Void) async throws {
+    private func respond(_ raw: String, in chatId: String, photo: CGImage?, emit: @Sendable (ChatEvent) -> Void) async throws {
         let question = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !question.isEmpty else { throw ChatError.emptyQuestion }
+        guard !question.isEmpty || photo != nil else { throw ChatError.emptyQuestion }
         guard let chat = try await chats.chat(id: chatId) else { throw ChatError.chatNotFound(chatId) }
 
         let history = try await chats.messages(chatId: chatId)
+        // The photo is kept with the question so the chat can show it again; a photo that cannot be encoded is still searched with.
+        let attachment = photo.flatMap { try? DisplayCopy.jpeg(from: $0) }
         let asked = MessageRecord(
             id: UUID().uuidString, chatId: chatId, role: .user, text: question,
-            createdAt: Self.timestamp(after: history.last?.createdAt))
-        try await chats.upsert(message: asked)
+            createdAt: Self.timestamp(after: history.last?.createdAt), hasAttachment: attachment != nil)
+        if let attachment {
+            try await chats.upsert(message: asked, attachment: attachment)
+        } else {
+            try await chats.upsert(message: asked)
+        }
         if history.isEmpty, chat.title == Self.defaultTitle {
-            try await chats.rename(chatId: chatId, to: Self.title(from: question))
+            try await chats.rename(chatId: chatId, to: question.isEmpty ? Self.photoTitle : Self.title(from: question))
         }
 
-        let standalone = await rewriter.standaloneQuery(for: question, history: history)
+        let standalone = question.isEmpty ? "" : await rewriter.standaloneQuery(for: question, history: history)
         if standalone != question { tracer.emit(.queryRewritten(original: question, standalone: standalone)) }
-        emit(.query(standalone))
+        if !standalone.isEmpty { emit(.query(standalone)) }
 
         let scope = chat.pinnedDocIds.isEmpty ? nil : Set(chat.pinnedDocIds)
-        let retrieval = try await retriever.retrieve(standalone, scope: scope)
+        let retrieval = try await retriever.retrieve(standalone, scope: scope, photo: photo)
+        let matches = retrieval.images.map(Self.match)
 
         // Nothing relevant: answer instantly, without the language model.
         guard retrieval.relevant, !retrieval.passages.isEmpty else {
             tracer.emit(.generation(firstToken: nil, skipped: true))
             try await finish(notFound: retrieval.closest(), chatId: chatId, standalone: standalone, after: asked, emit: emit)
+            return
+        }
+
+        // A photo with no question: show what matches, and write nothing.
+        if question.isEmpty {
+            tracer.emit(.generation(firstToken: nil, skipped: true))
+            let reply = MessageRecord(
+                id: UUID().uuidString, chatId: chatId, role: .assistant, text: Self.photoMatchesText,
+                citations: retrieval.passages.enumerated().map { Self.citation($0.offset + 1, $0.element) },
+                createdAt: Self.after(asked), imageMatches: matches, matchesOnly: true)
+            try await chats.upsert(message: reply)
+            emit(.completed(reply))
             return
         }
 
@@ -150,7 +174,7 @@ public actor ChatService {
         let reply = MessageRecord(
             id: UUID().uuidString, chatId: chatId, role: .assistant, text: validated.text, standaloneQuery: standalone,
             citations: validated.cited.map { Self.citation($0, passages[$0 - 1]) }, stopped: stopped,
-            createdAt: Self.after(asked))
+            createdAt: Self.after(asked), imageMatches: matches)
         try await chats.upsert(message: reply)
         emit(.completed(reply))
         if let failure { throw failure }
@@ -175,7 +199,13 @@ public actor ChatService {
     private static func citation(_ n: Int, _ passage: RetrievedPassage) -> Citation {
         Citation(
             n: n, chunkId: passage.chunk.id, docId: passage.chunk.docId, docTitle: passage.documentTitle,
-            page: passage.chunk.page, heading: passage.chunk.heading, snippet: passage.chunk.text)
+            page: passage.chunk.page, heading: passage.chunk.heading, snippet: passage.chunk.text, imageId: passage.chunk.imageId)
+    }
+
+    private static func match(_ image: RetrievedImage) -> ImageMatch {
+        ImageMatch(
+            imageId: image.image.id, docId: image.image.docId, docTitle: image.documentTitle, page: image.image.page,
+            heading: image.image.heading, distance: image.distance)
     }
 
     /// Now, but never earlier than 1 ms after `previous`, so messages always sort in the order they were written.

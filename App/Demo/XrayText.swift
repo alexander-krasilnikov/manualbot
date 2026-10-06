@@ -6,6 +6,7 @@ enum XrayEventTag: CaseIterable {
     case documentSaved, messageSaved, blobStored, blobRead, jobState, batchWritten, generationActivated, documentDeleted
     case vectorQuery, keywordQuery, keywordSkipped, otherQuery
     case queryRewritten, queryEmbedded, fusion, relevance, generation
+    case imageAnalyzed, imagesWritten, photoAnalyzed, imageQuery
 }
 
 extension TraceKind {
@@ -23,6 +24,7 @@ extension TraceKind {
             switch trace.purpose {
             case .vector: .vectorQuery
             case .keyword: .keywordQuery
+            case .image: .imageQuery
             case .other: .otherQuery
             }
         case .keywordSearchSkipped: .keywordSkipped
@@ -31,6 +33,9 @@ extension TraceKind {
         case .fusion: .fusion
         case .relevance: .relevance
         case .generation: .generation
+        case .imageAnalyzed: .imageAnalyzed
+        case .imagesWritten: .imagesWritten
+        case .photoAnalyzed: .photoAnalyzed
         }
     }
 }
@@ -74,6 +79,14 @@ enum XrayText {
             "A distance threshold keeps the app from answering with weak matches, so it says it found nothing instead of guessing."
         case .generation:
             "Only passages retrieved from the local database reach the language model, and the answer cites them, so nothing leaves the device."
+        case .imageAnalyzed:
+            "Each photo is read on the iPad by the operating system, for the text on it and a vector for how it looks, with no model to download and no photo leaving the device."
+        case .imagesWritten:
+            "The photos are stored as blobs beside their JSON records, each with its vector, in one atomic transaction, so a photo and its record can never come apart."
+        case .photoAnalyzed:
+            "Your photo is read on the device: its text (a model number, say) joins the keyword search, and a vector for its look is searched against the library's photos."
+        case .imageQuery:
+            "A second vector index, over photos, sits in the same embedded database as the passage index and is queried with the same SQL++, so finding a similar photo is one query, not another system."
         }
     }
 
@@ -85,20 +98,24 @@ enum XrayText {
         case .blobRead(_, _, let cacheHit): cacheHit ? "Opened the original file (already on disk)" : "Read the original file from the blob"
         case .jobState(_, let state, _, _): "Indexing job: \(state)"
         case .batchWritten(_, let count, _): "Wrote \(count) passage\(count == 1 ? "" : "s") in one transaction"
-        case .generationActivated(_, let generation, _): "Made passage set \(generation) searchable"
+        case .generationActivated(_, let generation, _, _): "Made passage set \(generation) searchable"
         case .documentDeleted: "Deleted the document"
         case .query(let trace):
             switch trace.purpose {
             case .vector: "Vector search"
             case .keyword: "Keyword search"
+            case .image: "Image search"
             case .other: "SQL++ query"
             }
         case .keywordSearchSkipped: "Keyword search skipped"
         case .queryRewritten: "Rewrote the follow-up as a standalone query"
         case .queryEmbedded: "Embedded the question"
         case .fusion: "Merged the vector and keyword results"
-        case .relevance(_, _, let outcome): outcome == .failed ? "Relevance check: not relevant" : "Relevance check: relevant"
+        case .relevance(_, _, let outcome, _, _): outcome == .failed ? "Relevance check: not relevant" : "Relevance check: relevant"
         case .generation(_, let skipped): skipped ? "Language model not called" : "Language model answered"
+        case .imageAnalyzed(_, _, let n, _, _, _): "Read photo \(n + 1)"
+        case .imagesWritten(_, let count, _, _): "Wrote \(count) photo\(count == 1 ? "" : "s") in one transaction"
+        case .photoAnalyzed: "Read the photo you sent"
         }
     }
 
@@ -112,9 +129,10 @@ enum XrayText {
         case .jobState(_, _, let progress, let localOnly):
             "\(Int((progress * 100).rounded()))%" + (localOnly ? " · saved in ingestJobs, a device-local collection" : "")
         case .batchWritten(let collection, _, let dimensions): "\(collection) · \(dimensions)-dimension vectors"
-        case .generationActivated(_, _, let removed):
-            removed == 0 ? "nothing to remove" : "removed \(removed) older passage\(removed == 1 ? "" : "s") in the same transaction"
-        case .documentDeleted(_, let removed): "\(removed) passage\(removed == 1 ? "" : "s") removed in the same transaction"
+        case .generationActivated(_, _, let removed, let removedImages):
+            removed == 0 && removedImages == 0
+                ? "nothing to remove" : "removed \(removedText(passages: removed, photos: removedImages)) from the older set in the same transaction"
+        case .documentDeleted(_, let removed, let images): "\(removedText(passages: removed, photos: images)) removed in the same transaction"
         case .query(let trace):
             if let attempt = trace.attempts.last {
                 "returned \(trace.returnedRows) · usable \(attempt.kept)"
@@ -125,23 +143,67 @@ enum XrayText {
         case .queryRewritten(let original, let standalone): "“\(original)” → “\(standalone)”"
         case .queryEmbedded(let dimensions): "\(dimensions)-dimension vector"
         case .fusion(let method, let k, let entries): "\(entries.count) passage\(entries.count == 1 ? "" : "s") · \(method), k=\(Int(k))"
-        case .relevance(let best, let threshold, let outcome): relevance(best: best, threshold: threshold, outcome: outcome)
+        case .relevance(let best, let threshold, let outcome, let bestImage, let imageThreshold):
+            relevance(best: best, threshold: threshold, outcome: outcome, bestImage: bestImage, imageThreshold: imageThreshold)
         case .generation(let firstToken, let skipped):
-            skipped ? "the question was not relevant, so no answer was generated"
+            skipped ? "no answer was generated, so the language model was not needed"
                 : firstToken.map { "first text after \(XrayFormat.duration($0))" }
+        case .imageAnalyzed(_, _, _, let ocrLength, let captionSource, let dimensions):
+            "\(ocrLength) characters of text found · caption: \(captionLabel(captionSource)) · \(dimensions)-dimension vector"
+        case .imagesWritten(let collection, _, let blobBytes, let dimensions):
+            "\(collection) · \(XrayFormat.bytes(blobBytes)) of photo data · \(dimensions)-dimension vectors"
+        case .photoAnalyzed(let length, let identifiers, let dimensions):
+            "\(length) characters of text" + (identifiers.isEmpty ? "" : " · identifiers: \(identifiers.joined(separator: ", "))")
+                + " · \(dimensions)-dimension vector"
         }
     }
 
-    static func relevance(best: Double?, threshold: Double, outcome: RelevanceOutcome) -> String {
-        let limit = String(format: "%.2f", threshold)
-        guard let best else { return "no comparable passages in the library" }
-        let distance = String(format: "%.3f", best)
-        switch outcome {
-        case .passedOnDistance: return "best distance \(distance) ≤ threshold \(limit)"
-        case .passedOnIdentifier(let code):
-            return "best distance \(distance) > threshold \(limit), but “\(code)” appears word for word in a top passage"
-        case .failed: return "best distance \(distance) > threshold \(limit)"
+    /// "3 passages", "3 passages and 2 photos"; photos are left out when there are none.
+    private static func removedText(passages: Int, photos: Int) -> String {
+        let parts = [
+            passages > 0 || photos == 0 ? "\(passages) passage\(passages == 1 ? "" : "s")" : nil,
+            photos > 0 ? "\(photos) photo\(photos == 1 ? "" : "s")" : nil,
+        ]
+        return parts.compactMap { $0 }.joined(separator: " and ")
+    }
+
+    static func captionLabel(_ source: String) -> String {
+        switch source {
+        case "nearby": "text next to it"
+        case "alt": "the author's description"
+        default: "none"
         }
+    }
+
+    static func relevance(
+        best: Double?, threshold: Double, outcome: RelevanceOutcome, bestImage: Double? = nil, imageThreshold: Double? = nil
+    ) -> String {
+        let limit = String(format: "%.2f", threshold)
+        var text: String
+        if let best {
+            let distance = String(format: "%.3f", best)
+            switch outcome {
+            case .passedOnDistance: text = "best distance \(distance) ≤ threshold \(limit)"
+            case .passedOnIdentifier(let code):
+                text = "best distance \(distance) > threshold \(limit), but “\(code)” appears word for word in a top passage"
+            case .passedOnImage(let imageDistance):
+                text = "best distance \(distance) > threshold \(limit), but the photo matches a library photo at distance "
+                    + "\(String(format: "%.3f", imageDistance)) ≤ \(String(format: "%.2f", imageThreshold ?? 0))"
+            case .failed: text = "best distance \(distance) > threshold \(limit)"
+            }
+        } else {
+            switch outcome {
+            case .passedOnIdentifier(let code): text = "“\(code)” from the photo appears word for word in a top passage"
+            case .passedOnImage(let imageDistance):
+                text = "the photo matches a library photo at distance \(String(format: "%.3f", imageDistance)) ≤ \(String(format: "%.2f", imageThreshold ?? 0))"
+            case .passedOnDistance, .failed:
+                text = bestImage == nil ? "no comparable passages in the library" : "no passage was compared by meaning"
+            }
+        }
+        if case .passedOnImage = outcome {} else if let bestImage, let imageThreshold {
+            text += "; closest photo \(String(format: "%.3f", bestImage)) > threshold \(String(format: "%.2f", imageThreshold))"
+        }
+        return text
     }
 
     /// One line per pass over the index: how many rows came back, how many were visible, how many were used.
@@ -168,6 +230,10 @@ enum XrayText {
         case .fusion: "arrow.triangle.merge"
         case .relevance: "checkmark.seal"
         case .generation: "sparkles"
+        case .imageAnalyzed: "eye"
+        case .imagesWritten: "photo.stack"
+        case .photoAnalyzed: "camera.viewfinder"
+        case .imageQuery: "photo.on.rectangle"
         }
     }
 }

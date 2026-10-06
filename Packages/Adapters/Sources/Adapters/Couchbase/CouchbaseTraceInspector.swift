@@ -9,13 +9,16 @@ extension CouchbaseDocumentRepository: TraceInspector {
     public func plan(sql: String) throws -> String {
         let query = try database.createQuery(sql)
         let parameters = Parameters()
+        // Image queries bind a vector of the image feature model's size, passage queries of the embedding model's.
+        let dimensions = sql.contains("\(CouchbaseSchema.scope).\(CouchbaseSchema.images)")
+            ? imageFeatures.dimensions : embedding.dimensions
         let names = try NSRegularExpression(pattern: #"\$([A-Za-z_][A-Za-z0-9_]*)"#)
         let range = NSRange(sql.startIndex..., in: sql)
         for match in names.matches(in: sql, range: range) {
             guard let nameRange = Range(match.range(at: 1), in: sql) else { continue }
             let name = String(sql[nameRange])
             if name == "vector" {
-                parameters.setValue([Float](repeating: 0, count: embedding.dimensions), forName: name)
+                parameters.setValue([Float](repeating: 0, count: dimensions), forName: name)
             } else {
                 parameters.setString("", forName: name)
             }

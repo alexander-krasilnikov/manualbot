@@ -8,7 +8,12 @@ public protocol ChatRepository: Sendable {
     /// Removes the chat and all of its messages.
     func deleteChat(id: String) async throws
 
+    /// Saves the message. Any photo already stored with it is kept.
     func upsert(message: MessageRecord) async throws
+    /// Saves the message together with the photo the user attached (a display copy, JPEG).
+    func upsert(message: MessageRecord, attachment: Data) async throws
+    /// The photo stored with a message, or `nil` if it has none.
+    func attachment(messageId: String) async throws -> Data?
     func message(id: String) async throws -> MessageRecord?
     /// Oldest first.
     func messages(chatId: String) async throws -> [MessageRecord]

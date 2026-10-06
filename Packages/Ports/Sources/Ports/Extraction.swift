@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 public enum BlockKind: String, Sendable, Codable {
@@ -21,13 +22,40 @@ public struct Block: Sendable, Equatable, Codable {
     }
 }
 
+/// An image found in a source file, with the text around it. Extractors only find images; analyzing them
+/// (text recognition, features) is done by ingestion.
+public struct ExtractedImage: Sendable, Equatable {
+    public var image: CGImage
+    public var page: Int?
+    /// The nearest heading at or before the image.
+    public var heading: String?
+    public var caption: String?
+    public var captionSource: CaptionSource
+
+    public init(image: CGImage, page: Int? = nil, heading: String? = nil, caption: String? = nil, captionSource: CaptionSource = .none) {
+        self.image = image
+        self.page = page
+        self.heading = heading
+        self.caption = caption
+        self.captionSource = captionSource
+    }
+
+    /// Same picture (not the same pixels) and the same surroundings.
+    public static func == (a: ExtractedImage, b: ExtractedImage) -> Bool {
+        a.image === b.image && a.page == b.page && a.heading == b.heading && a.caption == b.caption
+            && a.captionSource == b.captionSource
+    }
+}
+
 public struct ExtractedDocument: Sendable, Equatable {
     public var blocks: [Block]
     public var pageCount: Int?
+    public var images: [ExtractedImage]
 
-    public init(blocks: [Block], pageCount: Int? = nil) {
+    public init(blocks: [Block], pageCount: Int? = nil, images: [ExtractedImage] = []) {
         self.blocks = blocks
         self.pageCount = pageCount
+        self.images = images
     }
 }
 

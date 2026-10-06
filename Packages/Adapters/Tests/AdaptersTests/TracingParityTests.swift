@@ -1,4 +1,5 @@
 import Core
+import CoreGraphics
 import Foundation
 import Ports
 import PortsTesting
@@ -18,6 +19,30 @@ import Testing
         var reply: String
         var citations: [String]
         var notFound: Bool
+        var images: [String] = []
+        var matchesOnly = false
+    }
+
+    /// A manual with a photo on page 2, a stand-alone photo of the same scene, and photos of other things.
+    private struct Photos {
+        let manual: URL
+        let photo: URL
+        let query: CGImage
+        let unrelated: CGImage
+    }
+
+    private func photos() -> Photos {
+        let scene = Fixtures.jpegBacked(ImageFeaturePrintSpikeTests.scene(41, size: 320))
+        let manual = fx.pdf(layout: [
+            PDFPageSpec(texts: [("Service manual for the pump. Descale it every six months.", CGRect(x: 54, y: 700, width: 504, height: 60), 14)]),
+            PDFPageSpec(
+                texts: [("Figure 1: Pump housing", CGRect(x: 100, y: 380, width: 300, height: 30), 12)],
+                images: [(scene, CGRect(x: 100, y: 420, width: 300, height: 250))]),
+        ], name: "pump-service.pdf")
+        let photo = fx.imageFile(ImageFeaturePrintSpikeTests.scene(42, size: 320), type: .jpeg, name: "Rear panel.jpg")
+        return Photos(
+            manual: manual, photo: photo, query: ImageFeaturePrintSpikeTests.scene(41, variant: 1, size: 320),
+            unrelated: ImageFeaturePrintSpikeTests.scene(900, size: 320))
     }
 
     private func run(tracer: any Tracer) async throws -> [Outcome] {
@@ -28,24 +53,34 @@ import Testing
         let questions = suite.cases.filter { $0.doc == nil || Self.documents.contains($0.doc! + ".md") ||
             Self.documents.contains($0.doc! + ".txt") }.map(\.question)
 
-        let f = try RepoFixture(tracer: tracer); defer { Task { await f.cleanUp() } }
+        let extra = photos()
+        let printer = try VisionFeaturePrinter()
+        let recognizer = VisionTextRecognizer()
+        let f = try RepoFixture(tracer: tracer, imageFeatures: printer.identity); defer { Task { await f.cleanUp() } }
         let embedder = FakeEmbedder(identity: RepoFixture.identity)
         let ingestion = IngestionService(
             extractor: FileDocumentExtractor(), embedder: embedder, repository: f.repo, jobs: f.repo,
-            chunker: Chunker(), supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer)
-        for file in files { _ = try await ingestion.enqueue(fileURL: file) }
+            chunker: Chunker(), supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer,
+            imageFeatures: printer, recognizer: recognizer)
+        for file in files + [extra.manual, extra.photo] { _ = try await ingestion.enqueue(fileURL: file) }
         await ingestion.run()
 
-        let retriever = Retriever(embedder: embedder, search: f.repo, repository: f.repo, tracer: tracer)
+        let retriever = Retriever(
+            embedder: embedder, search: f.repo, repository: f.repo, tracer: tracer,
+            photoSearch: PhotoSearch(features: printer, search: f.repo, recognizer: recognizer))
         let generator = ScriptedGenerator(fragments: ["According to the documents [1] and [2]."])
         let chat = ChatService(chats: f.repo, retriever: retriever, generator: generator, tracer: tracer)
 
+        // The text questions, then photo questions: with a question, alone, and one that matches nothing.
+        let asked: [(question: String, photo: CGImage?)] = questions.map { ($0, nil) } + [
+            ("how often should I descale the pump", extra.query), ("", extra.query), ("", extra.unrelated),
+        ]
         var outcomes: [Outcome] = []
-        for question in questions {
-            let retrieval = try await retriever.retrieve(question)
+        for (question, photo) in asked {
+            let retrieval = try await retriever.retrieve(question, photo: photo)
             var reply: MessageRecord?
             let chatID = try await f.repo.createChat().id
-            for try await event in chat.ask(question, in: chatID) {
+            for try await event in chat.ask(question, in: chatID, photo: photo) {
                 if case .completed(let message) = event { reply = message }
             }
             let message = try #require(reply)
@@ -53,7 +88,8 @@ import Testing
                 passages: retrieval.passages.map { "\($0.documentTitle)#\($0.chunk.ordinal): \($0.chunk.text)" },
                 relevant: retrieval.relevant, bestDistance: retrieval.bestDistance, reply: message.text,
                 citations: message.citations.map { "\($0.n) \($0.docTitle) p\($0.page ?? 0) \($0.snippet)" },
-                notFound: message.notFound))
+                notFound: message.notFound, images: retrieval.images.map { "\($0.documentTitle) p\($0.image.page ?? 0) \($0.distance)" },
+                matchesOnly: message.matchesOnly))
         }
         return outcomes
     }
@@ -65,15 +101,20 @@ import Testing
 
         #expect(off.count > 15)
         #expect(off.contains { $0.notFound } && off.contains { !$0.notFound }, "needs both answered and refused questions")
+        // The photo questions must really find something to compare: the manual's figure, shown as a match.
+        #expect(off.contains { $0.images.contains { $0.hasPrefix("pump-service p2") } }, "no photo question matched the figure")
+        #expect(off.contains { $0.matchesOnly }, "no photo-only question was answered with matches")
         #expect(on == off)
 
         // And the traced run really saw things.
         let asks = Set(recorder.events.compactMap(\.operation).filter { $0.kind == .ask }.map(\.id))
         #expect(asks.count == off.count, "one ask operation per question, got \(asks.count)")
+        #expect(recorder.kinds.filter { if case .photoAnalyzed = $0 { true } else { false } }.count >= 3)
+        #expect(recorder.queries.contains { $0.trace.purpose == .image })
         #expect(recorder.queries.contains { $0.trace.purpose == .vector })
         #expect(recorder.queries.contains { $0.trace.purpose == .keyword })
         let imports = Set(recorder.events.compactMap(\.operation).filter { $0.kind == .importDocument }.map(\.id))
-        #expect(imports.count == Self.documents.count)
+        #expect(imports.count == Self.documents.count + 2)    // the text documents, the service manual and the photo
     }
 
     @Test func deletingADocumentIsItsOwnOperationWithTheRemovedPassageCount() async throws {

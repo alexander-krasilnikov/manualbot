@@ -24,7 +24,7 @@ public enum TraceContext {
 }
 
 public enum QueryPurpose: String, Sendable {
-    case vector, keyword, other
+    case vector, keyword, image, other
 }
 
 /// One pass of a search over the index: how many rows came back and how many were usable.
@@ -75,13 +75,16 @@ public struct FusionEntry: Sendable, Equatable {
     /// Zero-based position in the vector results, `nil` when that search did not find the passage.
     public var vectorPosition: Int?
     public var keywordPosition: Int?
+    /// Position among the passages reached through the question's photo, `nil` when it had none or did not reach this one.
+    public var imagePosition: Int?
     public var distance: Double?
     public var score: Double
 
     public init(
-        chunkID: String, documentTitle: String, vectorPosition: Int?, keywordPosition: Int?, distance: Double?,
-        score: Double
+        chunkID: String, documentTitle: String, vectorPosition: Int?, keywordPosition: Int?, imagePosition: Int? = nil,
+        distance: Double?, score: Double
     ) {
+        self.imagePosition = imagePosition
         self.chunkID = chunkID
         self.documentTitle = documentTitle
         self.vectorPosition = vectorPosition
@@ -94,6 +97,8 @@ public struct FusionEntry: Sendable, Equatable {
 public enum RelevanceOutcome: Sendable, Equatable {
     case passedOnDistance
     case passedOnIdentifier(String)
+    /// A library image matched the question's photo within the image distance threshold.
+    case passedOnImage(Double)
     case failed
 }
 
@@ -105,15 +110,25 @@ public enum TraceKind: Sendable, Equatable {
     /// `localOnly` marks records in a collection that is never replicated.
     case jobState(docId: String, state: String, progress: Double, localOnly: Bool)
     case batchWritten(collection: String, count: Int, dimensions: Int)
-    case generationActivated(docId: String, generation: Int, removed: Int)
-    case documentDeleted(docId: String, passagesRemoved: Int)
+    case generationActivated(docId: String, generation: Int, removed: Int, removedImages: Int = 0)
+    case documentDeleted(docId: String, passagesRemoved: Int, imagesRemoved: Int = 0)
+    /// One image was read: how much text was found in it, where its caption came from, and the size of its feature vector.
+    case imageAnalyzed(docId: String, generation: Int, n: Int, ocrLength: Int, captionSource: String, dimensions: Int)
+    /// A batch of images (with their display copies) was written in one transaction.
+    case imagesWritten(collection: String, count: Int, blobBytes: Int, dimensions: Int)
     case query(QueryTrace)
     /// The question had no searchable words, so no keyword query was run.
     case keywordSearchSkipped
     case queryRewritten(original: String, standalone: String)
     case queryEmbedded(dimensions: Int)
     case fusion(method: String, k: Double, entries: [FusionEntry])
-    case relevance(bestDistance: Double?, threshold: Double, outcome: RelevanceOutcome)
+    /// The image fields are set when the question came with a photo.
+    case relevance(
+        bestDistance: Double?, threshold: Double, outcome: RelevanceOutcome, bestImageDistance: Double? = nil,
+        imageThreshold: Double? = nil)
+    /// The photo attached to a question was read: how much text was found, the identifiers kept from it, and the
+    /// size of its feature vector.
+    case photoAnalyzed(recognizedLength: Int, identifiers: [String], dimensions: Int)
     /// `firstToken` is `nil` when the model was not called.
     case generation(firstToken: TimeInterval?, skipped: Bool)
 }

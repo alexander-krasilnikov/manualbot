@@ -11,15 +11,15 @@ import Ports
 /// candidates and retries with a larger window if too few survive.
 extension CouchbaseDocumentRepository: ChunkSearching {
     /// Candidates fetched before filtering, as a multiple of the requested limit.
-    private static let firstWindow = 3
-    private static let windowGrowth = 4
-    private static let maxCandidates = 5_000
+    static let firstWindow = 3
+    static let windowGrowth = 4
+    static let maxCandidates = 5_000
 
     public func vectorSearch(_ vector: [Float], limit: Int, filter: SearchFilter) throws -> [ScoredChunk] {
         guard limit > 0 else { return [] }
         let visible = try visibleGenerations(for: filter)
         guard !visible.isEmpty else { return [] }
-        return try search(limit: limit, visible: visible, requireModel: filter.embeddingModel, purpose: .vector) { window, parameters in
+        return try searchChunks(limit: limit, visible: visible, requireModel: filter.embeddingModel, purpose: .vector) { window, parameters in
             parameters.setValue(vector, forName: "vector")
             let sql = """
                 SELECT meta().id AS id, APPROX_VECTOR_DISTANCE(embedding, $vector, "cosine") AS score
@@ -36,7 +36,7 @@ extension CouchbaseDocumentRepository: ChunkSearching {
         guard limit > 0, !match.isEmpty else { return [] }
         let visible = try visibleGenerations(for: filter)
         guard !visible.isEmpty else { return [] }
-        return try search(limit: limit, visible: visible, requireModel: nil, purpose: .keyword) { window, parameters in
+        return try searchChunks(limit: limit, visible: visible, requireModel: nil, purpose: .keyword) { window, parameters in
             parameters.setString(match, forName: "match")
             let sql = """
                 SELECT meta().id AS id, RANK(\(CouchbaseSchema.ftsIndex)) AS score
@@ -61,16 +61,29 @@ extension CouchbaseDocumentRepository: ChunkSearching {
     }
 
     /// `docId → active generation` for the documents a search may return from.
-    private func visibleGenerations(for filter: SearchFilter) throws -> [String: Int] {
+    func visibleGenerations(for filter: SearchFilter) throws -> [String: Int] {
         try activeGenerations().filter { filter.documentIDs?.contains($0.key) ?? true }
     }
 
-    /// Runs `makeSQL` with a growing candidate window until `limit` visible passages are found, or the
-    /// index has nothing more to give. Each run is reported as one query event with its row funnel.
-    private func search(
+    private func searchChunks(
         limit: Int, visible: [String: Int], requireModel: String?, purpose: QueryPurpose,
         makeSQL: (_ window: Int, _ parameters: Parameters) -> (sql: String, shown: [String: String])
     ) throws -> [ScoredChunk] {
+        try search(
+            in: collections.chunks, limit: limit, visible: visible, requireModel: requireModel, purpose: purpose,
+            parseID: { Chunk.parseID($0).map { ($0.docId, $0.generation) } },
+            load: { try Self.chunk(from: $0) }, model: \.embeddingModel, makeSQL: makeSQL
+        ).map { ScoredChunk(chunk: $0.value, score: $0.score) }
+    }
+
+    /// Runs `makeSQL` with a growing candidate window until `limit` visible results are found, or the
+    /// index has nothing more to give. Each run is reported as one query event with its row funnel.
+    /// `requireModel` drops results whose recorded model tag differs.
+    func search<T>(
+        in collection: Collection, limit: Int, visible: [String: Int], requireModel: String?, purpose: QueryPurpose,
+        parseID: (String) -> (docId: String, generation: Int)?, load: (Document) throws -> T, model: (T) -> String,
+        makeSQL: (_ window: Int, _ parameters: Parameters) -> (sql: String, shown: [String: String])
+    ) throws -> [(value: T, score: Double)] {
         var window = limit * Self.firstWindow
         while true {
             let parameters = Parameters()
@@ -79,17 +92,17 @@ extension CouchbaseDocumentRepository: ChunkSearching {
             query.parameters = parameters
             let (rows, seconds) = try timed { try query.execute().allResults() }
 
-            var found: [ScoredChunk] = []
+            var found: [(value: T, score: Double)] = []
             var notVisible = 0
             var wrongModel = 0
             for row in rows {
-                guard let id = row.string(forKey: "id"), let parts = Chunk.parseID(id),
+                guard let id = row.string(forKey: "id"), let parts = parseID(id),
                     visible[parts.docId] == parts.generation,
-                    let doc = try collections.chunks.document(id: id)
+                    let doc = try collection.document(id: id)
                 else { notVisible += 1; continue }
-                let chunk = try Self.chunk(from: doc)
-                if let requireModel, chunk.embeddingModel != requireModel { wrongModel += 1; continue }
-                found.append(ScoredChunk(chunk: chunk, score: row.double(forKey: "score")))
+                let value = try load(doc)
+                if let requireModel, model(value) != requireModel { wrongModel += 1; continue }
+                found.append((value, row.double(forKey: "score")))
                 if found.count == limit { break }
             }
             tracer.emit(duration: seconds, .query(QueryTrace(

@@ -130,7 +130,7 @@ import Testing
         try await f.repo.activate(generation: 2, for: "d1")
 
         let activations = tracer.kinds.compactMap { kind -> (Int, Int)? in
-            if case .generationActivated(_, let generation, let removed) = kind { return (generation, removed) }
+            if case .generationActivated(_, let generation, let removed, _) = kind { return (generation, removed) }
             return nil
         }
         #expect(activations.map(\.0) == [1, 2])

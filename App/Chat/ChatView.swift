@@ -4,7 +4,16 @@ import SwiftUI
 struct ChatView: View {
     let chat: ChatViewModel
     let models: ModelSetupViewModel
+    /// In demo mode, a photo to ask with when there is no nameplate at hand.
+    var samplePhoto: Data?
     let onOpenCitation: (Citation) -> Void
+
+    /// A matched photo opens like a citation of the page or section it is on.
+    private func onOpenMatch(_ match: ImageMatch) {
+        onOpenCitation(Citation(
+            n: 0, chunkId: "", docId: match.docId, docTitle: match.docTitle, page: match.page, heading: match.heading,
+            snippet: "", imageId: match.imageId))
+    }
 
     @State private var renaming = false
     @State private var newTitle = ""
@@ -46,7 +55,9 @@ struct ChatView: View {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     if chat.messages.isEmpty && chat.streaming == nil { EmptyChatHint(availability: chat.availability) }
                     ForEach(Array(chat.messages.enumerated()), id: \.element.id) { index, message in
-                        MessageView(message: message, previousQuestion: index > 0 ? chat.messages[index - 1].text : nil, onOpen: onOpenCitation)
+                        MessageView(
+                            message: message, previousQuestion: index > 0 ? chat.messages[index - 1].text : nil,
+                            photos: chat.photos, onOpen: onOpenCitation, onOpenMatch: onOpenMatch)
                             .id(message.id)
                     }
                     if let streaming = chat.streaming {
@@ -77,7 +88,11 @@ struct ChatView: View {
             if let error = chat.errorMessage {
                 Label(error, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
             }
+            if let photo = chat.attachedPhoto {
+                AttachedPhotoChip(data: photo) { chat.removePhoto() }
+            }
             HStack(alignment: .bottom, spacing: 10) {
+                PhotoAttachButtons(chat: chat, samplePhoto: samplePhoto)
                 TextField(placeholder, text: Bindable(chat).draft, axis: .vertical)
                     .lineLimit(1...5)
                     .textFieldStyle(.roundedBorder)
@@ -105,7 +120,7 @@ struct ChatView: View {
 
     private var placeholder: String {
         switch chat.availability {
-        case .ready: "Ask about your documents"
+        case .ready: chat.attachedPhoto == nil ? "Ask about your documents" : "Add a question, or send the photo"
         case .modelNotReady: "Chat is unavailable"
         case .noDocuments: "Import a document to start"
         }
@@ -209,16 +224,43 @@ struct StreamingBubble: View {
 struct MessageView: View {
     let message: MessageRecord
     let previousQuestion: String?
+    let photos: PhotoLoader
     let onOpen: (Citation) -> Void
+    let onOpenMatch: (ImageMatch) -> Void
+
+    @State private var userPhoto: Data?
+    @State private var citedPhotos: [CitedPhoto] = []
+
+    struct CitedPhoto: Identifiable, Equatable {
+        let citation: Citation
+        let photo: PhotoRef
+        var id: String { photo.id }
+    }
 
     var body: some View {
         if message.role == .user {
             HStack {
                 Spacer(minLength: 60)
-                Text(message.text).padding(12).foregroundStyle(.white)
-                    .background(.tint, in: RoundedRectangle(cornerRadius: 16))
-                    .accessibilityIdentifier("userMessage")
+                VStack(alignment: .trailing, spacing: 6) {
+                    if message.hasAttachment {
+                        Group {
+                            if let userPhoto, let image = UIImage(data: userPhoto) {
+                                Image(uiImage: image).resizable().scaledToFit().frame(maxWidth: 260, maxHeight: 200)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                            } else {
+                                RoundedRectangle(cornerRadius: 12).fill(.quaternary).frame(width: 120, height: 90)
+                            }
+                        }
+                        .accessibilityIdentifier("userPhoto")
+                    }
+                    if !message.text.isEmpty {
+                        Text(message.text).padding(12).foregroundStyle(.white)
+                            .background(.tint, in: RoundedRectangle(cornerRadius: 16))
+                            .accessibilityIdentifier("userMessage")
+                    }
+                }
             }
+            .task(id: message.id) { if message.hasAttachment { userPhoto = await photos.attachment(message) } }
         } else {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 8) {
@@ -230,15 +272,24 @@ struct MessageView: View {
                             }
                             return .discarded
                         })
-                        .accessibilityIdentifier(message.notFound ? "notFoundMessage" : "assistantMessage")
+                        .accessibilityIdentifier(message.notFound ? "notFoundMessage" : message.matchesOnly ? "matchesMessage" : "assistantMessage")
                     if message.stopped {
                         Label("Stopped", systemImage: "stop.circle").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("stoppedLabel")
                     }
+                    if message.matchesOnly, !message.imageMatches.isEmpty {
+                        Text("Matching photos").font(.caption.bold()).foregroundStyle(.secondary)
+                        ImageMatchGrid(matches: message.imageMatches, photos: photos, onOpen: onOpenMatch)
+                    }
                     if !message.citations.isEmpty {
-                        Text(message.notFound ? "Closest passages" : "Sources").font(.caption.bold()).foregroundStyle(.secondary)
+                        Text(message.notFound ? "Closest passages" : message.matchesOnly ? "Passages from those pages" : "Sources")
+                            .font(.caption.bold()).foregroundStyle(.secondary)
                         ForEach(message.citations, id: \.n) { citation in
                             CitationChip(citation: citation, isSuggestion: message.notFound) { onOpen(citation) }
                         }
+                    }
+                    if !citedPhotos.isEmpty && !message.matchesOnly {
+                        Text("Photos on the cited pages").font(.caption.bold()).foregroundStyle(.secondary)
+                        CitedPhotoStrip(items: citedPhotos, onOpen: onOpen)
                     }
                     if let query = message.standaloneQuery, query != previousQuestion {
                         Text("Searched for: \(query)").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("standaloneQuery")
@@ -247,7 +298,20 @@ struct MessageView: View {
                 .padding(12).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
                 Spacer(minLength: 40)
             }
+            .task(id: message.id) { await loadCitedPhotos() }
         }
+    }
+
+    /// Each photo stored on a cited page or section, and each cited photo passage, once, beside the sources.
+    private func loadCitedPhotos() async {
+        guard !message.notFound, !message.matchesOnly else { return }
+        var found: [CitedPhoto] = []
+        for citation in message.citations {
+            for photo in await photos.cited(citation) where !found.contains(where: { $0.id == photo.id }) {
+                found.append(CitedPhoto(citation: citation, photo: photo))
+            }
+        }
+        citedPhotos = found
     }
 
     /// The answer with each `[n]` marker turned into a tappable link.
@@ -294,6 +358,85 @@ struct CitationChip: View {
     private var location: String {
         [citation.page.map { "page \($0)" }, citation.heading.flatMap { $0.isEmpty ? nil : "“\($0)”" }]
             .compactMap { $0 }.joined(separator: " · ").ifEmpty("passage")
+    }
+}
+
+/// Thumbnails of the photos on the pages an answer cites. Tapping one opens the page it is on.
+struct CitedPhotoStrip: View {
+    let items: [MessageView.CitedPhoto]
+    let onOpen: (Citation) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(items) { item in
+                    Button { onOpen(item.citation) } label: {
+                        if let image = UIImage(data: item.photo.data) {
+                            Image(uiImage: image).resizable().scaledToFill().frame(width: 96, height: 72)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Photo from source \(item.citation.n), \(item.citation.docTitle)")
+                    .accessibilityIdentifier("citedPhoto-\(item.citation.n)")
+                }
+            }
+        }
+        .accessibilityIdentifier("citedPhotos")
+    }
+}
+
+/// The library photos that matched a photo question, with the document and page each one is on.
+struct ImageMatchGrid: View {
+    let matches: [ImageMatch]
+    let photos: PhotoLoader
+    let onOpen: (ImageMatch) -> Void
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], alignment: .leading, spacing: 10) {
+            ForEach(Array(matches.enumerated()), id: \.element.id) { index, match in
+                ImageMatchCard(match: match, photos: photos) { onOpen(match) }.accessibilityIdentifier("imageMatch-\(index + 1)")
+            }
+        }
+    }
+}
+
+private struct ImageMatchCard: View {
+    let match: ImageMatch
+    let photos: PhotoLoader
+    let action: () -> Void
+    @State private var thumbnail: MatchThumbnail?
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                Group {
+                    if let data = thumbnail?.data, let image = UIImage(data: data) {
+                        Image(uiImage: image).resizable().scaledToFill()
+                    } else {
+                        ZStack {
+                            Rectangle().fill(.quaternary)
+                            Image(systemName: thumbnail?.documentDeleted == true ? "trash" : "photo").foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .frame(height: 100).clipShape(RoundedRectangle(cornerRadius: 8))
+                Text(match.docTitle).font(.subheadline.weight(.medium)).lineLimit(1)
+                Text(location).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if thumbnail?.documentDeleted == true {
+                    Text("document deleted").font(.caption2).foregroundStyle(.orange).accessibilityIdentifier("matchDeleted")
+                }
+            }
+            .padding(6).background(.background, in: RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
+        .disabled(thumbnail?.documentDeleted == true)
+        .accessibilityElement(children: .combine)
+        .task(id: match.id) { thumbnail = await photos.matched(match) }
+    }
+
+    private var location: String {
+        [match.page.map { "page \($0)" }, match.heading.flatMap { $0.isEmpty ? nil : "“\($0)”" }].compactMap { $0 }.joined(separator: " · ")
     }
 }
 

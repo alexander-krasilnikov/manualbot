@@ -9,6 +9,8 @@ struct CoreServices: Sendable {
     let ingestion: IngestionService
     let retriever: Retriever
     let extractor: any DocumentExtractor
+    /// Whether this device can analyze photos. Without it, photo controls are hidden and photo imports are refused.
+    var supportsPhotos = true
 }
 
 /// Builds the real services, or stand-ins for UI tests. Building is staged because the models arrive in stages.
@@ -19,6 +21,12 @@ protocol ServiceFactory: Sendable {
     func makeChat(core: CoreServices) async throws -> ChatService
     /// Frees model memory (memory warnings). Models reload on next use.
     func unloadModels() async
+    /// UI tests have no photo picker to drive: a photo the attach button uses instead. `nil` in the real app.
+    var stubPhoto: Data? { get }
+}
+
+extension ServiceFactory {
+    var stubPhoto: Data? { nil }
 }
 
 enum ServiceError: LocalizedError {
@@ -71,17 +79,23 @@ final class LiveServiceFactory: ServiceFactory, @unchecked Sendable {
         lock.withLock { self.embedder = embedder }
 
         onProgress("Opening your library…")
+        // Reading photos uses what the operating system provides; if that is unavailable, photos are left out.
+        let features = try? VisionFeaturePrinter()
+        let recognizer = VisionTextRecognizer()
         let repository = try CouchbaseDocumentRepository(
             directory: support.appendingPathComponent("Database", isDirectory: true),
             originalsCache: caches.appendingPathComponent("Originals", isDirectory: true), embedding: identity,
-            tracer: tracer)
+            imageFeatures: features?.identity ?? CouchbaseSchema.defaultImageFeatures, tracer: tracer)
         let extractor = FileDocumentExtractor()
         let ingestion = IngestionService(
             extractor: extractor, embedder: embedder, repository: repository, jobs: repository,
             chunker: Chunker(configuration: .embeddingGemma, counter: tokenizer),
-            supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer)
-        let retriever = Retriever(embedder: embedder, search: repository, repository: repository, tracer: tracer)
-        return CoreServices(repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor)
+            supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer, imageFeatures: features, recognizer: recognizer)
+        let retriever = Retriever(
+            embedder: embedder, search: repository, repository: repository, tracer: tracer,
+            photoSearch: features.map { PhotoSearch(features: $0, search: repository, recognizer: recognizer) })
+        return CoreServices(
+            repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor, supportsPhotos: features != nil)
     }
 
     func makeChat(core: CoreServices) async throws -> ChatService {

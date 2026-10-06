@@ -19,7 +19,7 @@ struct DroppedFile: Transferable {
 
 enum SupportedTypes {
     static let picker: [UTType] = {
-        var types: [UTType] = [.plainText, .pdf]
+        var types: [UTType] = [.plainText, .pdf, .jpeg, .png, .heic, .heif]
         for ext in ["docx", "md", "markdown"] { if let t = UTType(filenameExtension: ext) { types.append(t) } }
         return types
     }()
@@ -46,7 +46,9 @@ struct LibraryView: View {
                 .accessibilityIdentifier("importRejections")
             }
             ForEach(library.items) { item in
-                Button { onOpen(item.id) } label: { LibraryRow(item: item) { Task { await library.retry(item.id) } } }
+                Button { onOpen(item.id) } label: {
+                    LibraryRow(item: item, loadThumbnail: { await library.thumbnail(for: item.id) }) { Task { await library.retry(item.id) } }
+                }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("doc-\(item.title)")
                     .contextMenu {
@@ -65,7 +67,7 @@ struct LibraryView: View {
                 ContentUnavailableView {
                     Label("No documents yet", systemImage: "doc.text.magnifyingglass")
                 } description: {
-                    Text("Import PDF, Word or text files, or drop them here. Everything stays on this iPad.")
+                    Text("Import PDF, Word, text or photo files, or drop them here. Everything stays on this iPad.")
                 } actions: {
                     Button("Import documents") { importing = true }.buttonStyle(.borderedProminent)
                 }
@@ -103,11 +105,13 @@ struct LibraryView: View {
 
 struct LibraryRow: View {
     let item: LibraryViewModel.Item
+    let loadThumbnail: () async -> Data?
     let onRetry: () -> Void
+    @State private var thumbnail: Data?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon).font(.title2).foregroundStyle(.tint).frame(width: 32)
+            leading
             VStack(alignment: .leading, spacing: 4) {
                 Text(item.title).font(.headline).lineLimit(2)
                 statusView
@@ -116,6 +120,26 @@ struct LibraryRow: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+        .accessibilityValue(item.type == .image && thumbnail != nil ? "thumbnail shown" : "")
+    }
+
+    /// A photo document shows its picture; everything else shows an icon for its type.
+    @ViewBuilder private var leading: some View {
+        if item.type == .image {
+            Group {
+                if let thumbnail, let image = UIImage(data: thumbnail) {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Image(systemName: icon).font(.title2).foregroundStyle(.tint)
+                }
+            }
+            .frame(width: 44, height: 44)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .task(id: item.status) { if item.status.isReady { thumbnail = await loadThumbnail() } }
+            .accessibilityIdentifier("thumbnail-\(item.title)")
+        } else {
+            Image(systemName: icon).font(.title2).foregroundStyle(.tint).frame(width: 32)
+        }
     }
 
     private var icon: String {
@@ -123,6 +147,7 @@ struct LibraryRow: View {
         case .pdf: "doc.richtext"
         case .docx: "doc.text"
         case .markdown, .text: "text.alignleft"
+        case .image: "photo"
         }
     }
 
@@ -136,6 +161,8 @@ struct LibraryRow: View {
             progress("Reading", p)
         case .recognizing(let p):
             progress("Recognizing text", p)
+        case .analyzing(let p):
+            progress("Analyzing photos", p)
         case .embedding(let p):
             progress("Indexing", p)
         case .failed(let reason):
@@ -148,10 +175,21 @@ struct LibraryRow: View {
     }
 
     private var readySubtitle: String {
-        var parts = [item.type == .docx ? "Word" : item.type == .pdf ? "PDF" : item.type == .markdown ? "Markdown" : "Text"]
+        var parts = [Self.label(for: item.type)]
         if let pages = item.pageCount { parts.append("\(pages) page\(pages == 1 ? "" : "s")") }
+        if item.type != .image, item.imageCount > 0 { parts.append("\(item.imageCount) photo\(item.imageCount == 1 ? "" : "s")") }
         parts.append(item.importedAt.formatted(date: .abbreviated, time: .omitted))
         return "Ready · " + parts.joined(separator: " · ")
+    }
+
+    static func label(for type: DocumentType) -> String {
+        switch type {
+        case .docx: "Word"
+        case .pdf: "PDF"
+        case .markdown: "Markdown"
+        case .text: "Text"
+        case .image: "Photo"
+        }
     }
 
     private func progress(_ label: String, _ value: Double) -> some View {

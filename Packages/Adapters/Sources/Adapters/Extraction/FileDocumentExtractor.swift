@@ -3,7 +3,7 @@ import Ports
 
 /// Chooses an extractor by file type.
 public struct FileDocumentExtractor: DocumentExtractor {
-    public static let supportedExtensions: Set<String> = ["txt", "md", "markdown", "pdf", "docx"]
+    public static let supportedExtensions: Set<String> = ["txt", "md", "markdown", "pdf", "docx", "jpg", "jpeg", "png", "heic", "heif"]
 
     public init() {}
 
@@ -13,6 +13,7 @@ public struct FileDocumentExtractor: DocumentExtractor {
         case "md", "markdown": .markdown
         case "pdf": .pdf
         case "docx": .docx
+        case "jpg", "jpeg", "png", "heic", "heif": .image
         default: nil
         }
     }
@@ -23,6 +24,7 @@ public struct FileDocumentExtractor: DocumentExtractor {
         case .markdown: try await TextExtractor(isMarkdown: true).extract(from: url, events: events)
         case .pdf: try await PDFExtractor().extract(from: url, events: events)
         case .docx: try await DocxExtractor().extract(from: url, events: events)
+        case .image: try await ImageExtractor().extract(from: url, events: events)
         case nil: throw ExtractionError.unsupportedType(url.pathExtension.isEmpty ? "unknown" : url.pathExtension)
         }
     }

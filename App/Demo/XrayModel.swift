@@ -173,5 +173,6 @@ final class XrayModel {
     static let knownIndexes: [(name: String, kind: String)] = [
         ("chunks_vec", "vector index"), ("chunks_fts", "full-text index"),
         ("chunks_doc_gen", "value index"), ("messages_chat", "value index"),
+        ("images_vec", "vector index"), ("images_doc_gen", "value index"),
     ]
 }

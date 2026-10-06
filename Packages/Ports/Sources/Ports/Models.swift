@@ -1,7 +1,7 @@
 import Foundation
 
 public enum DocumentType: String, Sendable, Codable, CaseIterable {
-    case text, markdown, pdf, docx
+    case text, markdown, pdf, docx, image
 }
 
 /// Identifies the embedding model that produced a vector. Stored on every chunk so that
@@ -29,11 +29,14 @@ public struct DocumentRecord: Sendable, Codable, Hashable, Identifiable {
     /// The generation of chunks that retrieval may use. `nil` until the first generation is complete.
     public var activeGeneration: Int?
     public var importedAt: Date
+    /// How many photos were found in the document (or 1 for an imported photo). `nil` when there are none.
+    public var imageCount: Int?
 
     public init(
         id: String, title: String, type: DocumentType, pageCount: Int? = nil,
-        activeGeneration: Int? = nil, importedAt: Date = Date()
+        activeGeneration: Int? = nil, importedAt: Date = Date(), imageCount: Int? = nil
     ) {
+        self.imageCount = imageCount
         self.id = id
         self.title = title
         self.type = type
@@ -53,6 +56,8 @@ public struct Chunk: Sendable, Codable, Hashable, Identifiable {
     public var embedding: [Float]
     /// Tag of the `EmbeddingModelIdentity` that produced `embedding`.
     public var embeddingModel: String
+    /// Set on the passage that stands for an image (its caption, heading and recognized text).
+    public var imageId: String?
 
     /// Deterministic, so re-writing a chunk overwrites it instead of duplicating it.
     public var id: String { Chunk.makeID(docId: docId, generation: generation, ordinal: ordinal) }
@@ -70,8 +75,9 @@ public struct Chunk: Sendable, Codable, Hashable, Identifiable {
 
     public init(
         docId: String, generation: Int, ordinal: Int, page: Int? = nil, heading: String? = nil,
-        text: String, embedding: [Float], embeddingModel: String
+        text: String, embedding: [Float], embeddingModel: String, imageId: String? = nil
     ) {
+        self.imageId = imageId
         self.docId = docId
         self.generation = generation
         self.ordinal = ordinal
@@ -114,11 +120,14 @@ public struct Citation: Sendable, Codable, Hashable {
     public var page: Int?
     public var heading: String?
     public var snippet: String
+    /// Set when the cited passage stands for an image.
+    public var imageId: String?
 
     public init(
         n: Int, chunkId: String, docId: String, docTitle: String, page: Int? = nil,
-        heading: String? = nil, snippet: String
+        heading: String? = nil, snippet: String, imageId: String? = nil
     ) {
+        self.imageId = imageId
         self.n = n
         self.chunkId = chunkId
         self.docId = docId
@@ -145,11 +154,22 @@ public struct MessageRecord: Sendable, Codable, Hashable, Identifiable {
     /// The documents did not contain an answer.
     public var notFound: Bool
     public var createdAt: Date
+    /// The user attached a photo to this question. The photo itself is stored as a blob next to the message
+    /// and read with `ChatRepository.attachment(messageId:)`, so listing messages never loads it.
+    public var hasAttachment: Bool
+    /// Library images that matched the attached photo, as snapshots that outlive their documents.
+    public var imageMatches: [ImageMatch]
+    /// The reply lists matches only: the photo had no typed question, so nothing was generated.
+    public var matchesOnly: Bool
 
     public init(
         id: String, chatId: String, role: MessageRole, text: String, standaloneQuery: String? = nil,
-        citations: [Citation] = [], stopped: Bool = false, notFound: Bool = false, createdAt: Date = Date()
+        citations: [Citation] = [], stopped: Bool = false, notFound: Bool = false, createdAt: Date = Date(),
+        hasAttachment: Bool = false, imageMatches: [ImageMatch] = [], matchesOnly: Bool = false
     ) {
+        self.hasAttachment = hasAttachment
+        self.imageMatches = imageMatches
+        self.matchesOnly = matchesOnly
         self.id = id
         self.chatId = chatId
         self.role = role
@@ -165,6 +185,7 @@ public struct MessageRecord: Sendable, Codable, Hashable, Identifiable {
     // synced records still load.
     enum CodingKeys: String, CodingKey {
         case id, chatId, role, text, standaloneQuery, citations, stopped, notFound, createdAt
+        case hasAttachment, imageMatches, matchesOnly
     }
 
     public init(from decoder: Decoder) throws {
@@ -178,13 +199,16 @@ public struct MessageRecord: Sendable, Codable, Hashable, Identifiable {
         stopped = try c.decodeIfPresent(Bool.self, forKey: .stopped) ?? false
         notFound = try c.decodeIfPresent(Bool.self, forKey: .notFound) ?? false
         createdAt = try c.decode(Date.self, forKey: .createdAt)
+        hasAttachment = try c.decodeIfPresent(Bool.self, forKey: .hasAttachment) ?? false
+        imageMatches = try c.decodeIfPresent([ImageMatch].self, forKey: .imageMatches) ?? []
+        matchesOnly = try c.decodeIfPresent(Bool.self, forKey: .matchesOnly) ?? false
     }
 }
 
 // MARK: - Ingestion jobs (device-local, never replicated)
 
 public enum IngestState: String, Sendable, Codable {
-    case queued, extracting, recognizingText, embedding, ready, failed
+    case queued, extracting, recognizingText, analyzingImages, embedding, ready, failed
 }
 
 public struct IngestJobRecord: Sendable, Codable, Hashable, Identifiable {
@@ -194,6 +218,8 @@ public struct IngestJobRecord: Sendable, Codable, Hashable, Identifiable {
     public var progress: Double
     /// The next chunk ordinal to embed; lets an interrupted job resume where it stopped.
     public var nextOrdinal: Int
+    /// The next image to analyze; lets an interrupted job resume where it stopped.
+    public var nextImage: Int
     public var error: String?
     /// Queue order: oldest first.
     public var enqueuedAt: Date
@@ -204,8 +230,9 @@ public struct IngestJobRecord: Sendable, Codable, Hashable, Identifiable {
 
     public init(
         docId: String, targetGeneration: Int, state: IngestState = .queued, progress: Double = 0,
-        nextOrdinal: Int = 0, error: String? = nil, enqueuedAt: Date = Date()
+        nextOrdinal: Int = 0, nextImage: Int = 0, error: String? = nil, enqueuedAt: Date = Date()
     ) {
+        self.nextImage = nextImage
         self.enqueuedAt = enqueuedAt
         self.docId = docId
         self.targetGeneration = targetGeneration
@@ -213,5 +240,22 @@ public struct IngestJobRecord: Sendable, Codable, Hashable, Identifiable {
         self.progress = progress
         self.nextOrdinal = nextOrdinal
         self.error = error
+    }
+
+    // Jobs saved before images existed have no `nextImage`; they decode as 0.
+    enum CodingKeys: String, CodingKey {
+        case docId, targetGeneration, state, progress, nextOrdinal, nextImage, error, enqueuedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        docId = try c.decode(String.self, forKey: .docId)
+        targetGeneration = try c.decode(Int.self, forKey: .targetGeneration)
+        state = try c.decode(IngestState.self, forKey: .state)
+        progress = try c.decode(Double.self, forKey: .progress)
+        nextOrdinal = try c.decode(Int.self, forKey: .nextOrdinal)
+        nextImage = try c.decodeIfPresent(Int.self, forKey: .nextImage) ?? 0
+        error = try c.decodeIfPresent(String.self, forKey: .error)
+        enqueuedAt = try c.decode(Date.self, forKey: .enqueuedAt)
     }
 }

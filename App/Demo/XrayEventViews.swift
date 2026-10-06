@@ -86,8 +86,9 @@ struct XrayEventDetail: View {
             switch event.kind {
             case .query(let trace): QueryDetail(event: event, trace: trace, group: group, xray: xray)
             case .fusion(_, _, let entries): FusionDetail(entries: entries, xray: xray)
-            case .relevance(let best, let threshold, let outcome):
-                Text(XrayText.relevance(best: best, threshold: threshold, outcome: outcome)).font(.callout)
+            case .relevance(let best, let threshold, let outcome, let bestImage, let imageThreshold):
+                Text(XrayText.relevance(best: best, threshold: threshold, outcome: outcome, bestImage: bestImage, imageThreshold: imageThreshold))
+                    .font(.callout)
             case .generation(let firstToken, let skipped):
                 Text(skipped ? "No passage was relevant, so the language model was never started." :
                         "First text after \(firstToken.map(XrayFormat.duration) ?? "–"); finished after \(event.duration.map(XrayFormat.duration) ?? "–").")
@@ -101,12 +102,23 @@ struct XrayEventDetail: View {
                 Text("The question was turned into \(dimensions) numbers on the device.").font(.callout)
             case .documentSaved(let collection, let id): StoredDocumentLink(collection: collection, id: id, xray: xray)
             case .messageSaved(let id): StoredDocumentLink(collection: "messages", id: id, xray: xray)
-            case .blobStored(let docId, _, _), .blobRead(let docId, _, _), .generationActivated(let docId, _, _),
-                .documentDeleted(let docId, _):
+            case .blobStored(let docId, _, _), .blobRead(let docId, _, _), .generationActivated(let docId, _, _, _),
+                .documentDeleted(let docId, _, _):
                 StoredDocumentLink(collection: "documents", id: docId, xray: xray)
             case .jobState(let docId, _, _, _): StoredDocumentLink(collection: "ingestJobs", id: docId, xray: xray)
             case .batchWritten(let collection, let count, let dimensions):
                 Text("\(count) documents in “\(collection)”, each with a \(dimensions)-number vector, committed together.").font(.callout)
+            case .imageAnalyzed(let docId, let generation, let n, let ocrLength, let captionSource, let dimensions):
+                Text("Found \(ocrLength) characters of text on the photo; its caption came from \(XrayText.captionLabel(captionSource)); its look became \(dimensions) numbers.")
+                    .font(.callout)
+                StoredDocumentLink(collection: "images", id: ImageRecord.makeID(docId: docId, generation: generation, n: n), xray: xray)
+            case .imagesWritten(let collection, let count, let blobBytes, let dimensions):
+                Text("\(count) documents in “\(collection)”, each a JSON record with a \(dimensions)-number vector and the photo itself as a blob (\(XrayFormat.bytes(blobBytes)) in all), committed together.")
+                    .font(.callout)
+            case .photoAnalyzed(let length, let identifiers, let dimensions):
+                LabeledText("Text read from the photo", length == 0 ? "none" : "\(length) characters")
+                LabeledText("Identifiers kept for the search", identifiers.isEmpty ? "none" : identifiers.joined(separator: ", "))
+                LabeledText("Look", "\(dimensions) numbers")
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -187,7 +199,14 @@ private struct QueryDetail: View {
         guard trace.purpose != .other, searchesOfThisKind.last?.id == event.id else { return nil }
         for later in group.events where later.timestamp >= event.timestamp {
             if case .fusion(_, _, let entries) = later.kind {
-                return entries.filter { trace.purpose == .vector ? $0.vectorPosition != nil : $0.keywordPosition != nil }.count
+                return entries.filter {
+                    switch trace.purpose {
+                    case .vector: $0.vectorPosition != nil
+                    case .keyword: $0.keywordPosition != nil
+                    case .image: $0.imagePosition != nil
+                    case .other: false
+                    }
+                }.count
             }
         }
         return nil
@@ -213,11 +232,16 @@ private struct FusionDetail: View {
     let entries: [FusionEntry]
     let xray: XrayModel
 
+    /// The photo column only appears when the question came with a photo.
+    private var showsPhotoColumn: Bool { entries.contains { $0.imagePosition != nil } }
+
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
             GridRow {
                 Text("Passage").gridColumnAlignment(.leading).accessibilityIdentifier("xrayFusionTable")
-                Text("Vector"); Text("Keyword"); Text("Distance"); Text("Score")
+                Text("Vector"); Text("Keyword")
+                if showsPhotoColumn { Text("Photo") }
+                Text("Distance"); Text("Score")
             }
             .font(.caption.weight(.semibold))
             .foregroundStyle(.secondary)
@@ -229,6 +253,7 @@ private struct FusionDetail: View {
                     }
                     Text(entry.vectorPosition.map { "#\($0 + 1)" } ?? "–")
                     Text(entry.keywordPosition.map { "#\($0 + 1)" } ?? "–")
+                    if showsPhotoColumn { Text(entry.imagePosition.map { "#\($0 + 1)" } ?? "–") }
                     Text(entry.distance.map { String(format: "%.3f", $0) } ?? "–")
                     Text(String(format: "%.4f", entry.score))
                 }

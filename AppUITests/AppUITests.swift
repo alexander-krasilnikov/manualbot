@@ -112,6 +112,16 @@ final class WorkspaceUITests: UITestCase {
         return app
     }
 
+    func testSeededPhotoDocumentIsReadyWithAThumbnail() {
+        let app = readyApp()
+        let row = app.buttons["doc-Nameplate X100"]
+        waitFor(row)
+        let shown = NSPredicate(format: "value == 'thumbnail shown'")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: shown, object: row)], timeout: 30), .completed,
+                       "the photo's row should show its picture; value was \(String(describing: row.value))")
+        XCTAssertTrue(row.label.contains("Photo"), row.label)
+    }
+
     func testSeededDocumentsAreReadyInTheLibrary() {
         let app = readyApp()
         XCTAssertTrue(app.buttons["doc-Warranty"].exists)
@@ -132,6 +142,69 @@ final class WorkspaceUITests: UITestCase {
         citation.tap()
         waitFor(element(app, "highlightedPassage"))
         XCTAssertEqual(element(app, "sourceTitle").label, "X200 Manual")
+    }
+
+    func testAttachingAPhotoShowsItAndLetsItBeSentWithoutWords() {
+        let app = readyApp()
+        XCTAssertFalse(element(app, "sendButton").isEnabled, "nothing to send yet")
+        element(app, "attachPhotoButton").tap()
+        waitFor(element(app, "attachedPhoto"))
+        waitEnabled(element(app, "sendButton"))
+
+        element(app, "removePhotoButton").tap()
+        XCTAssertFalse(element(app, "attachedPhoto").exists)
+        XCTAssertFalse(element(app, "sendButton").isEnabled)
+
+        element(app, "attachPhotoButton").tap()
+        element(app, "sendButton").tap()
+        waitFor(element(app, "userPhoto"), timeout: 15)
+        XCTAssertFalse(element(app, "attachedPhoto").exists, "the photo goes with the question")
+    }
+
+    func testAPhotoAloneIsAnsweredWithTheMatchingPhotoAndItsPage() {
+        let app = readyApp()
+        element(app, "attachPhotoButton").tap()
+        waitEnabled(element(app, "sendButton"))
+        element(app, "sendButton").tap()
+
+        waitFor(element(app, "matchesMessage"), timeout: 30)
+        XCTAssertFalse(element(app, "streamingText").exists, "nothing is generated for a photo alone")
+        let match = element(app, "imageMatch-1")
+        waitFor(match)
+        XCTAssertTrue(match.label.contains("X200 Service Manual") && match.label.contains("page 2"), match.label)
+        waitFor(element(app, "citation-1"))
+
+        match.tap()
+        waitFor(element(app, "sourcePage"))
+        XCTAssertEqual(element(app, "sourceTitle").label, "X200 Service Manual")
+        XCTAssertEqual(element(app, "sourcePage").label, "Page 2 of 3")
+    }
+
+    func testAnAnswerShowsThePhotosOnTheCitedPage() {
+        let app = readyApp()
+        ask(app, "How often should I descale the X200-B?")
+        let answer = element(app, "assistantMessage")
+        waitFor(answer, timeout: 15)
+        let source = element(app, "citation-1")
+        waitFor(source)
+        XCTAssertTrue(source.label.contains("X200 Service Manual"), source.label)
+        waitFor(element(app, "citedPhotos"))
+        let photo = element(app, "citedPhoto-1")
+        waitFor(photo)
+
+        photo.tap()   // opens the page the photo is on
+        waitFor(element(app, "sourcePage"))
+        XCTAssertEqual(element(app, "sourcePage").label, "Page 2 of 3")
+    }
+
+    func testAPhotoAndAQuestionTogetherAreAnsweredWithCitations() {
+        let app = readyApp()
+        element(app, "attachPhotoButton").tap()
+        ask(app, "How often should I descale it?")
+        waitFor(element(app, "userPhoto"), timeout: 15)
+        waitFor(element(app, "assistantMessage"), timeout: 30)
+        XCTAssertFalse(element(app, "matchesMessage").exists)
+        waitFor(element(app, "citation-1"))
     }
 
     func testCitingAPdfOpensTheCitedPageWithTheHighlightedPassage() {

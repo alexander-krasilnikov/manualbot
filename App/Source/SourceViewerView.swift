@@ -16,6 +16,8 @@ struct SourceViewerView: View {
                 PDFSource(url: url, page: page, passage: passage, title: title, openCount: source.openCount)
             case .text(let title, let paragraphs, let highlighted):
                 TextSource(title: title, paragraphs: paragraphs, highlighted: highlighted, openCount: source.openCount)
+            case .image(let url, let title):
+                ImageSource(url: url, title: title)
             case .deleted(let citation):
                 DeletedSource(citation: citation)
             case .unavailable(let title, let reason):

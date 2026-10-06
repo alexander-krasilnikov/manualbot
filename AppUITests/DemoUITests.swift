@@ -235,7 +235,7 @@ final class ResetDemoUITests: UITestCase {
 
     func testConfirmingLeavesOnlyTheSampleDocumentsAndNoChats() {
         let app = demoApp()
-        XCTAssertEqual(documents(app).count, 3, "the seeded library")
+        XCTAssertEqual(documents(app).count, 5, "the seeded library")
         ask(app, "How do I reset the X200?")
         waitFor(element(app, "assistantMessage"), timeout: 15)
 
@@ -246,9 +246,9 @@ final class ResetDemoUITests: UITestCase {
 
         waitFor(app.buttons["doc-Bike Repair"], timeout: 30)
         let ready = app.descendants(matching: .any).matching(identifier: "status-ready")
-        let settled = NSPredicate { _, _ in self.documents(app).count == 4 && ready.count == 4 }
-        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 30), .completed,
-                       "expected exactly the four sample documents, all ready; found \(documents(app).count)")
+        let settled = NSPredicate { _, _ in self.documents(app).count == 6 && ready.count == 6 }
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 60), .completed,
+                       "expected exactly the six sample documents, all ready; found \(documents(app).count)")
         XCTAssertFalse(element(app, "assistantMessage").exists, "the old chat must be gone")
         waitFor(element(app, "xrayGroup-Reset demo"))
     }
@@ -267,9 +267,78 @@ final class ResetDemoUITests: UITestCase {
         let gone = NSPredicate(format: "exists == false")
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: gone, object: confirm)], timeout: 5), .completed)
 
-        XCTAssertEqual(documents(app).count, 3)
+        XCTAssertEqual(documents(app).count, 5)
         XCTAssertFalse(app.buttons["doc-Bike Repair"].exists)
         XCTAssertTrue(element(app, "assistantMessage").exists)
         XCTAssertFalse(element(app, "xrayGroup-Reset demo").exists)
+    }
+}
+
+final class PhotoDemoUITests: UITestCase {
+    private func demoApp() -> XCUIApplication {
+        let app = launch(extra: ["-uiTestSeed", "-demoMode"])
+        app.buttons["startDownload"].tap()
+        waitFor(app.navigationBars["Library"])
+        waitFor(app.buttons["doc-X200 Manual"])
+        return app
+    }
+
+    private func showXray(_ app: XCUIApplication) {
+        let picker = element(app, "detailTabPicker")
+        waitFor(picker)
+        picker.buttons["X-ray"].tap()
+        waitFor(element(app, "xrayPanel"))
+    }
+
+    func testAPhotoQuestionShowsTheImageSearchAndThreeListFusionInXray() {
+        let app = demoApp()
+        waitFor(app.buttons["doc-X200 Service Manual"])
+        element(app, "attachPhotoButton").tap()
+        waitFor(element(app, "attachedPhoto"))
+        let send = element(app, "sendButton")
+        waitEnabled(send)
+        send.tap()
+        waitFor(element(app, "matchesMessage"), timeout: 30)
+
+        showXray(app)
+        waitFor(element(app, "xrayEvent-photoAnalyzed"))
+        waitFor(element(app, "xrayEvent-imageQuery"))
+        waitFor(element(app, "xrayEvent-fusion"))
+        element(app, "xrayEvent-imageQuery").tap()
+        let sql = element(app, "xraySQL")
+        waitFor(sql)
+        XCTAssertTrue(sql.label.contains("APPROX_VECTOR_DISTANCE(features"), sql.label)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'uses images_vec'")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(element(app, "xrayGroup-Photo question").exists)
+    }
+
+    func testTheResetImportsAPhotoAndAManualThatContainsOne() {
+        let app = demoApp()
+        let picker = element(app, "detailTabPicker")
+        waitFor(picker)
+        picker.buttons["X-ray"].tap()
+        let reset = element(app, "xrayResetButton")
+        waitFor(reset)
+        waitEnabled(reset)
+        reset.tap()
+        let confirm = app.buttons["Delete everything and import the samples"].firstMatch
+        waitFor(confirm)
+        confirm.tap()
+
+        waitFor(app.buttons["doc-X200 Service Manual"], timeout: 60)
+        waitFor(app.buttons["doc-Nameplate X100"], timeout: 60)
+        let shown = NSPredicate(format: "value == 'thumbnail shown'")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: shown, object: app.buttons["doc-Nameplate X100"])], timeout: 60), .completed)
+
+        // The sample nameplate matches the manual's figure, which is not the photo that was imported.
+        element(app, "attachPhotoButton").tap()
+        let send = element(app, "sendButton")
+        waitEnabled(send)
+        send.tap()
+        waitFor(element(app, "matchesMessage"), timeout: 60)
+        let match = element(app, "imageMatch-1")
+        waitFor(match)
+        XCTAssertTrue(match.label.contains("X200 Service Manual"), match.label)
+        XCTAssertFalse(match.label.contains("Nameplate X100"), match.label)
     }
 }

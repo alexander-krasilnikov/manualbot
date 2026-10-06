@@ -61,7 +61,12 @@ targets:
               - public.plain-text
               - org.openxmlformats.wordprocessingml.document
               - net.daringfireball.markdown
+              - public.jpeg
+              - public.png
+              - public.heic
+              - public.heif
         LSSupportsOpeningDocumentsInPlace: false
+        NSCameraUsageDescription: ManualBot uses the camera so you can photograph a nameplate or a part and find it in your documents. Photos are analyzed on this iPad and never leave it.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationPortraitUpsideDown

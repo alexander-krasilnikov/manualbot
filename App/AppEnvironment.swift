@@ -13,7 +13,7 @@ enum AppEnvironmentError: LocalizedError {
 /// Wires the real adapters together, or stubs them for UI tests.
 ///
 /// UI tests launch with `-uiTestModelStub <scenario>` (fake downloads: `happy`, `llmFailsOnce`, `lowStorage`, `bundled`),
-/// optionally `-uiTestSeed` (two sample documents already indexed) and `-uiTestSlow` (answers stream slowly).
+/// optionally `-uiTestSeed` (five sample documents already indexed, among them a photo and a PDF with a photo) and `-uiTestSlow` (answers stream slowly).
 @MainActor
 enum AppEnvironment {
     static func makeAppModel() throws -> AppModel {

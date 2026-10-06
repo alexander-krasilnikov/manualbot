@@ -17,6 +17,8 @@ public struct ChunkDraft: Sendable, Equatable {
     public var page: Int?
     public var heading: String?
     public var text: String
+    /// Set on the passage that stands for an image.
+    public var imageId: String?
 }
 
 public struct ChunkerConfiguration: Sendable, Equatable {

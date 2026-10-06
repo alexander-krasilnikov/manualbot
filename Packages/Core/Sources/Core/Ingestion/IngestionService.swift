@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Ports
 
@@ -6,6 +7,8 @@ public enum IngestionError: Error, Equatable, LocalizedError {
     case noText
     case embeddingMismatch(expected: Int, got: Int)
     case documentNotFound(String)
+    /// A photo was imported on a device that cannot analyze photos.
+    case photosUnavailable
 
     public var errorDescription: String? {
         switch self {
@@ -13,6 +16,7 @@ public enum IngestionError: Error, Equatable, LocalizedError {
         case .noText: "No text could be found in the document."
         case .embeddingMismatch(let expected, let got): "The embedding model returned \(got) vectors or dimensions where \(expected) were expected."
         case .documentNotFound(let id): "Document \(id) no longer exists."
+        case .photosUnavailable: "Photos cannot be analyzed on this device."
         }
     }
 }
@@ -29,6 +33,9 @@ public actor IngestionService {
     private let batchSize: Int
     private let supportedType: @Sendable (URL) -> DocumentType?
     private let tracer: any Tracer
+    private let imageFeatures: (any ImageFeaturing)?
+    private let recognizer: (any TextRecognizing)?
+    private let imageBatchSize: Int
 
     private var observers: [UUID: AsyncStream<IngestJobRecord>.Continuation] = [:]
     private var running = false
@@ -44,8 +51,12 @@ public actor IngestionService {
     public init(
         extractor: any DocumentExtractor, embedder: any Embedder, repository: any DocumentRepository,
         jobs: any IngestJobStore, chunker: Chunker = Chunker(), batchSize: Int = 16,
-        supportedType: @escaping @Sendable (URL) -> DocumentType?, tracer: any Tracer = NoTracer()
+        supportedType: @escaping @Sendable (URL) -> DocumentType?, tracer: any Tracer = NoTracer(),
+        imageFeatures: (any ImageFeaturing)? = nil, recognizer: (any TextRecognizing)? = nil, imageBatchSize: Int = 8
     ) {
+        self.imageFeatures = imageFeatures
+        self.recognizer = recognizer
+        self.imageBatchSize = max(1, imageBatchSize)
         self.extractor = extractor
         self.embedder = embedder
         self.repository = repository
@@ -92,7 +103,7 @@ public actor IngestionService {
         // Always its own group, even inside a demo reset, so each import reads as a complete story.
         return try await inOperation(Self.operation(docId: id, generation: 1, title: name), replacing: true) {
             try await repository.upsert(DocumentRecord(id: id, title: name, type: type))
-            try await repository.attachOriginal(fileURL: fileURL, contentType: Self.contentType(for: type), to: id)
+            try await repository.attachOriginal(fileURL: fileURL, contentType: Self.contentType(for: type, fileURL: fileURL), to: id)
             try await save(IngestJobRecord(docId: id, targetGeneration: 1))
             wakeRequested = true
             return id
@@ -176,12 +187,19 @@ public actor IngestionService {
     public func setPaused(_ value: Bool) { paused = value }
 
 
-    private static func contentType(for type: DocumentType) -> String {
+    private static func contentType(for type: DocumentType, fileURL: URL) -> String {
         switch type {
         case .text: "text/plain"
         case .markdown: "text/markdown"
         case .pdf: "application/pdf"
         case .docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        case .image:
+            switch fileURL.pathExtension.lowercased() {
+            case "png": "image/png"
+            case "heic": "image/heic"
+            case "heif": "image/heif"
+            default: "image/jpeg"
+            }
         }
     }
 
@@ -241,14 +259,20 @@ public actor IngestionService {
                 throw IngestionError.documentNotFound(job.docId)
             }
             let extracted = try await extract(file, job: &job)
-            let drafts = chunker.chunk(extracted.blocks)
+            if document.type == .image, imageFeatures == nil { throw IngestionError.photosUnavailable }
+            var drafts = chunker.chunk(extracted.blocks)
+            let imageDrafts = try await analyzeImages(extracted.images, of: document, firstOrdinal: drafts.count, job: &job)
+            drafts += imageDrafts
             guard !drafts.isEmpty else { throw IngestionError.noText }
 
             job.state = .embedding
+            job.progress = Double(min(job.nextOrdinal, drafts.count)) / Double(drafts.count)
+            try await save(job)
             try await embed(drafts, of: document, job: &job)
 
             var updated = document
             updated.pageCount = extracted.pageCount
+            updated.imageCount = imageDrafts.isEmpty ? nil : imageDrafts.count
             try await repository.upsert(updated)
             try await repository.activate(generation: job.targetGeneration, for: job.docId)
 
@@ -298,13 +322,94 @@ public actor IngestionService {
         }
     }
 
+    /// Between batches: waits while paused, and stops if the job was cancelled or its document deleted.
+    private func checkpoint(_ docId: String) async throws {
+        while paused && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(50)) }
+        try Task.checkCancellation()
+        if deleteRequested.contains(docId) { throw DocumentDeletedDuringIngestion() }
+    }
+
+    /// Reads each image on the device (text in it, similarity vector, a display copy) and stores it. Images are
+    /// stored in batches under deterministic IDs, so an interrupted job continues from `nextImage` and never
+    /// leaves a second copy. Returns one passage per stored image, so images can be found by their words too.
+    /// An image that cannot be analyzed is skipped; it never fails the document.
+    private func analyzeImages(
+        _ images: [ExtractedImage], of document: DocumentRecord, firstOrdinal: Int, job: inout IngestJobRecord
+    ) async throws -> [ChunkDraft] {
+        guard !images.isEmpty, let imageFeatures else { return [] }
+        let generation = job.targetGeneration
+        job.state = .analyzingImages
+        job.progress = Double(min(job.nextImage, images.count)) / Double(images.count)
+        try await save(job)
+
+        var start = min(job.nextImage, images.count)
+        while start < images.count {
+            try await checkpoint(job.docId)
+            let end = min(start + imageBatchSize, images.count)
+            var writes: [ImageWrite] = []
+            for index in start..<end {
+                let started = tracer.isEnabled ? ContinuousClock.now : nil
+                guard let write = try await analyze(images[index], n: index, docId: job.docId, generation: generation, features: imageFeatures)
+                else { continue }
+                writes.append(write)
+                if let started {
+                    tracer.emit(duration: started.duration(to: .now).seconds, .imageAnalyzed(
+                        docId: job.docId, generation: generation, n: index, ocrLength: write.record.ocrText.count,
+                        captionSource: write.record.captionSource.rawValue, dimensions: write.record.features.count))
+                }
+            }
+            if deleteRequested.contains(job.docId) { throw DocumentDeletedDuringIngestion() }
+            if !writes.isEmpty { try await repository.writeImages(writes) }
+            start = end
+            job.nextImage = end
+            job.progress = Double(end) / Double(images.count)
+            try await save(job)
+        }
+
+        return try await repository.images(docId: job.docId, generation: generation).enumerated().map { offset, image in
+            ChunkDraft(
+                ordinal: firstOrdinal + offset, page: image.page, heading: image.heading,
+                text: ImagePassage.text(for: image, title: document.title, chunker: chunker), imageId: image.id)
+        }
+    }
+
+    /// `nil` when the image cannot be analyzed. Cancellation is never treated as a failure of the image: it stops
+    /// the job, which then resumes at this image.
+    private func analyze(
+        _ source: ExtractedImage, n: Int, docId: String, generation: Int, features: any ImageFeaturing
+    ) async throws -> ImageWrite? {
+        try Task.checkCancellation()
+        // Recognized text is a bonus: an image whose text cannot be read is still kept and still found by its looks.
+        var lines: [RecognizedLine] = []
+        do {
+            lines = try await recognizer?.recognize(source.image, correctLanguage: false) ?? []
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            lines = []
+        }
+        let vector: [Float]
+        do {
+            vector = try await features.features(of: source.image)
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            return nil
+        }
+        try Task.checkCancellation()
+        guard vector.count == features.identity.dimensions, let copy = try? DisplayCopy.jpeg(from: source.image) else { return nil }
+        let record = ImageRecord(
+            docId: docId, generation: generation, n: n, page: source.page, heading: source.heading, caption: source.caption,
+            captionSource: source.captionSource, ocrText: lines.map(\.text).joined(separator: " "),
+            width: source.image.width, height: source.image.height, features: vector, featureModel: features.identity.tag)
+        return ImageWrite(record: record, displayCopy: copy)
+    }
+
     private func embed(_ drafts: [ChunkDraft], of document: DocumentRecord, job: inout IngestJobRecord) async throws {
         let identity = embedder.identity
         var start = min(job.nextOrdinal, drafts.count)
         while start < drafts.count {
-            while paused && !Task.isCancelled { try? await Task.sleep(for: .milliseconds(50)) }
-            try Task.checkCancellation()
-            if deleteRequested.contains(job.docId) { throw DocumentDeletedDuringIngestion() }
+            try await checkpoint(job.docId)
             let end = min(start + batchSize, drafts.count)
             let batch = Array(drafts[start..<end])
             let vectors = try await embedder.embed(batch.map(\.text), kind: .passage(title: document.title))
@@ -314,7 +419,8 @@ public actor IngestionService {
             if deleteRequested.contains(job.docId) { throw DocumentDeletedDuringIngestion() }
             try await repository.writeChunks(zip(batch, vectors).map { draft, vector in
                 Chunk(docId: job.docId, generation: job.targetGeneration, ordinal: draft.ordinal, page: draft.page,
-                      heading: draft.heading, text: draft.text, embedding: vector, embeddingModel: identity.tag)
+                      heading: draft.heading, text: draft.text, embedding: vector, embeddingModel: identity.tag,
+                      imageId: draft.imageId)
             })
             start = end
             job.nextOrdinal = end

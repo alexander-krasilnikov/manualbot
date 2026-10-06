@@ -10,12 +10,14 @@ struct RepoFixture {
     let root: URL
     let repo: CouchbaseDocumentRepository
 
-    init(root: URL? = nil, tracer: any Tracer = NoTracer()) throws {
+    init(
+        root: URL? = nil, tracer: any Tracer = NoTracer(), imageFeatures: EmbeddingModelIdentity = CouchbaseSchema.defaultImageFeatures
+    ) throws {
         self.root = root ?? FileManager.default.temporaryDirectory.appendingPathComponent("repo-\(UUID().uuidString)")
         repo = try CouchbaseDocumentRepository(
             directory: self.root.appendingPathComponent("db"),
             originalsCache: self.root.appendingPathComponent("originals"),
-            embedding: Self.identity, tracer: tracer)
+            embedding: Self.identity, imageFeatures: imageFeatures, tracer: tracer)
     }
 
     func cleanUp() async {
@@ -42,7 +44,7 @@ struct RepoFixture {
     @Test func documentRoundTrips() async throws {
         let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
         let doc = DocumentRecord(id: "d1", title: "Manual A", type: .pdf, pageCount: 12,
-                                 activeGeneration: 3, importedAt: Date(timeIntervalSince1970: 1_700_000_000))
+                                 activeGeneration: 3, importedAt: Date(timeIntervalSince1970: 1_700_000_000), imageCount: 3)
         try await f.repo.upsert(doc)
         #expect(try await f.repo.document(id: "d1") == doc)
         #expect(try await f.repo.documents() == [doc])
@@ -50,7 +52,7 @@ struct RepoFixture {
         let bare = DocumentRecord(id: "d2", title: "Notes", type: .text, importedAt: Date(timeIntervalSince1970: 1_700_000_100))
         try await f.repo.upsert(bare)
         let read = try #require(try await f.repo.document(id: "d2"))
-        #expect(read.pageCount == nil && read.activeGeneration == nil)
+        #expect(read.pageCount == nil && read.activeGeneration == nil && read.imageCount == nil)
     }
 
     @Test func chunkRoundTripsWithVector() async throws {

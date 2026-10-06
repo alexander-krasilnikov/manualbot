@@ -246,12 +246,14 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
 
     @Test func queryEventsMapToTheirPurpose() {
         func tag(_ purpose: QueryPurpose) -> XrayEventTag { TraceKind.query(QueryTrace(sql: "", purpose: purpose, returnedRows: 0)).tag }
-        #expect(tag(.vector) == .vectorQuery && tag(.keyword) == .keywordQuery && tag(.other) == .otherQuery)
+        #expect(tag(.vector) == .vectorQuery && tag(.keyword) == .keywordQuery && tag(.other) == .otherQuery && tag(.image) == .imageQuery)
     }
 
     @Test func indexLabelsNameTheIndexOrSayThereIsNone() {
         #expect(XrayModel.indexLabel(inPlan: "SCAN chunks USING INDEX chunks_vec") == "uses chunks_vec · vector index")
         #expect(XrayModel.indexLabel(inPlan: "MATCH chunks_fts") == "uses chunks_fts · full-text index")
+        #expect(XrayModel.indexLabel(inPlan: "SCAN images USING INDEX images_vec") == "uses images_vec · vector index")
+        #expect(XrayModel.indexLabel(inPlan: "SEARCH images USING INDEX images_doc_gen") == "uses images_doc_gen · value index")
         #expect(XrayModel.indexLabel(inPlan: "SCAN documents") == "no index · reads the whole collection")
     }
 
@@ -419,12 +421,16 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
 // MARK: - 6.1 sample documents
 
 @MainActor @Suite struct SampleDocumentsTests {
-    @Test func theSamplesAreWrittenUnderTheirDisplayNamesIncludingAPdf() throws {
+    @Test func theSamplesAreWrittenUnderTheirDisplayNamesIncludingPdfsAndAPhoto() throws {
         let urls = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
         defer { try? FileManager.default.removeItem(at: urls[0].deletingLastPathComponent()) }
-        #expect(urls.map(\.lastPathComponent) == ["X200 Manual.md", "Bike Repair.md", "Warranty.txt", "Filter Guide.pdf"])
+        #expect(urls.map(\.lastPathComponent) == [
+            "X200 Manual.md", "Bike Repair.md", "Warranty.txt", "Filter Guide.pdf", "X200 Service Manual.pdf", "Nameplate X100.jpg",
+        ])
         for url in urls { #expect(try Data(contentsOf: url).count > 100, "\(url.lastPathComponent) is empty") }
         #expect(try Data(contentsOf: urls[3]).prefix(4) == Data("%PDF".utf8))
+        #expect(try Data(contentsOf: urls[4]).prefix(4) == Data("%PDF".utf8))
+        #expect(try Data(contentsOf: urls[5]).prefix(2) == Data([0xFF, 0xD8]))
         #expect(try String(contentsOf: urls[0], encoding: .utf8).contains("E-042"))
     }
 
@@ -434,7 +440,27 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
         let extractor = FileDocumentExtractor()
         for url in urls {
             let document = try await extractor.extract(from: url) { _ in }
-            #expect(!document.blocks.isEmpty, "\(url.lastPathComponent) has no text")
+            if FileDocumentExtractor.documentType(for: url) == .image {
+                #expect(document.images.count == 1, "\(url.lastPathComponent) is not a photo")
+            } else {
+                #expect(!document.blocks.isEmpty, "\(url.lastPathComponent) has no text")
+            }
         }
+    }
+
+    @Test func theServiceManualHasTheNameplateAsACaptionedFigureOnPageTwo() async throws {
+        let urls = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
+        defer { try? FileManager.default.removeItem(at: urls[0].deletingLastPathComponent()) }
+        let manual = try await FileDocumentExtractor().extract(from: urls[4]) { _ in }
+        #expect(manual.pageCount == 3)
+        let figure = try #require(manual.images.first)
+        #expect(manual.images.count == 1 && figure.page == 2)
+        #expect(figure.caption == "Figure 1: Nameplate of the X200-B, rear panel" && figure.captionSource == .nearby)
+    }
+
+    @Test func theSampleNameplateIsReadBackByTextRecognition() async throws {
+        let image = try #require(PhotoData.image(from: SampleDocuments.x200Nameplate))
+        let text = try await VisionTextRecognizer().recognize(image, correctLanguage: false).map(\.text).joined(separator: " ")
+        #expect(text.contains("X200-B") && text.contains("4471-22"), "recognized: \(text)")
     }
 }

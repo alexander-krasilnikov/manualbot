@@ -11,6 +11,7 @@ final class LibraryViewModel {
         case queued
         case extracting(Double)
         case recognizing(Double)
+        case analyzing(Double)
         case embedding(Double)
         case ready
         case failed(String)
@@ -18,7 +19,7 @@ final class LibraryViewModel {
         var isReady: Bool { self == .ready }
         var isWorking: Bool {
             switch self {
-            case .queued, .extracting, .recognizing, .embedding: true
+            case .queued, .extracting, .recognizing, .analyzing, .embedding: true
             case .ready, .failed: false
             }
         }
@@ -29,6 +30,8 @@ final class LibraryViewModel {
         var title: String
         var type: DocumentType
         var pageCount: Int?
+        /// Photos found in the document (1 for an imported photo, 0 when there are none).
+        var imageCount: Int = 0
         var importedAt: Date
         var status: Status
     }
@@ -42,6 +45,8 @@ final class LibraryViewModel {
     private let ingestion: IngestionService
     /// Called after a document becomes searchable (used to warm up the vector index).
     private let onDocumentReady: (@Sendable () async -> Void)?
+    /// Display copies of photo documents, loaded when a row first shows them.
+    @ObservationIgnored private var thumbnails: [String: Data] = [:]
 
     init(
         documents: any DocumentRepository, jobs: any IngestJobStore, ingestion: IngestionService,
@@ -75,7 +80,8 @@ final class LibraryViewModel {
         let jobByDoc = Dictionary(((try? await jobs.jobs()) ?? []).map { ($0.docId, $0) }, uniquingKeysWith: { a, _ in a })
         items = records.map { record in
             Item(id: record.id, title: record.title, type: record.type, pageCount: record.pageCount,
-                 importedAt: record.importedAt, status: Self.status(of: record, job: jobByDoc[record.id]))
+                 imageCount: record.imageCount ?? 0, importedAt: record.importedAt,
+                 status: Self.status(of: record, job: jobByDoc[record.id]))
         }.sorted { $0.importedAt > $1.importedAt }
     }
 
@@ -85,6 +91,7 @@ final class LibraryViewModel {
         case .queued: return record.activeGeneration == nil ? .queued : .ready  // a re-index keeps the old passages searchable
         case .extracting: return record.activeGeneration == nil ? .extracting(job.progress) : .ready
         case .recognizingText: return record.activeGeneration == nil ? .recognizing(job.progress) : .ready
+        case .analyzingImages: return record.activeGeneration == nil ? .analyzing(job.progress) : .ready
         case .embedding: return record.activeGeneration == nil ? .embedding(job.progress) : .ready
         case .ready: return .ready
         case .failed: return record.activeGeneration == nil ? .failed(job.error ?? "Indexing failed.") : .ready
@@ -122,11 +129,23 @@ final class LibraryViewModel {
     }
 
     func delete(_ id: String) async {
+        thumbnails[id] = nil
         try? await ingestion.delete(docId: id)
         await refresh()
     }
 
+    /// The stored display copy of a photo document's picture, for its row in the library.
+    func thumbnail(for id: String) async -> Data? {
+        if let cached = thumbnails[id] { return cached }
+        guard let image = try? await documents.activeImages(docId: id).first,
+            let data = try? await documents.imageData(id: image.id)
+        else { return nil }
+        thumbnails[id] = data
+        return data
+    }
+
     func reindex(_ id: String) async {
+        thumbnails[id] = nil
         try? await ingestion.reindex(docId: id)
         await refresh()
         Task { await ingestion.run() }

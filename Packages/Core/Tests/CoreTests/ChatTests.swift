@@ -442,7 +442,7 @@ private struct Harness {
 
         #expect(generation(tracer)?.kind == .generation(firstToken: nil, skipped: true))
         let relevance = tracer.kinds.compactMap { kind -> RelevanceOutcome? in
-            if case .relevance(_, _, let outcome) = kind { return outcome } else { return nil }
+            if case .relevance(_, _, let outcome, _, _) = kind { return outcome } else { return nil }
         }
         #expect(relevance == [.failed])
         #expect(tracer.events.allSatisfy { $0.operation?.kind == .ask })

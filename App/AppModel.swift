@@ -71,6 +71,8 @@ final class AppModel {
                 }
                 source = SourceViewerModel(documents: core.repository, extractor: core.extractor, tracer: demo.tracer)
                 chat = ChatViewModel(chats: core.repository, documents: core.repository, ingestion: core.ingestion)
+                chat?.stubPhoto = factory.stubPhoto
+                chat?.photosAvailable = core.supportsPhotos
                 demo.xray.resetAction = { [weak self] in await self?.resetDemo() }
             }
             if readiness.canChat, let core, chatService == nil {
@@ -138,7 +140,8 @@ final class AppModel {
         await TraceContext.$operation.withValue(operation) {
             for record in (try? await repository.chats()) ?? [] { try? await repository.deleteChat(id: record.id) }
             for document in (try? await repository.documents()) ?? [] { try? await ingestion.delete(docId: document.id) }
-            let samples = (try? SampleDocuments.write(into: FileManager.default.temporaryDirectory)) ?? []
+            // With stand-in image features (stub mode) the manual's figure must be the plate as photographed.
+            let samples = (try? SampleDocuments.write(into: FileManager.default.temporaryDirectory, cropFigure: factory.stubPhoto == nil)) ?? []
             for url in samples { _ = try? await ingestion.enqueue(fileURL: url) }
         }
         source?.close()

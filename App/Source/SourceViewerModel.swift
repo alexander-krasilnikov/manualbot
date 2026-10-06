@@ -17,6 +17,8 @@ final class SourceViewerModel {
         case pdf(url: URL, page: Int, passage: String, title: String)
         /// Extracted text (Word, text, Markdown) with the cited paragraphs marked.
         case text(title: String, paragraphs: [Paragraph], highlighted: Set<Int>)
+        /// An imported photo.
+        case image(url: URL, title: String)
         /// The document is gone; only the stored passage remains.
         case deleted(Citation)
         case unavailable(title: String, reason: String)
@@ -56,6 +58,10 @@ final class SourceViewerModel {
             content = .unavailable(title: document.title, reason: "The original file is not available.")
             return
         }
+        if document.type == .image {
+            content = .image(url: file, title: document.title)
+            return
+        }
         if document.type == .pdf {
             content = .pdf(url: file, page: citation.page ?? 1, passage: citation.snippet, title: document.title)
             return
@@ -63,7 +69,12 @@ final class SourceViewerModel {
         do {
             let extracted = try await extractor.extract(from: file) { _ in }
             let paragraphs = extracted.blocks.enumerated().map { Paragraph(id: $0.offset, text: $0.element.text, isHeading: $0.element.kind == .heading) }
-            content = .text(title: document.title, paragraphs: paragraphs, highlighted: Self.highlighted(in: paragraphs, passage: citation.snippet))
+            var marked = Self.highlighted(in: paragraphs, passage: citation.snippet)
+            // A photo in a Word document is cited by the section it sits in, so show that section's heading.
+            if marked.isEmpty, citation.imageId != nil, let heading = citation.heading {
+                marked = Self.headingParagraphs(in: paragraphs, heading: heading)
+            }
+            content = .text(title: document.title, paragraphs: paragraphs, highlighted: marked)
         } catch {
             content = .unavailable(title: document.title, reason: error.localizedDescription)
         }
@@ -81,6 +92,12 @@ final class SourceViewerModel {
 
     static func normalize(_ text: String) -> String {
         text.split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
+    }
+
+    /// The heading paragraphs that read `heading`.
+    static func headingParagraphs(in paragraphs: [Paragraph], heading: String) -> Set<Int> {
+        let wanted = normalize(heading)
+        return Set(paragraphs.filter { $0.isHeading && normalize($0.text) == wanted }.map(\.id))
     }
 
     /// Paragraphs the passage covers: those it contains completely, plus the ones holding its first and last words
