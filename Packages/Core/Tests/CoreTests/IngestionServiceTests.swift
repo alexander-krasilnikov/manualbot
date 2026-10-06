@@ -44,13 +44,13 @@ private func document(pages: Int = 2, sentencesPerPage: Int = 12) -> ExtractedDo
 
 private func makeService(
     repo: InMemoryDocumentRepository, extractor: FakeExtractor, embedder: any Embedder = GatedEmbedder(),
-    batchSize: Int = 2
+    batchSize: Int = 2, tracer: any Tracer = NoTracer()
 ) -> IngestionService {
     IngestionService(
         extractor: extractor, embedder: embedder, repository: repo, jobs: repo, chunker: smallChunks,
         batchSize: batchSize, supportedType: { url in
             ["txt": DocumentType.text, "pdf": .pdf, "docx": .docx][url.pathExtension.lowercased()]
-        })
+        }, tracer: tracer)
 }
 
 @Suite struct IngestionServiceTests {
@@ -389,5 +389,91 @@ private func waitUntil(_ timeout: Duration = .seconds(5), _ condition: () async 
         #expect(await service.hasPendingWork())
         await service.run()
         #expect(await service.hasPendingWork() == false, "ready and failed jobs are finished")
+    }
+}
+
+// MARK: - Tracing
+
+@Suite struct IngestionTraceTests {
+    private func jobStates(_ tracer: RecordingTracer) -> [(state: String, localOnly: Bool, operation: TraceOperation?)] {
+        tracer.events.compactMap { event in
+            if case .jobState(_, let state, _, let localOnly) = event.kind { (state, localOnly, event.operation) } else { nil }
+        }
+    }
+
+    @Test func enqueueAndTheLaterBackgroundRunShareOneOperation() async throws {
+        let repo = InMemoryDocumentRepository()
+        let tracer = RecordingTracer()
+        let service = makeService(
+            repo: repo, extractor: FakeExtractor(results: ["manual.pdf": .success(document(pages: 2))]), tracer: tracer)
+
+        let id = try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/manual.pdf"))
+        let enqueueOps = Set(tracer.events.compactMap(\.operation))
+        #expect(enqueueOps == [TraceOperation(id: "import-\(id)", kind: .importDocument, title: "Import “manual”")])
+
+        // The run loop is a different task from the one that called enqueue.
+        await Task.detached { await service.run() }.value
+
+        let states = jobStates(tracer)
+        #expect(states.map(\.state).first == "queued")
+        #expect(states.map(\.state).last == "ready")
+        #expect(states.map(\.state).contains("embedding"))
+        #expect(states.allSatisfy { $0.localOnly })
+        #expect(Set(states.compactMap { $0.operation?.id }) == ["import-\(id)"], "got \(states.map { $0.operation?.id as Any })")
+        #expect(Set(states.compactMap { $0.operation?.kind }) == [.importDocument])
+    }
+
+    @Test func reindexingIsItsOwnOperationPerGeneration() async throws {
+        let repo = InMemoryDocumentRepository()
+        let tracer = RecordingTracer()
+        let service = makeService(
+            repo: repo, extractor: FakeExtractor(results: ["a.txt": .success(document())]), tracer: tracer)
+        let id = try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/a.txt"))
+        await service.run()
+        try await service.reindex(docId: id)
+        await service.run()
+
+        let reindex = jobStates(tracer).filter { $0.operation?.kind == .reindex }
+        #expect(!reindex.isEmpty)
+        #expect(Set(reindex.compactMap { $0.operation?.id }) == ["reindex-\(id)-2"])
+        #expect(reindex.map(\.state).last == "ready")
+        #expect(jobStates(tracer).filter { $0.operation?.kind == .importDocument }.map(\.state).last == "ready")
+    }
+
+    @Test func anImportInsideAnotherOperationIsStillItsOwnCompleteGroup() async throws {
+        let repo = InMemoryDocumentRepository()
+        let tracer = RecordingTracer()
+        let service = makeService(
+            repo: repo, extractor: FakeExtractor(results: ["a.txt": .success(document())]), tracer: tracer)
+        let reset = TraceOperation(id: "reset-1", kind: .reset, title: "Reset demo")
+        let id = try await TraceContext.$operation.withValue(reset) {
+            try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/a.txt"))
+        }
+        await service.run()
+        let operations = Set(jobStates(tracer).compactMap { $0.operation?.id })
+        #expect(operations == ["import-\(id)"], "enqueue and the background run must share one import group, got \(operations)")
+    }
+
+    @Test func onlyChangesOfStateAreReportedNotEveryProgressTick() async throws {
+        let repo = InMemoryDocumentRepository()
+        let tracer = RecordingTracer()
+        let service = makeService(
+            repo: repo, extractor: FakeExtractor(results: ["a.txt": .success(document(pages: 3, sentencesPerPage: 20))]),
+            batchSize: 1, tracer: tracer)
+        _ = try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/a.txt"))
+        await service.run()
+        let states = jobStates(tracer).map(\.state)
+        #expect(states == ["queued", "extracting", "embedding", "ready"], "got \(states)")
+    }
+
+    @Test func aDisabledTracerRecordsNothingAndTheJobStillFinishes() async throws {
+        let repo = InMemoryDocumentRepository()
+        let off = RecordingTracer(isEnabled: false)
+        let service = makeService(
+            repo: repo, extractor: FakeExtractor(results: ["a.txt": .success(document())]), tracer: off)
+        let id = try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/a.txt"))
+        await service.run()
+        #expect(off.events.isEmpty)
+        #expect(try await repo.job(docId: id)?.state == .ready)
     }
 }

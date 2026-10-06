@@ -6,6 +6,7 @@ struct WorkspaceView: View {
     let app: AppModel
     @State private var visibility = NavigationSplitViewVisibility.all
     @State private var compactColumn = NavigationSplitViewColumn.content
+    @State private var detailTab = DetailTab.source
 
     var body: some View {
         if let library = app.library, let chat = app.chat, let source = app.source {
@@ -16,7 +17,7 @@ struct WorkspaceView: View {
                 ChatView(chat: chat, models: app.models) { citation in show { await source.open(citation) } }
                     .navigationSplitViewColumnWidth(min: 380, ideal: 520)
             } detail: {
-                SourceViewerView(source: source)
+                DetailColumn(source: source, demo: app.demo, tab: $detailTab)
             }
             .task { await library.observe() }
             .onChange(of: library.items) { _, items in chat.updateDocuments(items) }
@@ -27,6 +28,7 @@ struct WorkspaceView: View {
     }
 
     private func show(_ open: @escaping () async -> Void) {
+        detailTab = .source
         Task {
             await open()
             withAnimation { compactColumn = .detail }

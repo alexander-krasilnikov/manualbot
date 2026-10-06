@@ -11,6 +11,10 @@ class UITestCase: XCTestCase {
     func launch(_ scenario: String = "happy", extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-uiTestModelStub", scenario] + extra
+        // `TEST_RUNNER_UITEST_DEMO_MODE=1 xcodebuild test …` runs the whole suite with demo mode on.
+        if ProcessInfo.processInfo.environment["UITEST_DEMO_MODE"] != nil, !extra.contains("-demoMode") {
+            app.launchArguments.append("-demoMode")
+        }
         app.launch()
         return app
     }

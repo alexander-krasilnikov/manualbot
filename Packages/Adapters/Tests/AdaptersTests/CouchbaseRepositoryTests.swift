@@ -10,12 +10,12 @@ struct RepoFixture {
     let root: URL
     let repo: CouchbaseDocumentRepository
 
-    init(root: URL? = nil) throws {
+    init(root: URL? = nil, tracer: any Tracer = NoTracer()) throws {
         self.root = root ?? FileManager.default.temporaryDirectory.appendingPathComponent("repo-\(UUID().uuidString)")
         repo = try CouchbaseDocumentRepository(
             directory: self.root.appendingPathComponent("db"),
             originalsCache: self.root.appendingPathComponent("originals"),
-            embedding: Self.identity)
+            embedding: Self.identity, tracer: tracer)
     }
 
     func cleanUp() async {

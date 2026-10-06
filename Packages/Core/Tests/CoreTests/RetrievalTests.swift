@@ -88,11 +88,89 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
 }
 
 @Suite struct RetrieverTests {
-    private func make(_ search: ScriptedSearch, config: RetrievalConfiguration = .init()) async throws -> Retriever {
+    private func make(
+        _ search: ScriptedSearch, config: RetrievalConfiguration = .init(), tracer: any Tracer = NoTracer()
+    ) async throws -> Retriever {
         let repo = InMemoryDocumentRepository()
         try await repo.upsert(DocumentRecord(id: "a", title: "Manual A", type: .pdf))
         try await repo.upsert(DocumentRecord(id: "b", title: "Manual B", type: .docx))
-        return Retriever(embedder: FakeEmbedder(), search: search, repository: repo, configuration: config)
+        return Retriever(embedder: FakeEmbedder(), search: search, repository: repo, configuration: config, tracer: tracer)
+    }
+
+    // MARK: Tracing
+
+    @Test func fusionEventShowsWhereEachSearchFoundThePassage() async throws {
+        let search = ScriptedSearch()
+        let shared = chunk("a", 2, "shared passage")
+        search.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "v only"), score: 0.1), ScoredChunk(chunk: shared, score: 0.2)]
+        search.keywordHits = [ScoredChunk(chunk: chunk("b", 0, "k only"), score: 1), ScoredChunk(chunk: shared, score: 2)]
+        let tracer = RecordingTracer()
+        _ = try await make(search, tracer: tracer).retrieve("passage")
+
+        let fusion = try #require(tracer.kinds.compactMap { kind -> (String, Double, [FusionEntry])? in
+            if case .fusion(let method, let k, let entries) = kind { return (method, k, entries) }
+            return nil
+        }.first)
+        #expect(fusion.0 == "Reciprocal Rank Fusion")
+        #expect(fusion.1 == 60)
+        let entry = try #require(fusion.2.first { $0.chunkID == shared.id })
+        #expect(entry.vectorPosition == 1 && entry.keywordPosition == 1)
+        #expect(entry.distance == 0.2)
+        #expect(entry.documentTitle == "Manual A")
+        let keywordOnly = try #require(fusion.2.first { $0.chunkID == "b:1:0" })
+        #expect(keywordOnly.vectorPosition == nil && keywordOnly.keywordPosition == 0 && keywordOnly.distance == nil)
+        #expect(fusion.2.first?.chunkID == shared.id, "the entries keep the fused order")
+    }
+
+    @Test func aCodeFoundInATopPassageIsNamedInTheRelevanceEvent() async throws {
+        let search = ScriptedSearch()
+        search.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "Something else entirely."), score: 0.95)]
+        search.keywordHits = [ScoredChunk(chunk: chunk("b", 4, "Error E-042 means the motor overheated."), score: 1)]
+        let tracer = RecordingTracer()
+        _ = try await make(search, tracer: tracer).retrieve("what does E-042 mean")
+        #expect(tracer.kinds.contains(.relevance(bestDistance: 0.95, threshold: 0.76, outcome: .passedOnIdentifier("E-042"))))
+    }
+
+    @Test func distanceAndFailureAreReportedWithTheThreshold() async throws {
+        let near = ScriptedSearch()
+        near.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "Hold the reset button."), score: 0.2)]
+        let nearTracer = RecordingTracer()
+        _ = try await make(near, tracer: nearTracer).retrieve("how do I reset it")
+        #expect(nearTracer.kinds.contains(.relevance(bestDistance: 0.2, threshold: 0.76, outcome: .passedOnDistance)))
+
+        let far = ScriptedSearch()
+        far.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "unrelated"), score: 0.9)]
+        let farTracer = RecordingTracer()
+        _ = try await make(far, tracer: farTracer).retrieve("what is the meaning of life")
+        #expect(farTracer.kinds.contains(.relevance(bestDistance: 0.9, threshold: 0.76, outcome: .failed)))
+    }
+
+    @Test func embeddingTheQuestionReportsDimensionsAndTime() async throws {
+        let tracer = RecordingTracer()
+        _ = try await make(ScriptedSearch(), tracer: tracer).retrieve("reset")
+        let event = try #require(tracer.events.first { if case .queryEmbedded = $0.kind { true } else { false } })
+        #expect(event.kind == .queryEmbedded(dimensions: FakeEmbedder().identity.dimensions))
+        #expect(event.duration != nil)
+    }
+
+    @Test func aQuestionWithNoSearchableWordsSaysTheKeywordSearchWasSkipped() async throws {
+        let tracer = RecordingTracer()
+        _ = try await make(ScriptedSearch(), tracer: tracer).retrieve("what is it?")
+        #expect(tracer.kinds.contains(.keywordSearchSkipped))
+
+        let withWords = RecordingTracer()
+        _ = try await make(ScriptedSearch(), tracer: withWords).retrieve("reset button")
+        #expect(!withWords.kinds.contains(.keywordSearchSkipped))
+    }
+
+    @Test func aDisabledTracerChangesNothingAndRecordsNothing() async throws {
+        let search = ScriptedSearch()
+        search.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "Hold the reset button."), score: 0.2)]
+        let off = RecordingTracer(isEnabled: false)
+        let traced = try await make(search, tracer: off).retrieve("how do I reset it")
+        let plain = try await make(search).retrieve("how do I reset it")
+        #expect(traced == plain)
+        #expect(off.events.isEmpty)
     }
 
     @Test func closeVectorMatchIsRelevant() async throws {

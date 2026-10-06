@@ -193,7 +193,10 @@ private struct Harness {
     let service: ChatService
     let chatID: String
 
-    init(answer: [String], relevantDistance: Double? = 0.2, pinned: [String] = [], maxAnswerTokens: Int = 512) async throws {
+    init(
+        answer: [String], relevantDistance: Double? = 0.2, pinned: [String] = [], maxAnswerTokens: Int = 512,
+        tracer: any Tracer = NoTracer()
+    ) async throws {
         generator = ScriptedGenerator { request in
             request.maxTokens == 64 ? ["What about the X100 reset?"] : answer
         }
@@ -211,8 +214,9 @@ private struct Harness {
             search.vectorHits = [ScoredChunk(chunk: chunk(0, "Unrelated text."), score: 0.95)]
         }
         try await repo.upsert(DocumentRecord(id: "doc", title: "Manual A", type: .pdf, activeGeneration: 1))
-        let retriever = Retriever(embedder: embedder, search: search, repository: repo)
-        service = ChatService(chats: repo, retriever: retriever, generator: generator, maxAnswerTokens: maxAnswerTokens)
+        let retriever = Retriever(embedder: embedder, search: search, repository: repo, tracer: tracer)
+        service = ChatService(
+            chats: repo, retriever: retriever, generator: generator, maxAnswerTokens: maxAnswerTokens, tracer: tracer)
         chatID = try await repo.createChat(pinnedDocIds: pinned).id
     }
 
@@ -393,5 +397,85 @@ private struct Harness {
         for _ in 0..<20 { _ = try await h.ask("q") }
         let roles = try await h.repo.messages(chatId: h.chatID).map(\.role)
         #expect(roles == Array(repeating: [MessageRole.user, .assistant], count: 20).flatMap { $0 })
+    }
+}
+
+// MARK: - Tracing
+
+@Suite struct ChatTraceTests {
+    private func generation(_ tracer: RecordingTracer) -> TraceEvent? {
+        tracer.events.first { if case .generation = $0.kind { true } else { false } }
+    }
+
+    @Test func anAnsweredQuestionIsOneGroupWithEmbeddingFusionRelevanceAndModelTiming() async throws {
+        let tracer = RecordingTracer()
+        let h = try await Harness(answer: ["Hold the button [1]."], tracer: tracer)
+        _ = try await h.ask("How do I reset it?")
+
+        let operations = Set(tracer.events.compactMap(\.operation))
+        #expect(operations.count == 1)
+        let operation = try #require(operations.first)
+        #expect(operation.kind == .ask && operation.title == "How do I reset it?")
+        #expect(tracer.events.allSatisfy { $0.operation == operation })
+
+        let names = tracer.kinds.map { kind -> String in
+            switch kind {
+            case .queryEmbedded: "embedded"
+            case .fusion: "fusion"
+            case .relevance: "relevance"
+            case .generation: "generation"
+            default: "other"
+            }
+        }
+        #expect(names == ["embedded", "fusion", "relevance", "generation"])
+        let event = try #require(generation(tracer))
+        guard case .generation(let firstToken, let skipped) = event.kind else { return }
+        #expect(!skipped)
+        #expect(firstToken != nil)
+        #expect((event.duration ?? 0) >= (firstToken ?? 1))
+    }
+
+    @Test func anOffTopicQuestionRecordsThatTheModelWasNotCalled() async throws {
+        let tracer = RecordingTracer()
+        let h = try await Harness(answer: ["never"], relevantDistance: nil, tracer: tracer)
+        _ = try await h.ask("What is the meaning of life?")
+
+        #expect(generation(tracer)?.kind == .generation(firstToken: nil, skipped: true))
+        let relevance = tracer.kinds.compactMap { kind -> RelevanceOutcome? in
+            if case .relevance(_, _, let outcome) = kind { return outcome } else { return nil }
+        }
+        #expect(relevance == [.failed])
+        #expect(tracer.events.allSatisfy { $0.operation?.kind == .ask })
+        #expect(h.generator.callCount == 0)
+    }
+
+    @Test func aFollowUpShowsTheOriginalAndTheStandaloneQuery() async throws {
+        let tracer = RecordingTracer()
+        let h = try await Harness(answer: ["Hold the button [1]."], tracer: tracer)
+        _ = try await h.ask("How do I reset the X200?")
+        #expect(!tracer.kinds.contains { if case .queryRewritten = $0 { true } else { false } },
+                "a first question has nothing to rewrite")
+        _ = try await h.ask("And the X100?")
+        #expect(tracer.kinds.contains(.queryRewritten(original: "And the X100?", standalone: "What about the X100 reset?")))
+    }
+
+    @Test func eachQuestionIsItsOwnOperation() async throws {
+        let tracer = RecordingTracer()
+        let h = try await Harness(answer: ["Hold the button [1]."], tracer: tracer)
+        _ = try await h.ask("First question")
+        _ = try await h.ask("Second question")
+        let titles = tracer.events.compactMap(\.operation).reduce(into: [String]()) { if !$0.contains($1.title) { $0.append($1.title) } }
+        #expect(titles == ["First question", "Second question"])
+        #expect(Set(tracer.events.compactMap { $0.operation?.id }).count == 2)
+    }
+
+    @Test func tracingDoesNotChangeTheReply() async throws {
+        let plain = try await Harness(answer: ["Hold the button [1]. Then wait [2]."])
+        let traced = try await Harness(answer: ["Hold the button [1]. Then wait [2]."], tracer: RecordingTracer())
+        let a = try #require(plain.reply(try await plain.ask("How do I reset it?")))
+        let b = try #require(traced.reply(try await traced.ask("How do I reset it?")))
+        #expect(a.text == b.text)
+        #expect(a.citations == b.citations)
+        #expect(a.notFound == b.notFound)
     }
 }

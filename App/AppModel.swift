@@ -22,6 +22,7 @@ final class AppModel {
     }
 
     let models: ModelSetupViewModel
+    let demo: DemoSession
     private(set) var preparation = Preparation.waitingForModels
     private(set) var library: LibraryViewModel?
     private(set) var chat: ChatViewModel?
@@ -32,9 +33,10 @@ final class AppModel {
     private var chatService: ChatService?
     private var building = false
 
-    init(models: ModelSetupViewModel, factory: any ServiceFactory) {
+    init(models: ModelSetupViewModel, factory: any ServiceFactory, demo: DemoSession? = nil) {
         self.models = models
         self.factory = factory
+        self.demo = demo ?? DemoSession()
     }
 
     /// Keeps the services in step with model readiness, and frees model memory on memory warnings.
@@ -43,6 +45,7 @@ final class AppModel {
             group.addTask { await self.models.observe() }
             group.addTask { await self.follow() }
             group.addTask { await self.watchMemory() }
+            group.addTask { await self.demo.xray.run() }
         }
     }
 
@@ -61,12 +64,14 @@ final class AppModel {
                 preparation = .preparing("Starting…")
                 let core = try await factory.makeCore { message in Task { @MainActor in self.preparation = .preparing(message) } }
                 self.core = core
+                demo.xray.inspector = core.repository
                 let retriever = core.retriever
                 library = LibraryViewModel(documents: core.repository, jobs: core.repository, ingestion: core.ingestion) {
                     _ = try? await retriever.retrieve("index warm-up")
                 }
-                source = SourceViewerModel(documents: core.repository, extractor: core.extractor)
+                source = SourceViewerModel(documents: core.repository, extractor: core.extractor, tracer: demo.tracer)
                 chat = ChatViewModel(chats: core.repository, documents: core.repository, ingestion: core.ingestion)
+                demo.xray.resetAction = { [weak self] in await self?.resetDemo() }
             }
             if readiness.canChat, let core, chatService == nil {
                 preparation = .preparing("Loading the language model…")
@@ -119,6 +124,27 @@ final class AppModel {
         await work.value
         task.setTaskCompleted(success: !work.isCancelled)
         await scheduleBackgroundIndexingIfNeeded()
+    }
+
+    // MARK: Demo reset
+
+    /// Deletes every chat and document, then imports the sample documents, all traced as one operation.
+    func resetDemo() async {
+        guard let core, let library, let chat else { return }
+        await chat.stopAndWait()
+        let operation = TraceOperation(id: "reset-\(UUID().uuidString)", kind: .reset, title: "Reset demo")
+        let ingestion = core.ingestion
+        let repository = core.repository
+        await TraceContext.$operation.withValue(operation) {
+            for record in (try? await repository.chats()) ?? [] { try? await repository.deleteChat(id: record.id) }
+            for document in (try? await repository.documents()) ?? [] { try? await ingestion.delete(docId: document.id) }
+            let samples = (try? SampleDocuments.write(into: FileManager.default.temporaryDirectory)) ?? []
+            for url in samples { _ = try? await ingestion.enqueue(fileURL: url) }
+        }
+        source?.close()
+        await chat.load()
+        await library.refresh()
+        Task { await ingestion.run() }
     }
 
     // MARK: Opening files from other apps

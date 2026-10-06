@@ -19,14 +19,15 @@ extension CouchbaseDocumentRepository: ChunkSearching {
         guard limit > 0 else { return [] }
         let visible = try visibleGenerations(for: filter)
         guard !visible.isEmpty else { return [] }
-        return try search(limit: limit, visible: visible, requireModel: filter.embeddingModel) { window, parameters in
+        return try search(limit: limit, visible: visible, requireModel: filter.embeddingModel, purpose: .vector) { window, parameters in
             parameters.setValue(vector, forName: "vector")
-            return """
+            let sql = """
                 SELECT meta().id AS id, APPROX_VECTOR_DISTANCE(embedding, $vector, "cosine") AS score
                 FROM \(CouchbaseSchema.scope).chunks
                 ORDER BY APPROX_VECTOR_DISTANCE(embedding, $vector, "cosine")
                 LIMIT \(window)
                 """
+            return (sql, tracer.isEnabled ? ["vector": TraceFormat.shorten(vector)] : [:])
         }
     }
 
@@ -35,15 +36,16 @@ extension CouchbaseDocumentRepository: ChunkSearching {
         guard limit > 0, !match.isEmpty else { return [] }
         let visible = try visibleGenerations(for: filter)
         guard !visible.isEmpty else { return [] }
-        return try search(limit: limit, visible: visible, requireModel: nil) { window, parameters in
+        return try search(limit: limit, visible: visible, requireModel: nil, purpose: .keyword) { window, parameters in
             parameters.setString(match, forName: "match")
-            return """
+            let sql = """
                 SELECT meta().id AS id, RANK(\(CouchbaseSchema.ftsIndex)) AS score
                 FROM \(CouchbaseSchema.scope).chunks
                 WHERE MATCH(\(CouchbaseSchema.ftsIndex), $match)
                 ORDER BY RANK(\(CouchbaseSchema.ftsIndex))
                 LIMIT \(window)
                 """
+            return (sql, ["match": match])
         }
     }
 
@@ -64,29 +66,38 @@ extension CouchbaseDocumentRepository: ChunkSearching {
     }
 
     /// Runs `makeSQL` with a growing candidate window until `limit` visible passages are found, or the
-    /// index has nothing more to give.
+    /// index has nothing more to give. Each run is reported as one query event with its row funnel.
     private func search(
-        limit: Int, visible: [String: Int], requireModel: String?,
-        makeSQL: (_ window: Int, _ parameters: Parameters) -> String
+        limit: Int, visible: [String: Int], requireModel: String?, purpose: QueryPurpose,
+        makeSQL: (_ window: Int, _ parameters: Parameters) -> (sql: String, shown: [String: String])
     ) throws -> [ScoredChunk] {
         var window = limit * Self.firstWindow
         while true {
             let parameters = Parameters()
-            let query = try database.createQuery(makeSQL(window, parameters))
+            let (sql, shown) = makeSQL(window, parameters)
+            let query = try database.createQuery(sql)
             query.parameters = parameters
-            let rows = try query.execute().allResults()
+            let (rows, seconds) = try timed { try query.execute().allResults() }
 
             var found: [ScoredChunk] = []
+            var notVisible = 0
+            var wrongModel = 0
             for row in rows {
                 guard let id = row.string(forKey: "id"), let parts = Chunk.parseID(id),
                     visible[parts.docId] == parts.generation,
                     let doc = try collections.chunks.document(id: id)
-                else { continue }
+                else { notVisible += 1; continue }
                 let chunk = try Self.chunk(from: doc)
-                if let requireModel, chunk.embeddingModel != requireModel { continue }
+                if let requireModel, chunk.embeddingModel != requireModel { wrongModel += 1; continue }
                 found.append(ScoredChunk(chunk: chunk, score: row.double(forKey: "score")))
-                if found.count == limit { return found }
+                if found.count == limit { break }
             }
+            tracer.emit(duration: seconds, .query(QueryTrace(
+                sql: sql, parameters: shown, purpose: purpose, returnedRows: rows.count,
+                attempts: [FunnelAttempt(
+                    window: window, returned: rows.count, notVisible: notVisible, wrongModel: wrongModel,
+                    kept: found.count)])))
+            if found.count == limit { return found }
             let exhausted = rows.count < window          // the index returned everything it had
             if exhausted || window >= Self.maxCandidates { return found }
             window = min(window * Self.windowGrowth, Self.maxCandidates)

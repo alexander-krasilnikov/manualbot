@@ -1,6 +1,5 @@
 import Adapters
 import Core
-import CoreText
 import Foundation
 import Ports
 import PortsTesting
@@ -14,27 +13,33 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
     }
 
     let options: Options
+    private let tracer: any Tracer
     private let root = FileManager.default.temporaryDirectory.appendingPathComponent("uitest-\(UUID().uuidString)")
 
-    init(options: Options) { self.options = options }
+    init(options: Options, tracer: any Tracer = NoTracer()) {
+        self.options = options
+        self.tracer = tracer
+    }
 
     func makeCore(onProgress: @escaping @Sendable (String) -> Void) async throws -> CoreServices {
         let identity = EmbeddingModelIdentity(id: "stub-embedder", version: "1", dimensions: 768)
         let embedder = FakeEmbedder(identity: identity)
         let repository = try CouchbaseDocumentRepository(
-            directory: root.appendingPathComponent("db"), originalsCache: root.appendingPathComponent("originals"), embedding: identity)
+            directory: root.appendingPathComponent("db"), originalsCache: root.appendingPathComponent("originals"),
+            embedding: identity, tracer: tracer)
         let extractor = FileDocumentExtractor()
         let ingestion = IngestionService(
             extractor: extractor, embedder: embedder, repository: repository, jobs: repository,
-            chunker: Chunker(), supportedType: FileDocumentExtractor.documentType(for:))
-        let retriever = Retriever(embedder: embedder, search: repository, repository: repository)
+            chunker: Chunker(), supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer)
+        let retriever = Retriever(embedder: embedder, search: repository, repository: repository, tracer: tracer)
         let core = CoreServices(repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor)
         if options.seedDocuments { try await seed(core) }
         return core
     }
 
     func makeChat(core: CoreServices) async throws -> ChatService {
-        ChatService(chats: core.repository, retriever: core.retriever, generator: StubGenerator(slow: options.slowAnswers))
+        ChatService(
+            chats: core.repository, retriever: core.retriever, generator: StubGenerator(slow: options.slowAnswers), tracer: tracer)
     }
 
     func unloadModels() async {}
@@ -50,7 +55,7 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
         let warranty = root.appendingPathComponent("Warranty.md")
         try "# Warranty\n\nThe X200 is covered by a two year limited warranty from the date of purchase.".write(to: warranty, atomically: true, encoding: .utf8)
         let pdf = root.appendingPathComponent("Filter Guide.pdf")
-        try Self.makePDF(pages: [
+        try SampleDocuments.makePDF(pages: [
             "This guide explains how to look after the filter of the purifier.",
             "Replace the HEPA filter every six months by opening the rear panel and sliding out the old filter.",
             "Dispose of the used filter with household waste and record the date in the service log.",
@@ -59,30 +64,6 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
         _ = try await core.ingestion.enqueue(fileURL: manual)
         _ = try await core.ingestion.enqueue(fileURL: warranty)
         await core.ingestion.run()
-    }
-}
-
-extension StubServiceFactory {
-    /// A small text PDF, one paragraph per page.
-    static func makePDF(pages: [String]) -> Data {
-        let data = NSMutableData()
-        var box = CGRect(x: 0, y: 0, width: 612, height: 792)
-        let context = CGContext(consumer: CGDataConsumer(data: data)!, mediaBox: &box, nil)!
-        for text in pages {
-            context.beginPDFPage(nil)
-            let font = CTFontCreateWithName("Helvetica" as CFString, 20, nil)
-            let attributed = NSAttributedString(string: text, attributes: [
-                NSAttributedString.Key(kCTFontAttributeName as String): font,
-                NSAttributedString.Key(kCTForegroundColorFromContextAttributeName as String): true,
-            ])
-            let frame = CTFramesetterCreateFrame(CTFramesetterCreateWithAttributedString(attributed), CFRange(),
-                                                 CGPath(rect: box.insetBy(dx: 54, dy: 54), transform: nil), nil)
-            context.setFillColor(gray: 0, alpha: 1)
-            CTFrameDraw(frame, context)
-            context.endPDFPage()
-        }
-        context.closePDF()
-        return data as Data
     }
 }
 

@@ -48,22 +48,26 @@ public struct Retriever: Sendable {
     private let embedder: any Embedder
     private let search: any ChunkSearching
     private let repository: any DocumentRepository
+    private let tracer: any Tracer
     public let configuration: RetrievalConfiguration
 
     public init(
         embedder: any Embedder, search: any ChunkSearching, repository: any DocumentRepository,
-        configuration: RetrievalConfiguration = .init()
+        configuration: RetrievalConfiguration = .init(), tracer: any Tracer = NoTracer()
     ) {
         self.embedder = embedder
         self.search = search
         self.repository = repository
         self.configuration = configuration
+        self.tracer = tracer
     }
 
     public func retrieve(_ question: String, scope: Set<String>? = nil) async throws -> RetrievalResult {
         let filter = SearchFilter(documentIDs: scope, embeddingModel: embedder.identity.tag)
-        let vector = try await embedder.embed([question], kind: .query)[0]
+        let vector = try await tracer.measure(
+            { try await embedder.embed([question], kind: .query)[0] }, event: { .queryEmbedded(dimensions: $0.count) })
         let terms = QueryTerms.keywords(from: question)
+        if terms.isEmpty { tracer.emit(.keywordSearchSkipped) }
 
         async let semantic = search.vectorSearch(vector, limit: configuration.candidatesPerSearch, filter: filter)
         async let keyword = terms.isEmpty ? [] : search.keywordSearch(terms: terms, limit: configuration.candidatesPerSearch, filter: filter)
@@ -85,19 +89,33 @@ public struct Retriever: Sendable {
                 keywordRank: item.ranks[1], fusedScore: item.score)
         }
 
+        if tracer.isEnabled {
+            let ranks = Dictionary(uniqueKeysWithValues: fused.map { ($0.id, $0.ranks) })
+            tracer.emit(.fusion(method: "Reciprocal Rank Fusion", k: RankFusion.defaultK, entries: passages.map { passage in
+                FusionEntry(
+                    chunkID: passage.chunk.id, documentTitle: passage.documentTitle,
+                    vectorPosition: ranks[passage.chunk.id]?[0], keywordPosition: passage.keywordRank,
+                    distance: passage.distance, score: passage.fusedScore)
+            }))
+        }
+
         let best = vectorHits.map(\.score).min()
-        return RetrievalResult(
-            passages: passages, relevant: isRelevant(best: best, passages: passages, terms: terms), bestDistance: best)
+        let outcome = relevance(best: best, passages: passages, terms: terms)
+        tracer.emit(.relevance(bestDistance: best, threshold: configuration.maxDistance, outcome: outcome))
+        return RetrievalResult(passages: passages, relevant: outcome != .failed, bestDistance: best)
     }
 
     /// Relevant when the closest passage is near enough in meaning, or when an identifier from the
     /// question (an error code, a part number) appears verbatim in one of the top passages.
-    func isRelevant(best: Double?, passages: [RetrievedPassage], terms: [String]) -> Bool {
-        if let best, best <= configuration.maxDistance { return true }
+    func relevance(best: Double?, passages: [RetrievedPassage], terms: [String]) -> RelevanceOutcome {
+        if let best, best <= configuration.maxDistance { return .passedOnDistance }
         let codes = QueryTerms.codes(in: terms)
-        guard !codes.isEmpty else { return false }
-        return passages.prefix(configuration.suggestionCount).contains { passage in
-            codes.contains { QueryTerms.contains(passage.chunk.text, code: $0) }
+        guard !codes.isEmpty else { return .failed }
+        for passage in passages.prefix(configuration.suggestionCount) {
+            if let code = codes.first(where: { QueryTerms.contains(passage.chunk.text, code: $0) }) {
+                return .passedOnIdentifier(code)
+            }
         }
+        return .failed
     }
 }

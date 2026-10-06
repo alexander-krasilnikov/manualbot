@@ -11,7 +11,10 @@ public enum RankFusion {
         public var ranks: [Int?]
     }
 
-    public static func fuse(_ lists: [[String]], k: Double = 60, limit: Int) -> [Fused] {
+    /// The constant from the original RRF paper.
+    public static let defaultK: Double = 60
+
+    public static func fuse(_ lists: [[String]], k: Double = defaultK, limit: Int) -> [Fused] {
         var scores: [String: Double] = [:]
         var ranks: [String: [Int?]] = [:]
         for (listIndex, list) in lists.enumerated() {

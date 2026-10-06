@@ -37,11 +37,13 @@ final class LiveServiceFactory: ServiceFactory, @unchecked Sendable {
     private let files: FileModelFiles
     private let support: URL
     private let caches: URL
+    private let tracer: any Tracer
     private let lock = NSLock()
     private var embedder: CoreMLEmbedder?
     private var generator: LiteRTGenerator?
 
-    init(manifest: ModelManifest, files: FileModelFiles, applicationSupport: URL, caches: URL) {
+    init(manifest: ModelManifest, files: FileModelFiles, applicationSupport: URL, caches: URL, tracer: any Tracer = NoTracer()) {
+        self.tracer = tracer
         self.manifest = manifest
         self.files = files
         self.support = applicationSupport
@@ -71,12 +73,14 @@ final class LiveServiceFactory: ServiceFactory, @unchecked Sendable {
         onProgress("Opening your library…")
         let repository = try CouchbaseDocumentRepository(
             directory: support.appendingPathComponent("Database", isDirectory: true),
-            originalsCache: caches.appendingPathComponent("Originals", isDirectory: true), embedding: identity)
+            originalsCache: caches.appendingPathComponent("Originals", isDirectory: true), embedding: identity,
+            tracer: tracer)
         let extractor = FileDocumentExtractor()
         let ingestion = IngestionService(
             extractor: extractor, embedder: embedder, repository: repository, jobs: repository,
-            chunker: Chunker(configuration: .embeddingGemma, counter: tokenizer), supportedType: FileDocumentExtractor.documentType(for:))
-        let retriever = Retriever(embedder: embedder, search: repository, repository: repository)
+            chunker: Chunker(configuration: .embeddingGemma, counter: tokenizer),
+            supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer)
+        let retriever = Retriever(embedder: embedder, search: repository, repository: repository, tracer: tracer)
         return CoreServices(repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor)
     }
 
@@ -84,7 +88,7 @@ final class LiveServiceFactory: ServiceFactory, @unchecked Sendable {
         let generatorSpec = try spec(.generator)
         let generator = LiteRTGenerator(modelPath: files.installedURL(for: generatorSpec).path, cacheDirectory: caches.path)
         lock.withLock { self.generator = generator }
-        return ChatService(chats: core.repository, retriever: core.retriever, generator: generator)
+        return ChatService(chats: core.repository, retriever: core.retriever, generator: generator, tracer: tracer)
     }
 
     func unloadModels() async {

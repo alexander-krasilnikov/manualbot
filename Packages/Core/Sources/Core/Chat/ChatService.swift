@@ -36,11 +36,13 @@ public actor ChatService {
     private let rewriter: QueryRewriter
     private let maxAnswerTokens: Int
     private let temperature: Float
+    private let tracer: any Tracer
 
     public init(
         chats: any ChatRepository, retriever: Retriever, generator: any Generator,
-        maxAnswerTokens: Int = 512, temperature: Float = 0.2
+        maxAnswerTokens: Int = 512, temperature: Float = 0.2, tracer: any Tracer = NoTracer()
     ) {
+        self.tracer = tracer
         self.chats = chats
         self.retriever = retriever
         self.generator = generator
@@ -67,7 +69,15 @@ public actor ChatService {
 
     // MARK: Pipeline
 
+    /// Runs one question as its own traced operation, so everything it causes is grouped under it.
     private func answer(_ raw: String, in chatId: String, emit: @Sendable (ChatEvent) -> Void) async throws {
+        guard tracer.isEnabled else { return try await respond(raw, in: chatId, emit: emit) }
+        let title = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let operation = TraceOperation(id: "ask-\(UUID().uuidString)", kind: .ask, title: title)
+        try await TraceContext.$operation.withValue(operation) { try await respond(raw, in: chatId, emit: emit) }
+    }
+
+    private func respond(_ raw: String, in chatId: String, emit: @Sendable (ChatEvent) -> Void) async throws {
         let question = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { throw ChatError.emptyQuestion }
         guard let chat = try await chats.chat(id: chatId) else { throw ChatError.chatNotFound(chatId) }
@@ -82,6 +92,7 @@ public actor ChatService {
         }
 
         let standalone = await rewriter.standaloneQuery(for: question, history: history)
+        if standalone != question { tracer.emit(.queryRewritten(original: question, standalone: standalone)) }
         emit(.query(standalone))
 
         let scope = chat.pinnedDocIds.isEmpty ? nil : Set(chat.pinnedDocIds)
@@ -89,6 +100,7 @@ public actor ChatService {
 
         // Nothing relevant: answer instantly, without the language model.
         guard retrieval.relevant, !retrieval.passages.isEmpty else {
+            tracer.emit(.generation(firstToken: nil, skipped: true))
             try await finish(notFound: retrieval.closest(), chatId: chatId, standalone: standalone, after: asked, emit: emit)
             return
         }
@@ -102,8 +114,11 @@ public actor ChatService {
         var text = ""
         var gate = NotFoundGate()
         var failure: Error?
+        let started = tracer.isEnabled ? ContinuousClock.now : nil
+        var firstToken: TimeInterval?
         do {
             for try await piece in generator.generate(request) {
+                if firstToken == nil, let started { firstToken = started.duration(to: .now).seconds }
                 text += piece
                 if let visible = gate.feed(piece) { emit(.delta(visible)) }
                 if Task.isCancelled { break }
@@ -113,6 +128,9 @@ public actor ChatService {
             failure = error
         }
         let stopped = Task.isCancelled || failure != nil
+        if let started {
+            tracer.emit(duration: started.duration(to: .now).seconds, .generation(firstToken: firstToken, skipped: false))
+        }
 
         if gate.isNotFound(text) && !stopped {
             try await finish(notFound: retrieval.closest(), chatId: chatId, standalone: standalone, after: asked, emit: emit)

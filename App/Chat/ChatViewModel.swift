@@ -142,6 +142,13 @@ final class ChatViewModel {
     /// Stops the answer being written. What was written so far is kept and marked as stopped.
     func stop() { generation?.cancel() }
 
+    /// Stops the answer and waits until it has been saved, so nothing is written afterwards (a demo reset deletes the chat next).
+    func stopAndWait() async {
+        guard isGenerating else { return }
+        stop()
+        for _ in 0..<200 where isGenerating { try? await Task.sleep(for: .milliseconds(25)) }
+    }
+
     /// The service saves the partial answer just after the stream ends; wait briefly for it.
     private func settleAfterStop() async {
         for _ in 0..<40 {

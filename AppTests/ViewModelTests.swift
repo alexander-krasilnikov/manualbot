@@ -172,6 +172,28 @@ private struct ChatHarness {
         #expect(reply.text.hasPrefix("Step one [1]."))
     }
 
+    @Test func stopAndWaitReturnsOnlyOnceThePartialAnswerIsSaved() async throws {
+        let h = try await ChatHarness(answer: ["Step one [1]. "] + Array(repeating: "and more words ", count: 5_000))
+        h.model.draft = "How?"
+        let send = Task { await h.model.send() }
+        #expect(await eventually { h.model.isGenerating && !(h.model.streaming ?? "").isEmpty })
+
+        await h.model.stopAndWait()
+
+        // Nothing may still be written after this returns, because a demo reset deletes the chat next.
+        #expect(!h.model.isGenerating)
+        let stored = try await h.repo.messages(chatId: try #require(h.model.currentID))
+        #expect(stored.last?.role == .assistant && stored.last?.stopped == true)
+        await send.value
+        #expect(try await h.repo.messages(chatId: try #require(h.model.currentID)).count == stored.count)
+    }
+
+    @Test func stopAndWaitDoesNothingWhenNothingIsBeingWritten() async throws {
+        let h = try await ChatHarness()
+        await h.model.stopAndWait()
+        #expect(!h.model.isGenerating)
+    }
+
     @Test func ingestionIsPausedWhileAnswering() async throws {
         let h = try await ChatHarness(answer: Array(repeating: "word ", count: 3_000) + [" [1]."])
         h.model.draft = "q"
@@ -259,7 +281,7 @@ private struct ChatHarness {
         let repo = InMemoryDocumentRepository()
         let pdf = scratch.appendingPathComponent("g.pdf")
         try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: true)
-        try StubServiceFactory.makePDF(pages: ["one", "two", "three"]).write(to: pdf)
+        try SampleDocuments.makePDF(pages: ["one", "two", "three"]).write(to: pdf)
         try await repo.upsert(DocumentRecord(id: "d", title: "Guide", type: .pdf, pageCount: 3, activeGeneration: 1))
         try await repo.attachOriginal(fileURL: pdf, contentType: "application/pdf", to: "d")
         let model = SourceViewerModel(documents: repo, extractor: FileDocumentExtractor())

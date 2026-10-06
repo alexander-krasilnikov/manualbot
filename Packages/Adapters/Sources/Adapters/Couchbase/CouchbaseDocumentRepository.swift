@@ -11,15 +11,18 @@ public enum CouchbaseStoreError: Error, Equatable {
 public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, ChatRepository {
     let database: Database
     let collections: CouchbaseSchema.Collections
-    private let embedding: EmbeddingModelIdentity
+    let embedding: EmbeddingModelIdentity
     private let originalsCache: URL
+    let tracer: any Tracer
 
     /// Opens (or creates) the database in `directory` and prepares the schema.
     /// `originalsCache` is where stored originals are materialized as plain files on demand.
     public init(
-        directory: URL, originalsCache: URL, name: String = "manualbot", embedding: EmbeddingModelIdentity
+        directory: URL, originalsCache: URL, name: String = "manualbot", embedding: EmbeddingModelIdentity,
+        tracer: any Tracer = NoTracer()
     ) throws {
         self.originalsCache = originalsCache
+        self.tracer = tracer
         try CouchbaseBootstrap.enableVectorSearch()
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var config = DatabaseConfiguration()
@@ -42,6 +45,7 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
         Self.set(document.activeGeneration, forKey: "activeGeneration", in: doc)
         doc.setDouble(document.importedAt.timeIntervalSince1970, forKey: "importedAt")
         try collections.documents.save(document: doc)
+        tracer.emit(.documentSaved(collection: CouchbaseSchema.documents, id: document.id))
     }
 
     public func document(id: String) throws -> DocumentRecord? {
@@ -49,8 +53,7 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
     }
 
     public func documents() throws -> [DocumentRecord] {
-        let query = try database.createQuery("SELECT meta().id AS id FROM \(CouchbaseSchema.scope).documents")
-        return try query.execute().allResults()
+        try run("SELECT meta().id AS id FROM \(CouchbaseSchema.scope).documents")
             .compactMap { $0.string(forKey: "id") }
             .compactMap { try collections.documents.document(id: $0) }
             .map(Self.record(from:))
@@ -60,6 +63,14 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
     // MARK: Chunks
 
     public func writeChunks(_ chunks: [Chunk]) throws {
+        let (_, seconds) = try timed { try writeBatch(chunks) }
+        if let first = chunks.first {
+            tracer.emit(duration: seconds, .batchWritten(
+                collection: CouchbaseSchema.chunks, count: chunks.count, dimensions: first.embedding.count))
+        }
+    }
+
+    private func writeBatch(_ chunks: [Chunk]) throws {
         try database.inBatch {
             for chunk in chunks {
                 let doc = MutableDocument(id: chunk.id)
@@ -78,10 +89,10 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
     }
 
     public func chunks(docId: String, generation: Int) throws -> [Chunk] {
-        let query = try database.createQuery(
-            "SELECT meta().id AS id FROM \(CouchbaseSchema.scope).chunks WHERE docId = $docId AND generation = $generation")
-        query.parameters = Parameters().setString(docId, forName: "docId").setInt(generation, forName: "generation")
-        return try query.execute().allResults()
+        try run(
+            "SELECT meta().id AS id FROM \(CouchbaseSchema.scope).chunks WHERE docId = $docId AND generation = $generation",
+            parameters: Parameters().setString(docId, forName: "docId").setInt(generation, forName: "generation"),
+            shown: ["docId": docId, "generation": String(generation)])
             .compactMap { $0.string(forKey: "id") }
             .compactMap { try collections.chunks.document(id: $0) }
             .map(Self.chunk(from:))
@@ -99,11 +110,14 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
         }
         let stale = try chunkIDs(docId: docId, excludingGeneration: generation)
         // One transaction: readers see either the old generation or the new one, never a mix.
-        try database.inBatch {
-            doc.setInt(generation, forKey: "activeGeneration")
-            try collections.documents.save(document: doc)
-            try deleteChunks(ids: stale)
+        let (_, seconds) = try timed {
+            try database.inBatch {
+                doc.setInt(generation, forKey: "activeGeneration")
+                try collections.documents.save(document: doc)
+                try deleteChunks(ids: stale)
+            }
         }
+        tracer.emit(duration: seconds, .generationActivated(docId: docId, generation: generation, removed: stale.count))
     }
 
     // MARK: Originals and deletion
@@ -112,9 +126,11 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
         guard let doc = try collections.documents.document(id: docId)?.toMutable() else {
             throw CouchbaseStoreError.documentNotFound(docId)
         }
-        doc.setBlob(try Blob(contentType: contentType, fileURL: fileURL), forKey: "file")
+        let blob = try Blob(contentType: contentType, fileURL: fileURL)
+        doc.setBlob(blob, forKey: "file")
         doc.setString(fileURL.lastPathComponent, forKey: "fileName")
-        try collections.documents.save(document: doc)
+        let (_, seconds) = try timed { try collections.documents.save(document: doc) }
+        tracer.emit(duration: seconds, .blobStored(docId: docId, contentType: contentType, length: Int(blob.length)))
         try? FileManager.default.removeItem(at: cacheDirectory(for: docId))
     }
 
@@ -125,8 +141,10 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
         let target = cacheDirectory(for: docId).appendingPathComponent(doc.string(forKey: "fileName") ?? "original")
         let fm = FileManager.default
         if let size = (try? fm.attributesOfItem(atPath: target.path)[.size]) as? UInt64, size == blob.length {
+            tracer.emit(.blobRead(docId: docId, length: Int(blob.length), cacheHit: true))
             return target
         }
+        let readStart = ContinuousClock.now
         try fm.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard fm.createFile(atPath: target.path, contents: nil), let out = OutputStream(url: target, append: false)
         else { throw CouchbaseStoreError.malformedDocument(docId) }
@@ -145,6 +163,10 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
                 written += n
             }
         }
+        if tracer.isEnabled {
+            tracer.emit(duration: readStart.duration(to: .now).seconds,
+                        .blobRead(docId: docId, length: Int(blob.length), cacheHit: false))
+        }
         return target
     }
 
@@ -156,12 +178,15 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
         let chunkIDs = try chunkIDs(docId: id, excludingGeneration: nil)
         // Deleting the document record also removes its blob; the chunks go with it.
         defer { try? FileManager.default.removeItem(at: cacheDirectory(for: id)) }
-        try database.inBatch {
-            try deleteChunks(ids: chunkIDs)
-            if let doc = try collections.documents.document(id: id) {
-                try collections.documents.delete(document: doc)
+        let (_, seconds) = try timed {
+            try database.inBatch {
+                try deleteChunks(ids: chunkIDs)
+                if let doc = try collections.documents.document(id: id) {
+                    try collections.documents.delete(document: doc)
+                }
             }
         }
+        tracer.emit(duration: seconds, .documentDeleted(docId: id, passagesRemoved: chunkIDs.count))
     }
 
     // MARK: Chats, messages, jobs
@@ -170,18 +195,17 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
     public func chat(id: String) throws -> ChatRecord? { try load(ChatRecord.self, id: id, from: collections.chats) }
 
     public func chats() throws -> [ChatRecord] {
-        let query = try database.createQuery("SELECT meta().id AS id FROM \(CouchbaseSchema.scope).chats")
-        return try query.execute().allResults()
+        try run("SELECT meta().id AS id FROM \(CouchbaseSchema.scope).chats")
             .compactMap { $0.string(forKey: "id") }
             .compactMap { try load(ChatRecord.self, id: $0, from: collections.chats) }
             .sorted { ($0.updatedAt, $0.id) > ($1.updatedAt, $1.id) }
     }
 
     public func deleteChat(id: String) throws {
-        let query = try database.createQuery(
-            "SELECT meta().id AS id FROM \(CouchbaseSchema.scope).messages WHERE chatId = $chatId")
-        query.parameters = Parameters().setString(id, forName: "chatId")
-        let messageIDs = try query.execute().allResults().compactMap { $0.string(forKey: "id") }
+        let messageIDs = try run(
+            "SELECT meta().id AS id FROM \(CouchbaseSchema.scope).messages WHERE chatId = $chatId",
+            parameters: Parameters().setString(id, forName: "chatId"), shown: ["chatId": id]
+        ).compactMap { $0.string(forKey: "id") }
         try database.inBatch {
             for messageID in messageIDs {
                 if let doc = try collections.messages.document(id: messageID) { try collections.messages.delete(document: doc) }
@@ -191,16 +215,19 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
     }
 
     public func messages(chatId: String) throws -> [MessageRecord] {
-        let query = try database.createQuery(
-            "SELECT meta().id AS id FROM \(CouchbaseSchema.scope).messages WHERE chatId = $chatId")
-        query.parameters = Parameters().setString(chatId, forName: "chatId")
-        return try query.execute().allResults()
+        try run(
+            "SELECT meta().id AS id FROM \(CouchbaseSchema.scope).messages WHERE chatId = $chatId",
+            parameters: Parameters().setString(chatId, forName: "chatId"), shown: ["chatId": chatId]
+        )
             .compactMap { $0.string(forKey: "id") }
             .compactMap { try load(MessageRecord.self, id: $0, from: collections.messages) }
             .sorted { ($0.createdAt, $0.id) < ($1.createdAt, $1.id) }
     }
 
-    public func upsert(message: MessageRecord) throws { try save(message, id: message.id, in: collections.messages) }
+    public func upsert(message: MessageRecord) throws {
+        try save(message, id: message.id, in: collections.messages)
+        tracer.emit(.messageSaved(id: message.id))
+    }
     public func message(id: String) throws -> MessageRecord? {
         try load(MessageRecord.self, id: id, from: collections.messages)
     }
@@ -211,8 +238,7 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
     }
 
     public func jobs() throws -> [IngestJobRecord] {
-        let query = try database.createQuery("SELECT meta().id AS id FROM \(CouchbaseSchema.scope).ingestJobs")
-        return try query.execute().allResults()
+        try run("SELECT meta().id AS id FROM \(CouchbaseSchema.scope).ingestJobs")
             .compactMap { $0.string(forKey: "id") }
             .compactMap { try load(IngestJobRecord.self, id: $0, from: collections.ingestJobs) }
             .sorted { ($0.enqueuedAt, $0.docId) < ($1.enqueuedAt, $1.docId) }
@@ -224,10 +250,10 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
 
     /// `docId → active generation` for every document that has completed ingestion.
     func activeGenerations() throws -> [String: Int] {
-        let query = try database.createQuery(
-            "SELECT meta().id AS id, activeGeneration AS generation FROM \(CouchbaseSchema.scope).documents WHERE activeGeneration IS NOT MISSING")
         var result: [String: Int] = [:]
-        for row in try query.execute().allResults() {
+        let rows = try run(
+            "SELECT meta().id AS id, activeGeneration AS generation FROM \(CouchbaseSchema.scope).documents WHERE activeGeneration IS NOT MISSING")
+        for row in rows {
             if let id = row.string(forKey: "id") { result[id] = row.int(forKey: "generation") }
         }
         return result
@@ -253,14 +279,34 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
 
     // MARK: Helpers
 
+    /// Runs `sql`, and reports it (text, parameters as shown, rows, execution time) when tracing is on.
+    /// Only the execution is timed, not the work done with the rows afterwards.
+    func run(_ sql: String, parameters: Parameters? = nil, shown: @autoclosure () -> [String: String] = [:]) throws -> [Result] {
+        let query = try database.createQuery(sql)
+        if let parameters { query.parameters = parameters }
+        let (rows, seconds) = try timed { try query.execute().allResults() }
+        tracer.emit(duration: seconds, .query(QueryTrace(sql: sql, parameters: shown(), returnedRows: rows.count)))
+        return rows
+    }
+
+    /// Runs `body`; measures it only while tracing is on.
+    func timed<T>(_ body: () throws -> T) rethrows -> (value: T, seconds: TimeInterval?) {
+        guard tracer.isEnabled else { return (try body(), nil) }
+        let start = ContinuousClock.now
+        let value = try body()
+        return (value, start.duration(to: .now).seconds)
+    }
+
     private func chunkIDs(docId: String, excludingGeneration generation: Int?) throws -> [String] {
         var sql = "SELECT meta().id AS id FROM \(CouchbaseSchema.scope).chunks WHERE docId = $docId"
         if generation != nil { sql += " AND generation != $generation" }
-        let query = try database.createQuery(sql)
         let params = Parameters().setString(docId, forName: "docId")
-        if let generation { params.setInt(generation, forName: "generation") }
-        query.parameters = params
-        return try query.execute().allResults().compactMap { $0.string(forKey: "id") }
+        var shown = ["docId": docId]
+        if let generation {
+            params.setInt(generation, forName: "generation")
+            shown["generation"] = String(generation)
+        }
+        return try run(sql, parameters: params, shown: shown).compactMap { $0.string(forKey: "id") }
     }
 
     private func deleteChunks(ids: [String]) throws {

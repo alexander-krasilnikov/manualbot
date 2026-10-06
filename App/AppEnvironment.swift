@@ -18,18 +18,23 @@ enum AppEnvironmentError: LocalizedError {
 enum AppEnvironment {
     static func makeAppModel() throws -> AppModel {
         let arguments = ProcessInfo.processInfo.arguments
+        let isStub = arguments.contains("-uiTestModelStub")
+        // UI tests must not inherit (or leave behind) the remembered demo-mode choice of earlier launches.
+        let demo = DemoSession(
+            defaults: isStub ? (UserDefaults(suiteName: "uitest-\(UUID().uuidString)") ?? .standard) : .standard)
         if let flag = arguments.firstIndex(of: "-uiTestModelStub") {
             let scenario = arguments.indices.contains(flag + 1) ? arguments[flag + 1] : "happy"
             let models = ModelSetupViewModel(store: stubStore(scenario: scenario))
             var options = StubServiceFactory.Options()
             options.seedDocuments = arguments.contains("-uiTestSeed")
             options.slowAnswers = arguments.contains("-uiTestSlow")
-            return AppModel(models: models, factory: StubServiceFactory(options: options))
+            demo.xray.usesStubModels = true
+            return AppModel(models: models, factory: StubServiceFactory(options: options, tracer: demo.tracer), demo: demo)
         }
-        return try liveModel()
+        return try liveModel(demo: demo)
     }
 
-    private static func liveModel() throws -> AppModel {
+    private static func liveModel(demo: DemoSession) throws -> AppModel {
         guard let url = Bundle.main.url(forResource: "ModelManifest", withExtension: "json") else {
             throw AppEnvironmentError.manifestMissing
         }
@@ -46,8 +51,9 @@ enum AppEnvironment {
             staging: support.appendingPathComponent("ModelStaging", isDirectory: true),
             resumeStore: support.appendingPathComponent("ModelResume", isDirectory: true))
         let store = ModelStore(manifest: manifest, downloader: downloader, files: files)
-        let factory = LiveServiceFactory(manifest: manifest, files: files, applicationSupport: support, caches: caches)
-        return AppModel(models: ModelSetupViewModel(store: store), factory: factory)
+        let factory = LiveServiceFactory(
+            manifest: manifest, files: files, applicationSupport: support, caches: caches, tracer: demo.tracer)
+        return AppModel(models: ModelSetupViewModel(store: store), factory: factory, demo: demo)
     }
 
     private static func stubStore(scenario: String) -> ModelStore {

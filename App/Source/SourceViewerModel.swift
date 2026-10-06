@@ -29,13 +29,22 @@ final class SourceViewerModel {
 
     private let documents: any DocumentRepository
     private let extractor: any DocumentExtractor
+    private let tracer: any Tracer
 
-    init(documents: any DocumentRepository, extractor: any DocumentExtractor) {
+    init(documents: any DocumentRepository, extractor: any DocumentExtractor, tracer: any Tracer = NoTracer()) {
         self.documents = documents
         self.extractor = extractor
+        self.tracer = tracer
     }
 
     func open(_ citation: Citation) async {
+        guard tracer.isEnabled else { return await load(citation) }
+        let title = citation.page.map { "Open “\(citation.docTitle)”, page \($0)" } ?? "Open “\(citation.docTitle)”"
+        let operation = TraceOperation(id: "open-\(UUID().uuidString)", kind: .openSource, title: title)
+        await TraceContext.$operation.withValue(operation) { await load(citation) }
+    }
+
+    private func load(_ citation: Citation) async {
         openCount += 1
         isLoading = true
         defer { isLoading = false }

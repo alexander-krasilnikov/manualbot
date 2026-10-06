@@ -3,12 +3,21 @@ import SwiftUI
 /// Licences and notices for the models and libraries that ship with the app.
 struct AboutView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(DemoSettings.self) private var demo: DemoSettings?
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
                     Text("ManualBot answers questions about your documents entirely on this iPad. Your documents, questions and answers never leave the device.")
+                }
+                if let demo {
+                    @Bindable var demo = demo
+                    Section {
+                        Toggle("Demo mode", isOn: $demo.isOn).accessibilityIdentifier("demoModeToggle")
+                    } footer: {
+                        Text("Adds an X-ray view that shows what the app and Couchbase Lite do behind each import and question. Nothing else changes.")
+                    }
                 }
                 Section("Models") {
                     notice(
