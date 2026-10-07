@@ -287,7 +287,8 @@ public actor IngestionService {
             try await save(job)
             try await embed(drafts, of: document, job: &job)
 
-            var updated = document
+            // Read the record again: it may have been renamed while it was being indexed.
+            var updated = try await repository.document(id: job.docId) ?? document
             updated.pageCount = extracted.pageCount
             updated.imageCount = imageDrafts.isEmpty ? nil : imageDrafts.count
             try await repository.upsert(updated)

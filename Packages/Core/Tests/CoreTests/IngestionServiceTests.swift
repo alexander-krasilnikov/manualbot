@@ -25,6 +25,22 @@ private final class GatedEmbedder: Embedder {
     }
 }
 
+/// Embeds like `FakeEmbedder`, running `whileEmbedding` once on the first call: something the user does mid-ingestion.
+private final class HookedEmbedder: Embedder {
+    let base = FakeEmbedder()
+    var identity: EmbeddingModelIdentity { base.identity }
+    private let hook: Mutex<(@Sendable () async throws -> Void)?>
+
+    init(whileEmbedding: @escaping @Sendable () async throws -> Void) { hook = Mutex(whileEmbedding) }
+
+    func embed(_ texts: [String], kind: EmbeddingKind) async throws -> [[Float]] {
+        if let hook = hook.withLock({ hook -> (@Sendable () async throws -> Void)? in defer { hook = nil }; return hook }) {
+            try await hook()
+        }
+        return try await base.embed(texts, kind: kind)
+    }
+}
+
 private struct WrongDimensionEmbedder: Embedder {
     let identity = EmbeddingModelIdentity(id: "bad", version: "1", dimensions: 32)
     func embed(_ texts: [String], kind: EmbeddingKind) async throws -> [[Float]] { texts.map { _ in [1, 2, 3] } }
@@ -78,6 +94,25 @@ private func makeService(
         #expect(chunks.allSatisfy { $0.embeddingModel == tag && $0.embedding.count == 32 })
         let job = try #require(try await repo.job(docId: id))
         #expect(job.state == .ready && job.progress == 1 && job.error == nil)
+    }
+
+    @Test func aRenameWhileIndexingIsKept() async throws {
+        let repo = InMemoryDocumentRepository()
+        let extractor = FakeExtractor(results: ["warranty.pdf": .success(document())])
+        let embedder = HookedEmbedder {
+            guard var record = try await repo.documents().first else { return }
+            record.title = "Guarantee"
+            try await repo.upsert(record)
+        }
+        let service = makeService(repo: repo, extractor: extractor, embedder: embedder)
+        let id = try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/warranty.pdf"))
+
+        await service.run()
+
+        let doc = try #require(try await repo.document(id: id))
+        #expect(doc.title == "Guarantee")
+        #expect(doc.pageCount == 2)
+        #expect(try await repo.job(docId: id)?.state == .ready)
     }
 
     @Test func unsupportedFilesAreRejectedBeforeAnythingIsCreated() async throws {
