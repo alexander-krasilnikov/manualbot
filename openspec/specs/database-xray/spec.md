@@ -5,27 +5,19 @@ Lets a presenter show, live and inside the app, what Couchbase Lite and the retr
 
 ## Requirements
 
-### Requirement: Demo mode
-The app SHALL offer a demo mode, off by default, that can be turned on from within the app or with a launch argument. The setting MUST persist across launches. When demo mode is off, the app MUST show no X-ray controls, and import, search, chat and storage behavior MUST be identical to the app without this feature.
+### Requirement: Always available
+The app SHALL always show the Source / X-ray switch in the detail column and the database explorer control in the workspace, with no setting or launch argument needed, and tracing MUST record operations from launch. Tracing MUST NOT change what is retrieved, answered, imported or stored.
 
-#### Scenario: Default install
-- **WHEN** the app is launched for the first time without the launch argument
-- **THEN** demo mode is off and no X-ray control is visible
+#### Scenario: Fresh install
+- **WHEN** the app is launched for the first time
+- **THEN** the detail column shows a Source / X-ray switch, the workspace shows the Database control, and the X-ray log lists the operations since launch
 
-#### Scenario: Turn on from the app
-- **WHEN** the presenter turns demo mode on
-- **THEN** the detail column shows a Source / X-ray switch, and demo mode is still on after relaunch
-
-#### Scenario: Launch argument
-- **WHEN** the app is launched with the demo mode launch argument
-- **THEN** demo mode is on for that launch
-
-#### Scenario: Same answers with demo mode on or off
-- **WHEN** the same question is asked over the same library with demo mode on and with it off
+#### Scenario: Same answers with tracing on or off
+- **WHEN** the same question is asked over the same library with tracing disabled and with it enabled
 - **THEN** the retrieved passages, answer and citations are the same
 
 ### Requirement: Detail column switch
-In demo mode, the detail column SHALL switch between the source viewer and the X-ray panel. Tapping a citation or a library document MUST switch the column to Source and open it as before. Switching to X-ray MUST NOT close the open source.
+The detail column SHALL switch between the source viewer and the X-ray panel. Tapping a citation or a library document MUST switch the column to Source and open it as before. Switching to X-ray MUST NOT close the open source.
 
 #### Scenario: Citation tap while X-ray is showing
 - **WHEN** X-ray is showing and the presenter taps a citation
@@ -36,7 +28,7 @@ In demo mode, the detail column SHALL switch between the source viewer and the X
 - **THEN** the same source is still open at the same position
 
 ### Requirement: Live operation log
-While demo mode is on, the X-ray panel SHALL show events as they happen, grouped by the user operation that caused them: importing a document, asking a question, opening a source, re-indexing, deleting a document, and resetting the demo. Each group MUST show its title, start time and total duration, and each event its time and duration where measurable. Database activity not caused by a user operation (for example, refreshing the library list) MUST be grouped as background activity, hidden by default and shown on request. The most recent group MUST be expanded and earlier groups collapsed. The log MUST keep at least the last 50 groups. The presenter MUST be able to clear the log.
+The X-ray panel SHALL show events as they happen, grouped by the user operation that caused them: importing a document, asking a question, opening a source, re-indexing, deleting a document, and resetting the demo. Each group MUST show its title, start time and total duration, and each event its time and duration where measurable. Database activity not caused by a user operation (for example, refreshing the library list) MUST be grouped as background activity, hidden by default and shown on request. The most recent group MUST be expanded and earlier groups collapsed. The log MUST keep at least the last 50 groups. The presenter MUST be able to clear the log.
 
 #### Scenario: Events appear while answering
 - **WHEN** the presenter asks a question with X-ray showing
@@ -115,15 +107,19 @@ The fusion event SHALL list each fused passage with its document title, its posi
 - **THEN** the relevance event shows the image distance and threshold and says it passed on the image match
 
 ### Requirement: Document inspection
-Tapping a passage or document ID in an event SHALL show the stored JSON document from its collection, with field names and values as stored. Vector fields MUST be shortened as for parameters; blob fields MUST show their content type, size and digest, not their content. If the document no longer exists, the panel MUST say so.
+Tapping a passage or document ID in an event SHALL open the database explorer at that stored document, showing its field names and values as stored. Vector fields MUST be shortened as for parameters; blob fields MUST show their content type, size and digest, not their content. If the document no longer exists, the explorer MUST say so. Closing the explorer MUST return to the X-ray panel with the log as it was.
 
 #### Scenario: Inspect a passage
 - **WHEN** the presenter taps a passage ID in a fusion event
-- **THEN** the panel shows that passage's stored document, including its text, page, generation, embedding model and a shortened embedding
+- **THEN** the explorer opens at that passage's stored document, including its text, page, generation, embedding model and a shortened embedding
 
 #### Scenario: Deleted since
 - **WHEN** the presenter taps the ID of a passage whose document was deleted
-- **THEN** the panel says the document no longer exists
+- **THEN** the explorer says the document no longer exists
+
+#### Scenario: Back to X-ray
+- **WHEN** the presenter closes the explorer opened from an X-ray event
+- **THEN** the X-ray panel is showing, with the same groups expanded as before
 
 ### Requirement: Why it matters captions
 The panel SHALL offer a captions toggle. With it on, each event kind MUST show one plain-language sentence stating the benefit it demonstrates (for example, vector and keyword search in one embedded engine, files stored with the data, atomic batches, local-only collections, offline operation). The vector search caption MUST explain that the index is queried unfiltered for speed and visibility is decided from the passage ID, presented as a design choice.
@@ -152,7 +148,7 @@ The panel SHALL offer: a text size control, independent of the system text size,
 - **THEN** the indicator shows offline, and importing and asking still work and are traced
 
 ### Requirement: Reset demo
-In demo mode, the app SHALL offer a reset action that, after confirmation, deletes every document and chat and imports a fixed set of bundled sample documents, including at least one PDF, one photo, and one document that contains a photo. The reset MUST be traced as its own operation. Cancelling the confirmation MUST change nothing.
+The X-ray panel SHALL offer a reset action that, after a confirmation naming what will be deleted, deletes every document and chat and imports a fixed set of bundled sample documents, including at least one PDF, one photo, and one document that contains a photo. The reset MUST be traced as its own operation. Cancelling the confirmation MUST change nothing.
 
 #### Scenario: Reset
 - **WHEN** the presenter confirms reset
