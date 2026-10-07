@@ -189,7 +189,7 @@ It reports the share of query photos and of descriptions whose expected photo is
 threshold, how many matches are kept and how many unrelated photos or descriptions are rejected. Use it to set
 `imageMaxDistance` and `textToImageMaxDistance`.
 
-The simulator needs an iOS 26 runtime; the app tests above name `iPad Pro 13-inch (M5)`, which is one.
+The simulator needs an iOS 27 runtime; the app tests above name `iPad Pro 13-inch (M5)`, which is one.
 
 ## Layout
 
