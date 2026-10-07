@@ -13,9 +13,6 @@ public enum ModelPackaging: String, Sendable, Codable {
     case file
     /// A zip archive that is verified and then unpacked; `fileName` is the entry to load (a file or directory) inside it.
     case zip
-    /// Shipped inside the app bundle at `<id>/<fileName>`; never downloaded, and installed from the first launch.
-    /// (`url` records where the files came from, for the build step that fetches them.)
-    case bundled
 }
 
 public struct ModelSpec: Sendable, Codable, Hashable, Identifiable {

@@ -165,54 +165,69 @@ private func makeStore(margin: Int64 = 10) -> (ModelStore, FakeModelBackend) {
     }
 }
 
-@Suite struct BundledModelStoreTests {
+/// The embedding model is downloaded like the language model (model-provisioning spec).
+@Suite struct DownloadedEmbedderTests {
     private func manifest() -> ModelManifest {
         ModelManifest(models: [
-            ModelSpec(id: "embed", version: "1", role: .embedder, url: URL(string: "https://example.com/source")!,
-                      bytes: 300, sha256: hexA, fileName: "encoder.mlmodelc", packaging: .bundled),
             ModelSpec(id: "llm", version: "1", role: .generator, url: URL(string: "https://example.com/llm")!,
-                      bytes: 3_000, sha256: hexB, fileName: "llm.bin"),
+                      bytes: 3_000, sha256: hexB, fileName: "llm.litertlm"),
+            ModelSpec(id: "embed", version: "1", role: .embedder, url: URL(string: "https://example.com/embed")!,
+                      bytes: 300, sha256: hexA, fileName: "embed.litertlm"),
         ])
     }
 
-    private func make(bundledPresent: Bool) -> (ModelStore, FakeModelBackend) {
+    @Test func aFreshInstallListsBothModelsAndDownloadsTheEmbedderFirst() async throws {
         let backend = FakeModelBackend()
-        if bundledPresent { backend.markInstalled("embed") }
-        return (ModelStore(manifest: manifest(), downloader: backend, files: backend, safetyMargin: 10), backend)
-    }
-
-    @Test func aBundledModelIsInstalledFromTheFirstLaunch() async {
-        let (store, _) = make(bundledPresent: true)
+        let store = ModelStore(manifest: manifest(), downloader: backend, files: backend, safetyMargin: 10)
         await store.refresh()
-        #expect(await store.state(of: "embed") == .installed)
-        #expect(await store.canImport, "import must work before anything is downloaded")
-        #expect(await store.canChat == false, "chat still waits for the downloaded language model")
-    }
+        #expect(Set(await store.missingModels().map(\.id)) == ["embed", "llm"])
+        #expect(try await store.storageRequirement().required == 3_310, "both downloads plus the margin")
+        #expect(await store.canImport == false, "nothing can be imported before the embedding model is installed")
 
-    @Test func onlyTheDownloadableModelIsFetched() async throws {
-        let (store, backend) = make(bundledPresent: true)
-        await store.refresh()
         try await store.start()
-        #expect(backend.downloads == ["llm"], "the bundled model must never be downloaded")
+        #expect(backend.downloads == ["embed", "llm"])
+        #expect(await store.canImport)
         #expect(await store.canChat)
     }
 
-    @Test func storageRequirementIgnoresTheBundledModel() async throws {
-        let (store, _) = make(bundledPresent: false)
-        await store.refresh()
-        let requirement = try await store.storageRequirement()
-        #expect(requirement.required == 3_010, "only the 3,000-byte download plus the margin")
+    @Test func importIsAvailableOnceTheEmbedderIsInstalledEvenWhileTheLanguageModelIsStillDownloading() async throws {
+        let backend = FakeModelBackend()
+        backend.setBehavior(.suspend, for: "llm")
+        let store = ModelStore(manifest: manifest(), downloader: backend, files: backend, safetyMargin: 10)
+        let task = Task { try await store.start() }
+        while await store.state(of: "embed") != .installed { try await Task.sleep(for: .milliseconds(5)) }
+
+        #expect(await store.canImport, "import starts before the larger model has arrived")
+        #expect(await store.canChat == false, "chat waits for the language model")
+        task.cancel()
+        _ = try? await task.value
     }
 
-    @Test func aMissingBundledModelIsReportedNotDownloaded() async throws {
-        let (store, backend) = make(bundledPresent: false)
+    @Test func anEmbedderThatDisappearedReturnsToSetupAndImportStopsUntilItIsBack() async throws {
+        let backend = FakeModelBackend()
+        let store = ModelStore(manifest: manifest(), downloader: backend, files: backend, safetyMargin: 10)
+        try await store.start()
+        #expect(await store.canImport)
+
+        backend.uninstall(try #require(manifest().spec(id: "embed")))   // deleted outside the app
         await store.refresh()
-        guard case .failed(let reason) = await store.state(of: "embed") else { Issue.record("expected failed"); return }
-        #expect(reason.contains("Reinstall"))
+        #expect(await store.state(of: "embed") == .missing)
         #expect(await store.canImport == false)
+        #expect(await store.state(of: "llm") == .installed, "the other model is untouched")
 
         try await store.start()
-        try await store.retry("embed")
-        #expect(backend.downloads == ["llm"], "a broken build must not try to fetch the built-in model")
+        #expect(await store.canImport)
+    }
+
+    @Test func refreshDeletesModelsTheManifestNoLongerListsAndKeepsTheListedOnes() async {
+        let backend = FakeModelBackend()
+        backend.markInstalled("embed"); backend.markInstalled("llm"); backend.markInstalled("old-llm")
+        let store = ModelStore(manifest: manifest(), downloader: backend, files: backend, safetyMargin: 10)
+        await store.refresh()
+        #expect(backend.removedUnlisted == ["old-llm"])
+        #expect(!backend.isInstalledID("old-llm"))
+        #expect(await store.canChat, "the listed models stay installed")
+        await store.refresh()
+        #expect(backend.removedUnlisted == ["old-llm"], "nothing more to remove the second time")
     }
 }

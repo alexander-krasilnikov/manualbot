@@ -165,6 +165,8 @@ struct LibraryRow: View {
             progress("Analyzing photos", p)
         case .embedding(let p):
             progress("Indexing", p)
+        case .updating(let p):
+            progress("Updating index", p)
         case .failed(let reason):
             HStack {
                 Label(reason, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red).lineLimit(2)

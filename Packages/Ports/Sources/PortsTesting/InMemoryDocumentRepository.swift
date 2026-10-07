@@ -69,6 +69,14 @@ public actor InMemoryDocumentRepository: DocumentRepository, IngestJobStore, Cha
 
     public func originalFileURL(docId: String) -> URL? { originals[docId] }
 
+    public func documentIDs(notEmbeddedBy textModel: String, imageModel: String) -> [String] {
+        documents().filter { document in
+            guard document.activeGeneration != nil else { return false }
+            return activeChunks(docId: document.id).contains { $0.embeddingModel != textModel }
+                || activeImages(docId: document.id).contains { $0.featureModel != imageModel }
+        }.map(\.id)
+    }
+
     public func deleteDocument(id: String) {
         docs[id] = nil
         originals[id] = nil

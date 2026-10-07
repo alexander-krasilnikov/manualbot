@@ -32,17 +32,17 @@ import Testing
     }
 
     private func photos() -> Photos {
-        let scene = Fixtures.jpegBacked(ImageFeaturePrintSpikeTests.scene(41, size: 320))
+        let scene = Fixtures.jpegBacked(Fixtures.scene(41, size: 320))
         let manual = fx.pdf(layout: [
             PDFPageSpec(texts: [("Service manual for the pump. Descale it every six months.", CGRect(x: 54, y: 700, width: 504, height: 60), 14)]),
             PDFPageSpec(
                 texts: [("Figure 1: Pump housing", CGRect(x: 100, y: 380, width: 300, height: 30), 12)],
                 images: [(scene, CGRect(x: 100, y: 420, width: 300, height: 250))]),
         ], name: "pump-service.pdf")
-        let photo = fx.imageFile(ImageFeaturePrintSpikeTests.scene(42, size: 320), type: .jpeg, name: "Rear panel.jpg")
+        let photo = fx.imageFile(Fixtures.scene(42, size: 320), type: .jpeg, name: "Rear panel.jpg")
         return Photos(
-            manual: manual, photo: photo, query: ImageFeaturePrintSpikeTests.scene(41, variant: 1, size: 320),
-            unrelated: ImageFeaturePrintSpikeTests.scene(900, size: 320))
+            manual: manual, photo: photo, query: Fixtures.scene(41, variant: 1, size: 320),
+            unrelated: Fixtures.scene(900, size: 320))
     }
 
     private func run(tracer: any Tracer) async throws -> [Outcome] {
@@ -54,7 +54,7 @@ import Testing
             Self.documents.contains($0.doc! + ".txt") }.map(\.question)
 
         let extra = photos()
-        let printer = try VisionFeaturePrinter()
+        let printer = FakeImageFeaturer()
         let recognizer = VisionTextRecognizer()
         let f = try RepoFixture(tracer: tracer, imageFeatures: printer.identity); defer { Task { await f.cleanUp() } }
         let embedder = FakeEmbedder(identity: RepoFixture.identity)

@@ -9,9 +9,10 @@ struct ModelSetupView: View {
         NavigationStack {
             List {
                 Section {
-                    Text("ManualBot answers questions about your documents entirely on this iPad. It needs two models, downloaded once. After that, nothing leaves the device and no connection is needed.")
+                    Text("ManualBot answers questions about your documents entirely on this iPad. It needs two models, downloaded once over a network connection: the search model first, so you can import documents as soon as it arrives, then the language model that writes the answers. Nothing can be imported until the search model is installed. After both are installed, nothing leaves the device and no connection is needed.")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("setupExplanation")
                 }
 
                 Section("Models") {

@@ -35,6 +35,11 @@ public protocol DocumentRepository: Sendable {
     /// or `nil` if the document has none.
     func originalFileURL(docId: String) async throws -> URL?
 
+    /// IDs of the documents whose active generation holds a passage embedded by a model other than `textModel`, or an image
+    /// whose vector came from a model other than `imageModel` (both are model tags). Documents without an active generation
+    /// are not included: they have nothing searchable yet.
+    func documentIDs(notEmbeddedBy textModel: String, imageModel: String) async throws -> [String]
+
     /// Removes the document, its stored original, and all of its chunks and images in one operation.
     func deleteDocument(id: String) async throws
 }

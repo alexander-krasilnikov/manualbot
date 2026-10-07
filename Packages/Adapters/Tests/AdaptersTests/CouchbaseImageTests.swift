@@ -6,7 +6,7 @@ import Testing
 @testable import Adapters
 
 @Suite struct CouchbaseImageTests {
-    static let featureTag = CouchbaseSchema.defaultImageFeatures.tag
+    static let featureTag = RepoFixture.imageIdentity.tag
 
     static func image(_ doc: String, _ generation: Int, _ n: Int, hot: Int? = nil, page: Int? = nil, heading: String? = nil,
                       caption: String? = nil, model: String? = nil) -> ImageWrite {

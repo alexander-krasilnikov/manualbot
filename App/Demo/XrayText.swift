@@ -7,6 +7,7 @@ enum XrayEventTag: CaseIterable {
     case vectorQuery, keywordQuery, keywordSkipped, otherQuery
     case queryRewritten, queryEmbedded, fusion, relevance, generation
     case imageAnalyzed, imagesWritten, photoAnalyzed, imageQuery
+    case imageByWordsQuery, wordsMatchedPhotos
 }
 
 extension TraceKind {
@@ -25,6 +26,7 @@ extension TraceKind {
             case .vector: .vectorQuery
             case .keyword: .keywordQuery
             case .image: .imageQuery
+            case .imageByWords: .imageByWordsQuery
             case .other: .otherQuery
             }
         case .keywordSearchSkipped: .keywordSkipped
@@ -36,6 +38,7 @@ extension TraceKind {
         case .imageAnalyzed: .imageAnalyzed
         case .imagesWritten: .imagesWritten
         case .photoAnalyzed: .photoAnalyzed
+        case .wordsMatchedPhotos: .wordsMatchedPhotos
         }
     }
 }
@@ -80,13 +83,17 @@ enum XrayText {
         case .generation:
             "Only passages retrieved from the local database reach the language model, and the answer cites them, so nothing leaves the device."
         case .imageAnalyzed:
-            "Each photo is read on the iPad by the operating system, for the text on it and a vector for how it looks, with no model to download and no photo leaving the device."
+            "Each photo is read on the iPad, for the text on it by the operating system and for a vector by the same model that embeds the passages, so no photo leaves the device."
         case .imagesWritten:
             "The photos are stored as blobs beside their JSON records, each with its vector, in one atomic transaction, so a photo and its record can never come apart."
         case .photoAnalyzed:
-            "Your photo is read on the device: its text (a model number, say) joins the keyword search, and a vector for its look is searched against the library's photos."
+            "Your photo is read on the device: its text (a model number, say) joins the keyword search, and its vector is searched against the library's photos."
         case .imageQuery:
             "A second vector index, over photos, sits in the same embedded database as the passage index and is queried with the same SQL++, so finding a similar photo is one query, not another system."
+        case .imageByWordsQuery:
+            "Words and photos share one vector space, so the question's own vector searches the photo index with the same SQL++ and finds a photo that nobody captioned."
+        case .wordsMatchedPhotos:
+            "Whether typed words match a photo is decided by a distance threshold of its own, and a match only adds the photo and the text beside it, so it never makes a question answerable on its own."
         }
     }
 
@@ -105,6 +112,7 @@ enum XrayText {
             case .vector: "Vector search"
             case .keyword: "Keyword search"
             case .image: "Image search"
+            case .imageByWords: "Words → photos search"
             case .other: "SQL++ query"
             }
         case .keywordSearchSkipped: "Keyword search skipped"
@@ -116,6 +124,8 @@ enum XrayText {
         case .imageAnalyzed(_, _, let n, _, _, _): "Read photo \(n + 1)"
         case .imagesWritten(_, let count, _, _): "Wrote \(count) photo\(count == 1 ? "" : "s") in one transaction"
         case .photoAnalyzed: "Read the photo you sent"
+        case .wordsMatchedPhotos(let matches, _, _):
+            matches == 0 ? "No photo matches the words" : "\(matches) photo\(matches == 1 ? "" : "s") match\(matches == 1 ? "es" : "") the words"
         }
     }
 
@@ -155,7 +165,18 @@ enum XrayText {
         case .photoAnalyzed(let length, let identifiers, let dimensions):
             "\(length) characters of text" + (identifiers.isEmpty ? "" : " · identifiers: \(identifiers.joined(separator: ", "))")
                 + " · \(dimensions)-dimension vector"
+        case .wordsMatchedPhotos(let matches, let best, let threshold): wordsMatch(matches: matches, best: best, threshold: threshold)
         }
+    }
+
+    /// "closest photo 0.180 ≤ threshold 0.25", or why none matched.
+    static func wordsMatch(matches: Int, best: Double?, threshold: Double) -> String {
+        let limit = String(format: "%.2f", threshold)
+        guard let best else { return "the library has no photos to compare with" }
+        let distance = String(format: "%.3f", best)
+        return matches > 0
+            ? "closest photo \(distance) ≤ threshold \(limit); the passages beside it were added to the search"
+            : "closest photo \(distance) > threshold \(limit), so no photo is shown"
     }
 
     /// "3 passages", "3 passages and 2 photos"; photos are left out when there are none.
@@ -234,6 +255,7 @@ enum XrayText {
         case .imagesWritten: "photo.stack"
         case .photoAnalyzed: "camera.viewfinder"
         case .imageQuery: "photo.on.rectangle"
+        case .imageByWordsQuery, .wordsMatchedPhotos: "text.below.photo"
         }
     }
 }

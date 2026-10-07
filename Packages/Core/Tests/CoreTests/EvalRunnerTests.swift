@@ -13,7 +13,7 @@ import Testing
         let repo = InMemoryDocumentRepository()
         try await repo.upsert(DocumentRecord(id: "manual", title: "manual", type: .pdf, activeGeneration: 1))
         try await repo.upsert(DocumentRecord(id: "other", title: "other", type: .pdf, activeGeneration: 1))
-        return EvalRunner(retriever: Retriever(embedder: FakeEmbedder(), search: FakeChunkSearch(vectorHits: hits, keywordHits: keyword), repository: repo))
+        return EvalRunner(retriever: Retriever(embedder: FakeEmbedder(), search: FakeChunkSearch(vectorHits: hits, keywordHits: keyword), repository: repo, configuration: .standIn))
     }
 
     @Test func suiteJSONDecodes() throws {

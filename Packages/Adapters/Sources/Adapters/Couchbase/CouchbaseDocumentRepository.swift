@@ -401,6 +401,20 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
         if let doc = try collections.ingestJobs.document(id: docId) { try collections.ingestJobs.delete(document: doc) }
     }
 
+    public func documentIDs(notEmbeddedBy textModel: String, imageModel: String) throws -> [String] {
+        let active = try activeGenerations()
+        var stale = Set<String>()
+        for (collection, field, model) in [(CouchbaseSchema.chunks, "embeddingModel", textModel), (CouchbaseSchema.images, "featureModel", imageModel)] {
+            let rows = try run(
+                "SELECT DISTINCT docId, generation FROM \(CouchbaseSchema.scope).\(collection) WHERE \(field) != $model",
+                parameters: Parameters().setString(model, forName: "model"))
+            for row in rows {
+                if let docId = row.string(forKey: "docId"), active[docId] == row.int(forKey: "generation") { stale.insert(docId) }
+            }
+        }
+        return stale.sorted()
+    }
+
     /// `docId → active generation` for every document that has completed ingestion.
     func activeGenerations() throws -> [String: Int] {
         var result: [String: Int] = [:]

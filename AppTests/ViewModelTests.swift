@@ -47,9 +47,36 @@ private func file(_ name: String, _ text: String) throws -> URL {
         #expect(LibraryViewModel.status(of: fresh, job: job(.recognizingText)) == .recognizing(0.5))
         #expect(LibraryViewModel.status(of: fresh, job: job(.failed, error: "locked")) == .failed("locked"))
         #expect(LibraryViewModel.status(of: fresh, job: job(.ready)) == .ready)
-        // A re-index of a searchable document does not make it look unavailable.
-        #expect(LibraryViewModel.status(of: indexed, job: job(.embedding)) == .ready)
+        // A re-index of a searchable document does not make it look unavailable, and says it is being updated.
+        #expect(LibraryViewModel.status(of: indexed, job: job(.queued)) == .updating(0))
+        #expect(LibraryViewModel.status(of: indexed, job: job(.extracting, 0.2)) == .updating(0.2))
+        #expect(LibraryViewModel.status(of: indexed, job: job(.embedding)) == .updating(0.5))
+        #expect(LibraryViewModel.status(of: indexed, job: job(.ready)) == .ready)
         #expect(LibraryViewModel.status(of: indexed, job: job(.failed, error: "x")) == .ready)
+        #expect(LibraryViewModel.Status.updating(0.5).isReady && LibraryViewModel.Status.updating(0.5).isWorking)
+    }
+
+    @Test func aReindexShowsUpdatingIndexWithProgressAndReturnsToReady() async throws {
+        let (library, repo, ingestion) = make()
+        await library.importFiles([try file("manual.txt", "Hold the power button for ten seconds. Release it and wait. The light blinks twice when done.")])
+        _ = await eventually { await library.refresh(); return library.items.first?.status == .ready }
+        let id = try #require(library.items.first?.id)
+
+        // Queue the re-index without running it, as after an embedding model update.
+        try await ingestion.reindex(docId: id)
+        await library.refresh()
+        #expect(library.items.first?.status == .updating(0), "searchable and being updated")
+        #expect(library.items.first?.status.isReady == true)
+
+        var job = try #require(try await repo.job(docId: id))
+        job.state = .embedding; job.progress = 0.4
+        try await repo.upsert(job: job)
+        await library.refresh()
+        #expect(library.items.first?.status == .updating(0.4))
+
+        await ingestion.run()
+        await library.refresh()
+        #expect(library.items.first?.status == .ready)
     }
 
     @Test func importQueuesSupportedFilesAndReportsTheRest() async throws {
@@ -78,7 +105,7 @@ private func file(_ name: String, _ text: String) throws -> URL {
         #expect(library.items.first?.title == "Renamed", "blank names are ignored")
 
         await library.reindex(id)
-        #expect(library.items.first?.status == .ready, "stays searchable while re-indexing")
+        #expect(library.items.first?.status.isReady == true, "stays searchable while re-indexing")
         _ = await eventually { (try? await repo.document(id: id))?.activeGeneration == 2 }
         #expect(try await repo.document(id: id)?.activeGeneration == 2)
 

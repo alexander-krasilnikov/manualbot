@@ -20,23 +20,8 @@ The app SHALL ship with a built-in manifest listing each required model (embeddi
 - **WHEN** the app starts and evaluates model readiness
 - **THEN** it checks exactly the models listed in the built-in manifest, by identifier, version, and checksum
 
-### Requirement: Built-in embedding model
-The embedding model SHALL ship inside the app and be available from the first launch, without any download or network connection. The app MUST NOT download it. If the model is missing from the app, the app SHALL report that it must be reinstalled and MUST NOT try to fetch it.
-
-#### Scenario: First launch with no network
-- **WHEN** the user launches a freshly installed app with no network connection
-- **THEN** the library opens directly, without a setup screen, and documents can be imported and indexed
-
-#### Scenario: Only the language model is offered
-- **WHEN** the app lists models that can be downloaded
-- **THEN** only the language model appears, and the storage required counts only its size
-
-#### Scenario: Model missing from the build
-- **WHEN** the built-in embedding model is not found inside the app
-- **THEN** the app reports that it is missing and asks the user to reinstall, and it does not attempt a download
-
 ### Requirement: Model licences and notices
-The app SHALL show the licence terms and notices for the models it uses, including the Gemma Terms of Use notice for the embedding model, in a screen reachable from the library.
+The app SHALL show the licence terms and notices for the models it uses, including the Apache 2.0 licence of the embedding model and of the language model, in a screen reachable from the library.
 
 #### Scenario: Reading the notices
 - **WHEN** the user opens the About screen
@@ -72,11 +57,15 @@ Installed models SHALL be stored in app-private storage that is excluded from de
 - **THEN** its files are marked excluded from backup
 
 ### Requirement: Staged readiness
-The app SHALL track readiness separately for each model. Document import and indexing MUST be available as soon as the embedding model is ready, which is from the first launch because it is built in. Chat MUST be disabled, with an explanation, until the language model is installed.
+The app SHALL track readiness separately for each model. Document import and indexing MUST be available as soon as the embedding model is installed, even while the language model is still downloading. Chat MUST be disabled, with an explanation, until the language model is installed.
 
 #### Scenario: Embedding model ready first
-- **WHEN** the language model has not been downloaded yet, or is still downloading
+- **WHEN** the embedding model is installed and the language model has not been downloaded yet, or is still downloading
 - **THEN** the user can import and index documents, and the chat input shows that the language model is still being prepared
+
+#### Scenario: Nothing installed yet
+- **WHEN** neither model is installed
+- **THEN** the setup screen is shown and documents cannot be imported until the embedding model is installed
 
 ### Requirement: Missing model recovery
 If a previously installed model is missing or fails verification at launch (for example, after the app was offloaded), the app SHALL return that model to the setup flow instead of crashing, and MUST keep all existing documents, chunks, and chats.
@@ -95,3 +84,18 @@ Once all models are installed, document import, extraction, OCR, chunking, embed
 #### Scenario: No outbound traffic during core use
 - **WHEN** the user imports documents and chats while network traffic is monitored
 - **THEN** the app makes no network requests
+
+### Requirement: Downloaded embedding model
+The embedding model SHALL be downloaded from its manifest source, verified against its checksum, and stored like the language model. The setup screen MUST list it with its download size, and its download MUST be offered first, so import can start before the larger language model has arrived.
+
+#### Scenario: Fresh install
+- **WHEN** the user launches a freshly installed app with a network connection
+- **THEN** the setup screen lists the embedding model and the language model with their sizes, and once the user starts the download the embedding model completes first
+
+#### Scenario: First launch with no network
+- **WHEN** the user launches a freshly installed app with no network connection
+- **THEN** the setup screen explains that the models must be downloaded once, and no import is offered until the embedding model is installed
+
+#### Scenario: Embedding model deleted externally
+- **WHEN** the embedding model file is missing at launch
+- **THEN** the app returns that model to the setup flow, keeps every document and chat, and makes import available again once it is reinstalled

@@ -13,13 +13,17 @@ final class LibraryViewModel {
         case recognizing(Double)
         case analyzing(Double)
         case embedding(Double)
+        /// Searchable from its previous index while a new one is built (a re-index, such as after a model update).
+        case updating(Double)
         case ready
         case failed(String)
 
-        var isReady: Bool { self == .ready }
+        /// Searchable: ready, or ready from the previous index while it is being updated.
+        var isReady: Bool { self == .ready || isUpdating }
+        var isUpdating: Bool { if case .updating = self { true } else { false } }
         var isWorking: Bool {
             switch self {
-            case .queued, .extracting, .recognizing, .analyzing, .embedding: true
+            case .queued, .extracting, .recognizing, .analyzing, .embedding, .updating: true
             case .ready, .failed: false
             }
         }
@@ -86,15 +90,17 @@ final class LibraryViewModel {
     }
 
     static func status(of record: DocumentRecord, job: IngestJobRecord?) -> Status {
-        guard let job else { return record.activeGeneration == nil ? .queued : .ready }
+        let searchable = record.activeGeneration != nil
+        guard let job else { return searchable ? .ready : .queued }
         switch job.state {
-        case .queued: return record.activeGeneration == nil ? .queued : .ready  // a re-index keeps the old passages searchable
-        case .extracting: return record.activeGeneration == nil ? .extracting(job.progress) : .ready
-        case .recognizingText: return record.activeGeneration == nil ? .recognizing(job.progress) : .ready
-        case .analyzingImages: return record.activeGeneration == nil ? .analyzing(job.progress) : .ready
-        case .embedding: return record.activeGeneration == nil ? .embedding(job.progress) : .ready
+        case .queued: return searchable ? .updating(0) : .queued
+        case .extracting: return searchable ? .updating(job.progress) : .extracting(job.progress)
+        case .recognizingText: return searchable ? .updating(job.progress) : .recognizing(job.progress)
+        case .analyzingImages: return searchable ? .updating(job.progress) : .analyzing(job.progress)
+        case .embedding: return searchable ? .updating(job.progress) : .embedding(job.progress)
         case .ready: return .ready
-        case .failed: return record.activeGeneration == nil ? .failed(job.error ?? "Indexing failed.") : .ready
+        // A failed re-index leaves the previous index in place, so the document stays searchable.
+        case .failed: return searchable ? .ready : .failed(job.error ?? "Indexing failed.")
         }
     }
 

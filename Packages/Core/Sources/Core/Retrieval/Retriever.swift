@@ -7,33 +7,45 @@ public struct RetrievalConfiguration: Sendable, Equatable {
     public var candidatesPerSearch: Int
     /// Passages returned after fusion.
     public var resultLimit: Int
-    /// A result is relevant when its best cosine distance is at most this. Tuned on the evaluation set (task 6.3) with real EmbeddingGemma output: answerable questions reach at most 0.66, off-topic ones start at 0.87, and every threshold from 0.68 to 0.86 separates them perfectly; 0.76 sits in the middle of that range.
+    /// A result is relevant when its best cosine distance is at most this. Tuned with `RealEvalTests` on the evaluation set
+    /// with real EmbeddingGemma 2 output (256 dimensions, passages of 130 tokens): answerable questions reach at most 0.239,
+    /// off-topic ones start at 0.323, and every threshold from 0.24 to 0.32 separates them perfectly; 0.28 sits in the
+    /// middle of that range. Distances of this model are on a smaller scale than its predecessor's (0.66 and 0.87). The set
+    /// has only six off-topic questions, so re-check this on a larger one before leaning on the margin.
     public var maxDistance: Double
     /// Passages offered as suggestions when nothing is relevant.
     public var suggestionCount: Int
-    /// An image matches the question's photo when its cosine distance (Vision feature print) is at most this.
-    /// Provisional: tuned with `ImageEvalTests` on a stand-in set, not on photos of real equipment. On 54 cropped,
-    /// rotated, re-lit and noisy variants of 18 real landscape photographs plus 7 unrelated ones, the right photo
-    /// was always in the top three; true matches were at most 0.30 away (90% within 0.20) and unrelated photos at
-    /// least 0.23. At 0.25 this keeps 96% of the matches and rejects 6 of the 7 unrelated photos. It leans toward
-    /// keeping matches, because field photos taken from another angle sit farther from their reference than these
-    /// variants do. Re-tune on field photos before relying on it. (Generated abstract scenes cannot be told apart
-    /// by distance at all: unrelated ones came as close as 0.075.)
+    /// An image matches the question's photo when its cosine distance (EmbeddingGemma 2, 256 dimensions) is at most this.
+    /// Provisional: tuned with `ImageEvalTests` on a stand-in set, not on photos of real equipment. The set is 14
+    /// Wikimedia Commons photos of equipment (pumps, valves, motors, breakers…) and, as queries, a *different* photo of the
+    /// same kind of thing plus 6 photos of unrelated subjects. That is harder than photographing the same unit again:
+    /// the right photo was in the top three for 12 of 14 (86%). Right matches were at most 0.31 away (median 0.17, 90% within
+    /// 0.27) and the nearest library photo for unrelated photos at least 0.21 (median 0.28), so the two overlap. At 0.25 this
+    /// keeps 71% of the matches and rejects 83% of the unrelated photos. Re-shots of the same object are far closer (the
+    /// generated set: at most 0.054). Re-tune on field photos before relying on it.
     public var imageMaxDistance: Double
+    /// Typed words match a photo by meaning when the cosine distance between the question's vector and the photo's is at
+    /// most this. A separate scale from `imageMaxDistance`: words and pictures sit farther apart than two pictures do.
+    /// Provisional, on the same stand-in set: for 28 descriptions of the 14 photos ("a ball valve", "photo of a ball
+    /// valve") the right photo was always in the top three (26 times first), at distances of at most 0.276 (median 0.22);
+    /// 4 descriptions of things no photo shows came no nearer than 0.327 (median 0.37). Every threshold from 0.28 to 0.32
+    /// separates them; 0.30 is the middle. Never makes a question relevant on its own.
+    public var textToImageMaxDistance: Double
     /// Images taken from the image index before the distance threshold is applied.
     public var imageCandidates: Int
     /// Text passages taken from the page or section of each matching image, besides the image's own passage.
     public var passagesPerImage: Int
 
     public init(
-        candidatesPerSearch: Int = 20, resultLimit: Int = 6, maxDistance: Double = 0.76, suggestionCount: Int = 3,
-        imageMaxDistance: Double = 0.25, imageCandidates: Int = 10, passagesPerImage: Int = 4
+        candidatesPerSearch: Int = 20, resultLimit: Int = 6, maxDistance: Double = 0.28, suggestionCount: Int = 3,
+        imageMaxDistance: Double = 0.25, textToImageMaxDistance: Double = 0.30, imageCandidates: Int = 10, passagesPerImage: Int = 4
     ) {
         self.candidatesPerSearch = candidatesPerSearch
         self.resultLimit = resultLimit
         self.maxDistance = maxDistance
         self.suggestionCount = suggestionCount
         self.imageMaxDistance = imageMaxDistance
+        self.textToImageMaxDistance = textToImageMaxDistance
         self.imageCandidates = imageCandidates
         self.passagesPerImage = passagesPerImage
     }
@@ -49,6 +61,8 @@ public struct RetrievedPassage: Sendable, Equatable, Identifiable {
     public var fusedScore: Double
     /// Zero-based position among the passages reached through the question's photo, when it reached this one.
     public var imageRank: Int? = nil
+    /// Zero-based position among the passages reached through photos that matched the question's words, when one reached this.
+    public var wordsRank: Int? = nil
 
     public var id: String { chunk.id }
 }
@@ -57,8 +71,10 @@ public struct RetrievedPassage: Sendable, Equatable, Identifiable {
 public struct RetrievedImage: Sendable, Equatable, Identifiable {
     public var image: ImageRecord
     public var documentTitle: String
-    /// Cosine distance from the photo (0 = identical).
+    /// Cosine distance from the photo (0 = identical), or from the question's words when `viaWords`.
     public var distance: Double
+    /// Matched the typed words by meaning, not the question's photo.
+    public var viaWords = false
 
     public var id: String { image.id }
 }
@@ -131,6 +147,7 @@ public struct Retriever: Sendable {
         // A photo with nothing readable and nothing typed has no text to search with.
         var vectorHits: [ScoredChunk] = []
         var keywordHits: [ScoredChunk] = []
+        var wordMatches: [ScoredImage] = []
         var terms: [String] = []
         if photoQuery == nil || !query.isEmpty {
             let vector = try await tracer.measure(
@@ -140,16 +157,23 @@ public struct Retriever: Sendable {
 
             async let semantic = search.vectorSearch(vector, limit: configuration.candidatesPerSearch, filter: filter)
             async let keyword = terms.isEmpty ? [] : search.keywordSearch(terms: terms, limit: configuration.candidatesPerSearch, filter: filter)
-            (vectorHits, keywordHits) = try await (semantic, keyword)
+            async let byWords = photosMatching(words: vector, scope: scope)
+            (vectorHits, keywordHits, wordMatches) = try await (semantic, keyword, byWords)
         }
 
         let reached = try await passages(reachedBy: imageMatches)
-        let titles = try await titles(for: Set((vectorHits + keywordHits).map(\.chunk.docId) + reached.map(\.docId) + imageMatches.map(\.image.docId)))
+        let reachedByWords = try await passages(reachedBy: wordMatches)
+        let titles = try await titles(for: Set(
+            (vectorHits + keywordHits).map(\.chunk.docId) + reached.map(\.docId) + reachedByWords.map(\.docId)
+                + (imageMatches + wordMatches).map(\.image.docId)))
 
         var byID = Dictionary((vectorHits + keywordHits).map { ($0.chunk.id, $0.chunk) }, uniquingKeysWith: { a, _ in a })
-        for chunk in reached where byID[chunk.id] == nil { byID[chunk.id] = chunk }
+        for chunk in reached + reachedByWords where byID[chunk.id] == nil { byID[chunk.id] = chunk }
+        // List positions: 0 vector, 1 keyword, then the photo's list when the question had a photo, then the words' list.
         var lists = [vectorHits.map(\.chunk.id), keywordHits.map(\.chunk.id)]
-        if photoQuery != nil { lists.append(reached.map(\.id)) }
+        var photoList: Int?, wordsList: Int?
+        if photoQuery != nil { photoList = lists.count; lists.append(reached.map(\.id)) }
+        if !wordMatches.isEmpty { wordsList = lists.count; lists.append(reachedByWords.map(\.id)) }
         let fused = RankFusion.fuse(lists, limit: configuration.resultLimit)
 
         let distances = Dictionary(vectorHits.map { ($0.chunk.id, $0.score) }, uniquingKeysWith: { a, _ in a })
@@ -157,7 +181,8 @@ public struct Retriever: Sendable {
             guard let chunk = byID[item.id] else { return nil }
             return RetrievedPassage(
                 chunk: chunk, documentTitle: titles[chunk.docId] ?? "Untitled", distance: distances[item.id],
-                keywordRank: item.ranks[1], fusedScore: item.score, imageRank: item.ranks.count > 2 ? item.ranks[2] : nil)
+                keywordRank: item.ranks[1], fusedScore: item.score,
+                imageRank: photoList.flatMap { item.ranks[$0] }, wordsRank: wordsList.flatMap { item.ranks[$0] })
         }
 
         if tracer.isEnabled {
@@ -166,7 +191,8 @@ public struct Retriever: Sendable {
                 FusionEntry(
                     chunkID: passage.chunk.id, documentTitle: passage.documentTitle,
                     vectorPosition: ranks[passage.chunk.id]?[0], keywordPosition: passage.keywordRank,
-                    imagePosition: passage.imageRank, distance: passage.distance, score: passage.fusedScore)
+                    imagePosition: passage.imageRank, wordsPosition: passage.wordsRank, distance: passage.distance,
+                    score: passage.fusedScore)
             }))
         }
 
@@ -178,11 +204,29 @@ public struct Retriever: Sendable {
             bestImageDistance: photoQuery == nil ? nil : bestImage,
             imageThreshold: photoQuery == nil ? nil : configuration.imageMaxDistance))
 
-        let images = imageMatches.map { RetrievedImage(image: $0.image, documentTitle: titles[$0.image.docId] ?? "Untitled", distance: $0.score) }
+        // Photos that matched the question's photo come first; photos that only matched its words follow.
+        var images = imageMatches.map { RetrievedImage(image: $0.image, documentTitle: titles[$0.image.docId] ?? "Untitled", distance: $0.score) }
+        let alreadyShown = Set(images.map(\.id))
+        images += wordMatches.filter { !alreadyShown.contains($0.image.id) }.map {
+            RetrievedImage(image: $0.image, documentTitle: titles[$0.image.docId] ?? "Untitled", distance: $0.score, viaWords: true)
+        }
         return RetrievalResult(passages: passages, relevant: outcome != .failed, bestDistance: best, images: images, photo: photoQuery)
     }
 
     // MARK: Photo
+
+    /// The library's photos that the question's words describe, by meaning. Only possible when the same model made
+    /// the question's vector and the photos' (otherwise the two are not comparable and nothing is searched).
+    private func photosMatching(words vector: [Float], scope: Set<String>?) async throws -> [ScoredImage] {
+        guard let services = photoSearch, services.features.identity == embedder.identity else { return [] }
+        let filter = SearchFilter(documentIDs: scope, embeddingModel: services.features.identity.tag)
+        let hits = try await TraceContext.$imageQueryIsWords.withValue(true) {
+            try await services.search.imageSearch(vector, limit: configuration.imageCandidates, filter: filter)
+        }
+        let matches = hits.filter { $0.score <= configuration.textToImageMaxDistance }
+        tracer.emit(.wordsMatchedPhotos(matches: matches.count, bestDistance: hits.map(\.score).min(), threshold: configuration.textToImageMaxDistance))
+        return matches
+    }
 
     /// Reads the photo (text and look at the same time) and finds the library images that resemble it.
     private func analyze(

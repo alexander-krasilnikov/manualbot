@@ -135,8 +135,35 @@ extension Fixtures {
     static func pngData(side: Int, seed: UInt64 = 1) -> Data {
         let data = NSMutableData()
         let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil)!
-        CGImageDestinationAddImage(destination, ImageFeaturePrintSpikeTests.scene(seed, size: side), nil)
+        CGImageDestinationAddImage(destination, Fixtures.scene(seed, size: side), nil)
         CGImageDestinationFinalize(destination)
         return data as Data
+    }
+}
+
+extension Fixtures {
+    /// A deterministic scene of overlapping coloured shapes. `variant` shifts, scales and re-lights the same
+    /// scene a little, standing in for a second photo of the same object.
+    static func scene(_ seed: UInt64, variant: Int = 0, size: Int = 320) -> CGImage {
+        var state = seed &* 0x9E3779B97F4A7C15 | 1
+        func next() -> CGFloat {
+            state ^= state << 13; state ^= state >> 7; state ^= state << 17
+            return CGFloat(state % 10_000) / 10_000
+        }
+        let context = CGContext(
+            data: nil, width: size, height: size, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        let s = CGFloat(size)
+        context.setFillColor(red: next(), green: next(), blue: next(), alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: s, height: s))
+        let shift = CGFloat(variant) * 6, zoom = 1 + CGFloat(variant) * 0.04, light = 1 - CGFloat(variant) * 0.05
+        context.translateBy(x: shift, y: -shift)
+        context.scaleBy(x: zoom, y: zoom)
+        for _ in 0..<9 {
+            context.setFillColor(red: next() * light, green: next() * light, blue: next() * light, alpha: 1)
+            let rect = CGRect(x: next() * s * 0.7, y: next() * s * 0.7, width: 30 + next() * s * 0.4, height: 30 + next() * s * 0.4)
+            if next() > 0.5 { context.fillEllipse(in: rect) } else { context.fill(rect) }
+        }
+        return context.makeImage()!
     }
 }

@@ -202,8 +202,10 @@ public final class Conversation: Sendable {
     }
     if let repetitionPenaltyConfig = repetitionPenaltyConfig {
       guard let cRepetitionPenaltyConfig = litert_lm_repetition_penalty_config_create() else {
-        throw LiteRTLMError.conversation(
-          .invalidResponse("Failed to create native repetition penalty config."))
+        let errorMsg =
+          LiteRTLMError.consumeLastError()
+          ?? "Failed to create native repetition penalty config."
+        throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
       }
       defer { litert_lm_repetition_penalty_config_delete(cRepetitionPenaltyConfig) }
 
@@ -228,8 +230,9 @@ public final class Conversation: Sendable {
     }
     if let noRepeatNgramConfig = noRepeatNgramConfig {
       guard let cNoRepeatNgramConfig = litert_lm_no_repeat_ngram_config_create() else {
-        throw LiteRTLMError.conversation(
-          .invalidResponse("Failed to create native no repeat ngram config."))
+        let errorMsg =
+          LiteRTLMError.consumeLastError() ?? "Failed to create native no repeat ngram config."
+        throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
       }
       defer { litert_lm_no_repeat_ngram_config_delete(cNoRepeatNgramConfig) }
 
@@ -246,8 +249,9 @@ public final class Conversation: Sendable {
     }
     if let suppressTokens = suppressTokensConfig?.suppressTokens, !suppressTokens.isEmpty {
       guard let cSuppressTokensConfig = litert_lm_suppress_tokens_config_create() else {
-        throw LiteRTLMError.conversation(
-          .invalidResponse("Failed to create native suppress tokens config."))
+        let errorMsg =
+          LiteRTLMError.consumeLastError() ?? "Failed to create native suppress tokens config."
+        throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
       }
       defer { litert_lm_suppress_tokens_config_delete(cSuppressTokensConfig) }
 
@@ -265,8 +269,9 @@ public final class Conversation: Sendable {
     }
     if let thinkingConfig = thinkingConfig {
       guard let cThinkingConfig = litert_lm_thinking_config_create() else {
-        throw LiteRTLMError.conversation(
-          .invalidResponse("Failed to create native thinking config."))
+        let errorMsg =
+          LiteRTLMError.consumeLastError() ?? "Failed to create native thinking config."
+        throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
       }
       defer { litert_lm_thinking_config_delete(cThinkingConfig) }
       litert_lm_thinking_config_set_enable_thinking(
@@ -287,16 +292,17 @@ public final class Conversation: Sendable {
       let responsePtr = litert_lm_conversation_send_message(
         handle, messageString, extraContextString, optionalArgs)
     else {
-      throw LiteRTLMError.conversation(.invalidResponse("Native sendMessage returned null."))
-
+      let errorMsg = LiteRTLMError.consumeLastError() ?? "Native sendMessage returned null."
+      throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
     }
     // Delete the response pointer at the end of each iteration. Handled by defer block.
     let responsePtrRef = responsePtr
     defer { litert_lm_json_response_delete(responsePtrRef) }
 
     guard let responseChars = litert_lm_json_response_get_string(responsePtr) else {
-      throw LiteRTLMError.conversation(
-        .invalidResponse("Native get string for response returned null."))
+      let errorMsg =
+        LiteRTLMError.consumeLastError() ?? "Native get string for response returned null."
+      throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
     }
     let responseString = String(cString: responseChars)
 
@@ -447,8 +453,10 @@ public final class Conversation: Sendable {
     }
     if let repetitionPenaltyConfig = repetitionPenaltyConfig {
       guard let cRepetitionPenaltyConfig = litert_lm_repetition_penalty_config_create() else {
-        throw LiteRTLMError.conversation(
-          .invalidResponse("Failed to create native repetition penalty config."))
+        let errorMsg =
+          LiteRTLMError.consumeLastError()
+          ?? "Failed to create native repetition penalty config."
+        throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
       }
       defer { litert_lm_repetition_penalty_config_delete(cRepetitionPenaltyConfig) }
 
@@ -473,8 +481,9 @@ public final class Conversation: Sendable {
     }
     if let noRepeatNgramConfig = noRepeatNgramConfig {
       guard let cNoRepeatNgramConfig = litert_lm_no_repeat_ngram_config_create() else {
-        throw LiteRTLMError.conversation(
-          .invalidResponse("Failed to create native no repeat ngram config."))
+        let errorMsg =
+          LiteRTLMError.consumeLastError() ?? "Failed to create native no repeat ngram config."
+        throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
       }
       defer { litert_lm_no_repeat_ngram_config_delete(cNoRepeatNgramConfig) }
 
@@ -491,8 +500,9 @@ public final class Conversation: Sendable {
     }
     if let suppressTokens = suppressTokensConfig?.suppressTokens, !suppressTokens.isEmpty {
       guard let cSuppressTokensConfig = litert_lm_suppress_tokens_config_create() else {
-        throw LiteRTLMError.conversation(
-          .invalidResponse("Failed to create native suppress tokens config."))
+        let errorMsg =
+          LiteRTLMError.consumeLastError() ?? "Failed to create native suppress tokens config."
+        throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
       }
       defer { litert_lm_suppress_tokens_config_delete(cSuppressTokensConfig) }
 
@@ -510,8 +520,9 @@ public final class Conversation: Sendable {
     }
     if let thinkingConfig = thinkingConfig {
       guard let cThinkingConfig = litert_lm_thinking_config_create() else {
-        throw LiteRTLMError.conversation(
-          .invalidResponse("Failed to create native thinking config."))
+        let errorMsg =
+          LiteRTLMError.consumeLastError() ?? "Failed to create native thinking config."
+        throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
       }
       defer { litert_lm_thinking_config_delete(cThinkingConfig) }
       litert_lm_thinking_config_set_enable_thinking(
@@ -541,7 +552,8 @@ public final class Conversation: Sendable {
 
     guard status == 0 else {
       Unmanaged<StreamContext>.fromOpaque(contextPtr).release()
-      throw LiteRTLMError.conversation(.failedToStartStream(status: Int(status)))
+      let errorMsg = LiteRTLMError.consumeLastError() ?? ""
+      throw LiteRTLMError.conversation(.failedToStartStream(status: Int(status), message: errorMsg))
     }
   }
 
@@ -568,7 +580,9 @@ public final class Conversation: Sendable {
 
     guard let cString = litert_lm_conversation_render_message_to_string(handle, messageString)
     else {
-      throw LiteRTLMError.conversation(.invalidResponse("Failed to render message into string."))
+      let errorMsg =
+        LiteRTLMError.consumeLastError() ?? "Failed to render message into string."
+      throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
     }
     return String(cString: cString)
   }
@@ -580,7 +594,9 @@ public final class Conversation: Sendable {
   public func renderPrefaceIntoString() throws -> String {
     let handle = try checkIsAlive()
     guard let cString = litert_lm_conversation_render_preface_to_string(handle) else {
-      throw LiteRTLMError.conversation(.invalidResponse("Failed to render preface into string."))
+      let errorMsg =
+        LiteRTLMError.consumeLastError() ?? "Failed to render preface into string."
+      throw LiteRTLMError.conversation(.invalidResponse(errorMsg))
     }
     return String(cString: cString)
   }

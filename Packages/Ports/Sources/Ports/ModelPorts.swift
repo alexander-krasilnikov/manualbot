@@ -21,4 +21,9 @@ public protocol ModelFiles: Sendable {
     func discard(_ file: URL)
     /// Deletes the installed model, if any.
     func uninstall(_ spec: ModelSpec)
+    /// Deletes every installed model file that the manifest no longer lists: whole models that were dropped, and older
+    /// versions of models that were kept. A model that was replaced (a new language model, say) must not leave gigabytes
+    /// behind. Returns the ids of the models it removed anything for.
+    @discardableResult
+    func removeUnlisted(keeping manifest: ModelManifest) -> [String]
 }

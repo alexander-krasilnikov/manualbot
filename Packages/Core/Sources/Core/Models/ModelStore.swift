@@ -65,16 +65,14 @@ public actor ModelStore {
         manifest.models.filter { states[$0.id] != .installed }
     }
 
-    /// The missing models that can be fetched. A model that ships inside the app is never downloaded.
-    private func downloadableMissing() -> [ModelSpec] {
-        missingModels().filter { $0.packaging != .bundled }
-    }
-
     // MARK: Launch check
 
     /// Reconciles state with what is on disk. A model that was installed earlier but whose file is
     /// gone goes back to `missing` so the setup flow can offer it again. Downloads in flight are left alone.
     public func refresh() {
+        // Models the manifest no longer lists (an earlier language model after a switch, say) are deleted first, so an
+        // update does not leave gigabytes behind. Nothing listed is touched.
+        files.removeUnlisted(keeping: manifest)
         for spec in manifest.models {
             switch states[spec.id] {
             case .downloading, .verifying: continue
@@ -82,8 +80,6 @@ public actor ModelStore {
             }
             if files.isInstalled(spec) {
                 states[spec.id] = .installed
-            } else if spec.packaging == .bundled {
-                states[spec.id] = .failed("This copy of the app is missing a built-in model. Reinstall the app.")
             } else {
                 states[spec.id] = .missing
             }
@@ -95,7 +91,7 @@ public actor ModelStore {
 
     /// Bytes still to download, and whether they fit on the device with the safety margin.
     public func storageRequirement() throws -> (required: Int64, available: Int64) {
-        let required = downloadableMissing().reduce(0) { $0 + $1.bytes } + safetyMargin
+        let required = missingModels().reduce(0) { $0 + $1.bytes } + safetyMargin
         return (required, try files.availableBytes())
     }
 
@@ -106,7 +102,7 @@ public actor ModelStore {
         if let ids, let unknown = ids.first(where: { manifest.spec(id: $0) == nil }) {
             throw ModelStoreError.unknownModel(unknown)
         }
-        let queue = downloadableMissing()
+        let queue = missingModels()
             .filter { ids?.contains($0.id) ?? true }
             .filter { if case .downloading = states[$0.id] { return false } else { return true } }
             .sorted { ($0.role, $0.id) < ($1.role, $1.id) }

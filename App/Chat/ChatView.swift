@@ -276,7 +276,8 @@ struct MessageView: View {
                     if message.stopped {
                         Label("Stopped", systemImage: "stop.circle").font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("stoppedLabel")
                     }
-                    if message.matchesOnly, !message.imageMatches.isEmpty {
+                    // Photos that matched the question's photo, or its words by meaning, sit beside the answer.
+                    if !message.notFound, !message.imageMatches.isEmpty {
                         Text("Matching photos").font(.caption.bold()).foregroundStyle(.secondary)
                         ImageMatchGrid(matches: message.imageMatches, photos: photos, onOpen: onOpenMatch)
                     }

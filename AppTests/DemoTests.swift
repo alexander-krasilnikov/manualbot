@@ -246,7 +246,8 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
 
     @Test func queryEventsMapToTheirPurpose() {
         func tag(_ purpose: QueryPurpose) -> XrayEventTag { TraceKind.query(QueryTrace(sql: "", purpose: purpose, returnedRows: 0)).tag }
-        #expect(tag(.vector) == .vectorQuery && tag(.keyword) == .keywordQuery && tag(.other) == .otherQuery && tag(.image) == .imageQuery)
+        #expect(tag(.vector) == .vectorQuery && tag(.keyword) == .keywordQuery && tag(.other) == .otherQuery && tag(.image) == .imageQuery
+            && tag(.imageByWords) == .imageByWordsQuery)
     }
 
     @Test func indexLabelsNameTheIndexOrSayThereIsNone() {

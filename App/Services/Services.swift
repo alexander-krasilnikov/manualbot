@@ -9,6 +9,8 @@ struct CoreServices: Sendable {
     let ingestion: IngestionService
     let retriever: Retriever
     let extractor: any DocumentExtractor
+    /// The embedding model that makes every vector in this library from now on.
+    let embedding: EmbeddingModelIdentity
     /// Whether this device can analyze photos. Without it, photo controls are hidden and photo imports are refused.
     var supportsPhotos = true
 }
@@ -39,7 +41,7 @@ enum ServiceError: LocalizedError {
     }
 }
 
-/// The production wiring: Core ML embedder, LiteRT-LM generator, Couchbase Lite.
+/// The production wiring: LiteRT-LM embedder and generator, Couchbase Lite.
 final class LiveServiceFactory: ServiceFactory, @unchecked Sendable {
     private let manifest: ModelManifest
     private let files: FileModelFiles
@@ -47,7 +49,7 @@ final class LiveServiceFactory: ServiceFactory, @unchecked Sendable {
     private let caches: URL
     private let tracer: any Tracer
     private let lock = NSLock()
-    private var embedder: CoreMLEmbedder?
+    private var embedder: LiteRTEmbedder?
     private var generator: LiteRTGenerator?
 
     init(manifest: ModelManifest, files: FileModelFiles, applicationSupport: URL, caches: URL, tracer: any Tracer = NoTracer()) {
@@ -67,35 +69,30 @@ final class LiveServiceFactory: ServiceFactory, @unchecked Sendable {
 
     func makeCore(onProgress: @escaping @Sendable (String) -> Void) async throws -> CoreServices {
         let embedderSpec = try spec(.embedder)
-        let modelURL = files.installedURL(for: embedderSpec)
-        let identity = EmbeddingModelIdentity(id: embedderSpec.id, version: embedderSpec.version, dimensions: 768)
-
-        onProgress("Loading the tokenizer…")
-        let tokenizer = try await GemmaTokenizer(folder: modelURL.deletingLastPathComponent().appendingPathComponent("hf_model"))
-        let embedder = CoreMLEmbedder(modelURL: modelURL, tokenizer: tokenizer, identity: identity)
-        // The first inference after install specializes the model for the Neural Engine, which can take a minute.
-        onProgress("Preparing the search model for this iPad. This happens once and can take a minute…")
+        // The embedder decides the identity of every vector it makes; the manifest only says which file to load.
+        let embedder = LiteRTEmbedder(modelPath: files.installedURL(for: embedderSpec).path, cacheDirectory: caches.path)
+        let identity = embedder.identity
+        // The first use loads the model and compiles its GPU programs, which can take several seconds.
+        onProgress("Preparing the search model…")
         _ = try await embedder.embed(["warm up"], kind: .query)
         lock.withLock { self.embedder = embedder }
 
         onProgress("Opening your library…")
-        // Reading photos uses what the operating system provides; if that is unavailable, photos are left out.
-        let features = try? VisionFeaturePrinter()
         let recognizer = VisionTextRecognizer()
         let repository = try CouchbaseDocumentRepository(
             directory: support.appendingPathComponent("Database", isDirectory: true),
             originalsCache: caches.appendingPathComponent("Originals", isDirectory: true), embedding: identity,
-            imageFeatures: features?.identity ?? CouchbaseSchema.defaultImageFeatures, tracer: tracer)
+            imageFeatures: identity, tracer: tracer)
         let extractor = FileDocumentExtractor()
         let ingestion = IngestionService(
             extractor: extractor, embedder: embedder, repository: repository, jobs: repository,
-            chunker: Chunker(configuration: .embeddingGemma, counter: tokenizer),
-            supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer, imageFeatures: features, recognizer: recognizer)
+            chunker: Chunker(configuration: .embeddingGemma2),
+            supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer, imageFeatures: embedder, recognizer: recognizer)
         let retriever = Retriever(
             embedder: embedder, search: repository, repository: repository, tracer: tracer,
-            photoSearch: features.map { PhotoSearch(features: $0, search: repository, recognizer: recognizer) })
+            photoSearch: PhotoSearch(features: embedder, search: repository, recognizer: recognizer))
         return CoreServices(
-            repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor, supportsPhotos: features != nil)
+            repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor, embedding: identity)
     }
 
     func makeChat(core: CoreServices) async throws -> ChatService {

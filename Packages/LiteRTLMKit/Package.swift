@@ -1,8 +1,8 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
-// A vendored copy of the Swift wrapper from google-ai-edge/LiteRT-LM (Apache-2.0), tag v0.17.1.
-// Upstream's repository keeps files in Git LFS (one object is missing at this tag), which breaks a plain
+// A vendored copy of the Swift wrapper from google-ai-edge/LiteRT-LM (Apache-2.0), tag v0.18.0.
+// Upstream's repository keeps files in Git LFS (one object was missing at v0.17.1), which breaks a plain
 // SwiftPM checkout. The prebuilt binaries below come from GitHub release assets, so vendoring the small
 // wrapper avoids needing git-lfs or special environment variables anywhere.
 let package = Package(
@@ -12,13 +12,13 @@ let package = Package(
   targets: [
     .binaryTarget(
       name: "CLiteRTLM",
-      url: "https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.17.1/CLiteRTLM.xcframework.zip",
-      checksum: "c94fc12aa0403cb47208e419cc3bfe258214ea17035f7a63c16de536869f2186"
+      url: "https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.18.0/CLiteRTLM.xcframework.zip",
+      checksum: "d765b99592d4ec3d0c9e2bd69469454af06c834861340672da1891c0c121c347"
     ),
     .binaryTarget(
       name: "CLiteRTLM_mac",
-      url: "https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.17.1/CLiteRTLM_mac.xcframework.zip",
-      checksum: "83efd536485c9d58fcd7fb7d4556ddb16ca46bb775b0449d08d9825c6836c1a4"
+      url: "https://github.com/google-ai-edge/LiteRT-LM/releases/download/v0.18.0/CLiteRTLM_mac.xcframework.zip",
+      checksum: "5f6ee68d95eeccb084c6e66d5ee47255e3020fa0fb29696dd0301ae26d6cfb4f"
     ),
     .target(
       name: "LiteRTLM",

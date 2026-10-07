@@ -135,46 +135,67 @@ import Testing
     }
 }
 
-@Suite struct BundledFileTests {
+@Suite struct DownloadedModelFileTests {
     private let fx = Fixtures()
 
-    private func spec() -> ModelSpec {
-        ModelSpec(id: "embed", version: "1", role: .embedder, url: URL(string: "https://example.com/src")!, bytes: 1,
-                  sha256: String(repeating: "a", count: 64), fileName: "encoder.mlmodelc", packaging: .bundled)
+    private func spec(_ bytes: Int64) -> ModelSpec {
+        ModelSpec(id: "embeddinggemma-2-text-vision-440m", version: "1", role: .embedder, url: URL(string: "https://example.com/src")!,
+                  bytes: bytes, sha256: String(repeating: "a", count: 64), fileName: "embeddinggemma-2-text-vision-440m.litertlm")
     }
 
-    private func bundle(with model: Bool) throws -> URL {
-        let bundleRoot = fx.url("Resources/BundledModels")
-        if model {
-            let dir = bundleRoot.appendingPathComponent("embed/encoder.mlmodelc", isDirectory: true)
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            try Data("x".utf8).write(to: dir.appendingPathComponent("coremldata.bin"))
-        }
-        return bundleRoot
+    @Test func aDownloadedModelIsInstalledByMovingItIntoItsVersionFolder() throws {
+        let files = FileModelFiles(root: fx.url("Models"))
+        let spec = spec(4)
+        #expect(!files.isInstalled(spec))
+        try files.install(fx.write(Data("abcd".utf8), as: "download.tmp"), for: spec)
+        #expect(files.isInstalled(spec))
+        #expect(files.installedURL(for: spec).path.hasSuffix("embeddinggemma-2-text-vision-440m/1/embeddinggemma-2-text-vision-440m.litertlm"))
+        files.uninstall(spec)
+        #expect(!files.isInstalled(spec))
     }
 
-    @Test func aBundledModelIsFoundInsideTheAppResources() throws {
-        let files = FileModelFiles(root: fx.url("Models"), bundleRoot: try bundle(with: true))
-        #expect(files.isInstalled(spec()))
-        #expect(files.installedURL(for: spec()).path.hasSuffix("BundledModels/embed/encoder.mlmodelc"))
+    @Test func aFileOfTheWrongSizeIsNotInstalled() throws {
+        let files = FileModelFiles(root: fx.url("Models"))
+        try files.install(fx.write(Data("abc".utf8), as: "short.tmp"), for: spec(4))
+        #expect(!files.isInstalled(spec(4)), "a truncated file must not count")
     }
 
-    @Test func aMissingBundledModelIsNotInstalled() throws {
-        #expect(!FileModelFiles(root: fx.url("Models"), bundleRoot: try bundle(with: false)).isInstalled(spec()))
-        #expect(!FileModelFiles(root: fx.url("Models"), bundleRoot: nil).isInstalled(spec()), "no bundle configured")
-    }
-
-    @Test func aBundledModelCannotBeInstalledOrRemoved() throws {
-        let bundleRoot = try bundle(with: true)
-        let files = FileModelFiles(root: fx.url("Models"), bundleRoot: bundleRoot)
-        #expect(throws: ModelInstallError.bundledModel) { try files.install(fx.write(Data("z".utf8), as: "f.zip"), for: spec()) }
-        files.uninstall(spec())
-        #expect(files.isInstalled(spec()), "uninstalling must never delete part of the app bundle")
-    }
-
-    @Test func manifestAcceptsBundledPackaging() throws {
+    @Test func aManifestThatNamesTheRemovedBundledPackagingIsRejected() {
         let hex = String(repeating: "a", count: 64)
         let json = "{\"models\":[{\"id\":\"e\",\"version\":\"1\",\"role\":\"embedder\",\"url\":\"https://x.invalid/e\",\"bytes\":10,\"sha256\":\"\(hex)\",\"fileName\":\"e\",\"packaging\":\"bundled\"},{\"id\":\"g\",\"version\":\"1\",\"role\":\"generator\",\"url\":\"https://x.invalid/g\",\"bytes\":10,\"sha256\":\"\(hex)\",\"fileName\":\"g\"}]}"
-        #expect(try ModelManifest.decode(from: Data(json.utf8)).spec(id: "e")?.packaging == .bundled)
+        #expect(throws: DecodingError.self) { try ModelManifest.decode(from: Data(json.utf8)) }
+    }
+
+    private func put(_ files: FileModelFiles, _ id: String, _ version: String, _ name: String = "model.litertlm") throws {
+        let directory = files.root.appendingPathComponent(id).appendingPathComponent(version)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: directory.appendingPathComponent(name))
+    }
+
+    @Test func modelFilesTheManifestNoLongerListsAreDeletedAndListedOnesKept() throws {
+        let files = FileModelFiles(root: fx.url("Models"))
+        let manifest = ModelManifest(models: [spec(1), ModelSpec(
+            id: "gemma-4-e2b", version: "2", role: .generator, url: URL(string: "https://example.com/g")!, bytes: 1,
+            sha256: String(repeating: "b", count: 64), fileName: "model.litertlm")])
+        try put(files, "embeddinggemma-2-text-vision-440m", "1", "embeddinggemma-2-text-vision-440m.litertlm")   // listed
+        try put(files, "gemma-4-e2b", "2")                                                                      // listed
+        try put(files, "gemma-4-e4b", "1")                                                                      // an earlier language model, no longer listed
+        try put(files, "gemma-4-e2b", "1")                                                                      // an older version of a listed model
+        try put(files, "embeddinggemma-300m", "1")                                                              // the previous embedder
+        try FileManager.default.createDirectory(at: files.root.appendingPathComponent(".unpack-running"), withIntermediateDirectories: true)
+
+        let removed = files.removeUnlisted(keeping: manifest)
+        #expect(removed == ["embeddinggemma-300m", "gemma-4-e2b", "gemma-4-e4b"])
+        func exists(_ path: String) -> Bool { FileManager.default.fileExists(atPath: files.root.appendingPathComponent(path).path) }
+        #expect(exists("embeddinggemma-2-text-vision-440m/1/embeddinggemma-2-text-vision-440m.litertlm"), "listed model kept")
+        #expect(exists("gemma-4-e2b/2/model.litertlm"), "listed version kept")
+        #expect(!exists("gemma-4-e2b/1"), "an older version of a listed model goes")
+        #expect(!exists("gemma-4-e4b") && !exists("embeddinggemma-300m"), "unlisted models go")
+        #expect(exists(".unpack-running"), "an unpacking in progress is not touched")
+        #expect(files.removeUnlisted(keeping: manifest).isEmpty, "a second pass finds nothing")
+    }
+
+    @Test func aMissingModelsFolderIsNotAnError() {
+        #expect(FileModelFiles(root: fx.url("Never-created")).removeUnlisted(keeping: ModelManifest(models: [])).isEmpty)
     }
 }

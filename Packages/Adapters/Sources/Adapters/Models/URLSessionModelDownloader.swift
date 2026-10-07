@@ -52,13 +52,24 @@ public final class URLSessionModelDownloader: NSObject, ModelDownloading, URLSes
 
     /// The production downloader: a background session, so the transfer continues while the app is
     /// suspended and the system can relaunch the app when it completes.
+    ///
+    /// The iOS Simulator is the exception: its background-session daemon fails every HTTPS request with
+    /// "A TLS error caused the secure connection to fail" (-1200), although the same URL works in Safari and in an
+    /// ordinary session (reproduced against Hugging Face on iOS 26), so there the download runs in the app's own session.
     public static func background(identifier: String, staging: URL, resumeStore: URL) -> URLSessionModelDownloader {
+        #if targetEnvironment(simulator)
+        let configuration = URLSessionConfiguration.default
+        configuration.allowsExpensiveNetworkAccess = true
+        configuration.waitsForConnectivity = true
+        return URLSessionModelDownloader(configuration: configuration, staging: staging, resumeStore: resumeStore)
+        #else
         let configuration = URLSessionConfiguration.background(withIdentifier: identifier)
         configuration.isDiscretionary = false          // the user asked for this download
         configuration.sessionSendsLaunchEvents = true
         configuration.allowsExpensiveNetworkAccess = true
         configuration.waitsForConnectivity = true
         return URLSessionModelDownloader(configuration: configuration, staging: staging, resumeStore: resumeStore)
+        #endif
     }
 
     public func invalidate() { session.invalidateAndCancel() }

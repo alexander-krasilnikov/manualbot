@@ -64,6 +64,8 @@ final class AppModel {
                 preparation = .preparing("Starting…")
                 let core = try await factory.makeCore { message in Task { @MainActor in self.preparation = .preparing(message) } }
                 self.core = core
+                // A new embedding model re-indexes the library by itself; the library view runs the queued work.
+                _ = try? await core.ingestion.reindexOutdated(for: core.embedding)
                 demo.xray.inspector = core.repository
                 let retriever = core.retriever
                 library = LibraryViewModel(documents: core.repository, jobs: core.repository, ingestion: core.ingestion) {

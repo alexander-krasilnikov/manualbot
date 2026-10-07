@@ -122,6 +122,23 @@ public actor IngestionService {
         wakeRequested = true
     }
 
+    /// Queues a re-index of every searchable document whose vectors came from a model other than `identity` (the
+    /// installed embedding model), so a change of model needs no action from the user. Until its new passages are
+    /// switched in, a document stays findable by keyword search, and vector search skips its old vectors. Documents
+    /// that already have unfinished work queued are left alone: that work embeds with the installed model. Returns how
+    /// many documents were queued.
+    @discardableResult
+    public func reindexOutdated(for identity: EmbeddingModelIdentity) async throws -> Int {
+        let stale = try await repository.documentIDs(notEmbeddedBy: identity.tag, imageModel: (imageFeatures?.identity ?? identity).tag)
+        var queued = 0
+        for docId in stale {
+            if let job = try await jobs.job(docId: docId), !job.isFinished { continue }
+            try await reindex(docId: docId)
+            queued += 1
+        }
+        return queued
+    }
+
     // MARK: Deleting
 
     /// Removes a document with its passages, stored original and job. If the document is being indexed

@@ -24,14 +24,6 @@ targets:
     platform: iOS
     sources:
       - App
-      # The embedding model ships inside the app: a folder reference is copied into the bundle as-is.
-      - path: BundledModels
-        type: folder
-        optional: true
-    preBuildScripts:
-      - name: Check bundled models
-        script: '"$SRCROOT/scripts/check-bundled-models.sh"'
-        basedOnDependencyAnalysis: false
     dependencies:
       - package: Ports
       - package: Ports

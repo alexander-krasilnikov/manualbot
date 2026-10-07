@@ -8,14 +8,18 @@ import Testing
 ///   RUN_BENCHMARKS=1 swift test --filter ImageBenchmarkTests
 ///   TEST_RUNNER_RUN_BENCHMARKS=1 xcodebuild test ...   (simulator or device)
 ///
-/// Measured on a Mac (Apple silicon, debug build): 5,000 images, first query (index training) 0.15 s, then
-/// p50 29 ms, p95 61 ms, max 68 ms. **Not yet measured on an iPad**: run it on a device before quoting a figure
-/// for the target hardware.
-@Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["RUN_BENCHMARKS"] != nil))
+/// Needs the real model (EMBEDDER_MODEL_PATH): the query photo is embedded by EmbeddingGemma 2 on the GPU, which is most of
+/// the time. Measured on a Mac (Apple silicon, debug build, 2026-10-06): 5,000 images, first query (index training)
+/// 0.32 s, then p50 203 ms, p95 223 ms, max 237 ms (the earlier Vision feature print: p95 61 ms). About 175 ms of that
+/// is embedding the 1024-pixel photo (spike); the index search is a few tens of ms. **Not yet measured on an iPad**:
+/// run it on a device before quoting a figure for the target hardware, where the margin to 300 ms may be thinner.
+@Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["RUN_BENCHMARKS"] != nil
+    && ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] != nil))
 struct ImageBenchmarkTests {
     @Test func photoSearchP95StaysUnderThreeHundredMillisecondsAt5kImages() async throws {
         let imageCount = 5_000, documents = 50
-        let printer = try VisionFeaturePrinter()
+        let printer = LiteRTEmbedder(modelPath: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] ?? "")
+        _ = try await printer.embed(["warm up"], kind: .query)   // loading the model is not part of a search
         let f = try RepoFixture(imageFeatures: printer.identity); defer { Task { await f.cleanUp() } }
         var rng = RetrievalBenchmarkTests.SplitMix(state: 7)
         func unitVector() -> [Float] {
@@ -40,7 +44,7 @@ struct ImageBenchmarkTests {
         }
         let seedTime = ContinuousClock.now - seedStart
 
-        let photo = ImageFeaturePrintSpikeTests.scene(99, size: 1024)         // a phone-photo-sized query
+        let photo = Fixtures.scene(99, size: 1024)         // a phone-photo-sized query
         let filter = SearchFilter(embeddingModel: printer.identity.tag)
 
         // The first query pays for index training; it is reported but not part of the p95.
@@ -60,7 +64,7 @@ struct ImageBenchmarkTests {
         }
         timings.sort()
         let p50 = timings[timings.count / 2], p95 = timings[Int(Double(timings.count) * 0.95) - 1], worst = timings.last!
-        print("IMAGEBENCHMARK images=\(imageCount) seed=\(seedTime) firstQuery(training)=\(warmTime) p50=\(p50)ms p95=\(p95)ms max=\(worst)ms")
+        print("IMAGEBENCHMARK embedder=EmbeddingGemma 2 images=\(imageCount) seed=\(seedTime) firstQuery(training)=\(warmTime) p50=\(p50)ms p95=\(p95)ms max=\(worst)ms")
         #expect(p95 <= 300, "p95 was \(p95) ms")
     }
 }

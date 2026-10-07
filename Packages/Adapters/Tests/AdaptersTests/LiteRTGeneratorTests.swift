@@ -3,7 +3,7 @@ import Ports
 import Testing
 @testable import Adapters
 
-/// Runs against the real Gemma 4 E4B file. Set GENERATOR_MODEL_PATH to `gemma-4-E4B-it.litertlm`.
+/// Runs against a real Gemma 4 file. Set GENERATOR_MODEL_PATH to `gemma-4-E2B-it.litertlm` (the app's model; E4B works too).
 private let modelPath = ProcessInfo.processInfo.environment["GENERATOR_MODEL_PATH"]
 
 @Suite(.serialized, .enabled(if: modelPath != nil))

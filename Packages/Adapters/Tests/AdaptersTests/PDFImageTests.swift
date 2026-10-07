@@ -6,7 +6,7 @@ import Testing
 
 @Suite struct PDFImageTests {
     let fx = Fixtures()
-    let photo = Fixtures.jpegBacked(ImageFeaturePrintSpikeTests.scene(21, size: 320))
+    let photo = Fixtures.jpegBacked(Fixtures.scene(21, size: 320))
     let photoRect = CGRect(x: 100, y: 420, width: 300, height: 250)
 
     private func extract(_ url: URL) async throws -> ExtractedDocument {
@@ -56,7 +56,7 @@ import Testing
     }
 
     @Test func aPictureStoredAsRawSamplesIsDecoded() async throws {
-        let plain = ImageFeaturePrintSpikeTests.scene(22, size: 300)
+        let plain = Fixtures.scene(22, size: 300)
         let url = fx.pdf(layout: [PDFPageSpec(texts: [bodyText], images: [(plain, photoRect)])])
         let image = try #require(try await extract(url).images.first)
         #expect(image.image.width == 300 && image.image.height == 300)
@@ -72,7 +72,7 @@ import Testing
 
     @Test func imagesComeInReadingOrder() async throws {
         let low = CGRect(x: 100, y: 100, width: 200, height: 200), high = CGRect(x: 100, y: 500, width: 200, height: 200)
-        let other = Fixtures.jpegBacked(ImageFeaturePrintSpikeTests.scene(23, size: 320))
+        let other = Fixtures.jpegBacked(Fixtures.scene(23, size: 320))
         let url = fx.pdf(layout: [PDFPageSpec(texts: [bodyText], images: [(photo, low), (other, high)])])
         let images = try await extract(url).images
         #expect(images.count == 2)
@@ -93,8 +93,8 @@ import Testing
     // MARK: 4.5 filters
 
     @Test func logosAndRepeatedPicturesAreNotKept() async throws {
-        let logo = Fixtures.jpegBacked(ImageFeaturePrintSpikeTests.scene(31, size: 100))          // under the size limit
-        let letterhead = Fixtures.jpegBacked(ImageFeaturePrintSpikeTests.scene(32, size: 200))   // big enough, on every page
+        let logo = Fixtures.jpegBacked(Fixtures.scene(31, size: 100))          // under the size limit
+        let letterhead = Fixtures.jpegBacked(Fixtures.scene(32, size: 200))   // big enough, on every page
         let pages = (0..<5).map { _ in
             PDFPageSpec(texts: [bodyText], images: [(logo, CGRect(x: 500, y: 700, width: 60, height: 60)), (letterhead, CGRect(x: 54, y: 740, width: 100, height: 40))])
         }
@@ -104,13 +104,13 @@ import Testing
     }
 
     @Test func aPictureOnFewPagesIsKept() async throws {
-        let figure = Fixtures.jpegBacked(ImageFeaturePrintSpikeTests.scene(33, size: 200))
+        let figure = Fixtures.jpegBacked(Fixtures.scene(33, size: 200))
         let pages = (0..<3).map { _ in PDFPageSpec(texts: [bodyText], images: [(figure, photoRect)]) }
         #expect(try await extract(fx.pdf(layout: pages)).images.count == 3)
     }
 
     @Test func scannedPagesAndTheirLogosYieldNoImagesButStillGiveText() async throws {
-        let logo = Fixtures.jpegBacked(ImageFeaturePrintSpikeTests.scene(34, size: 100))
+        let logo = Fixtures.jpegBacked(Fixtures.scene(34, size: 100))
         let pages = (0..<2).map { _ in
             PDFPageSpec(images: [(logo, CGRect(x: 500, y: 700, width: 60, height: 60))], scannedText: "Hold the reset button")
         }

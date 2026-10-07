@@ -21,19 +21,17 @@ struct AboutView: View {
                 }
                 Section("Models") {
                     notice(
-                        "EmbeddingGemma 300M",
-                        "Built into the app. Gemma is provided under and subject to the Gemma Terms of Use found at ai.google.dev/gemma/terms. Use is also subject to the Gemma Prohibited Use Policy. This copy is a Core ML conversion of Google's model.",
-                        links: [("Gemma Terms of Use", "https://ai.google.dev/gemma/terms"),
-                                ("Prohibited Use Policy", "https://ai.google.dev/gemma/prohibited_use_policy")])
+                        "EmbeddingGemma 2",
+                        "Downloaded once on first use. Licensed under the Apache License 2.0. Finds passages and photos by meaning.",
+                        links: [("Apache License 2.0", "https://www.apache.org/licenses/LICENSE-2.0")])
                     notice(
-                        "Gemma 4 E4B",
+                        "Gemma 4 E2B",
                         "Downloaded once on first use. Licensed under the Apache License 2.0.",
                         links: [("Apache License 2.0", "https://www.apache.org/licenses/LICENSE-2.0")])
                 }
                 Section("Software") {
-                    notice("LiteRT-LM", "Apache License 2.0. Runs the language model.", links: [])
+                    notice("LiteRT-LM", "Apache License 2.0. Runs the embedding model and the language model.", links: [])
                     notice("Couchbase Lite", "Stores your library and search index on this iPad, under Couchbase's licence.", links: [])
-                    notice("swift-transformers", "Apache License 2.0. Tokenizes text for the embedding model.", links: [])
                     notice("ZIPFoundation", "MIT License. Reads Word documents.", links: [])
                 }
             }

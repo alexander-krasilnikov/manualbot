@@ -46,8 +46,8 @@ final class ModelSetupUITests: UITestCase {
     func testFirstLaunchShowsModelsSizesAndStorage() {
         let app = launch()
         waitFor(app.navigationBars["Set up models"], timeout: 5)
-        XCTAssertTrue(app.staticTexts["EmbeddingGemma 300M"].exists)
-        XCTAssertTrue(app.staticTexts["Gemma 4 E4B"].exists)
+        XCTAssertTrue(app.staticTexts["EmbeddingGemma 2"].exists)
+        XCTAssertTrue(app.staticTexts["Gemma 4 E2B"].exists)
         XCTAssertTrue(app.staticTexts["Storage"].exists)
         XCTAssertTrue(app.buttons["startDownload"].isEnabled)
     }
@@ -69,31 +69,48 @@ final class ModelSetupUITests: UITestCase {
         XCTAssertFalse(element(app, "chatInput").isEnabled)
         waitFor(element(app, "chatDisabledReason"))
 
-        app.buttons["retry-gemma-4-e4b"].tap()
+        app.buttons["retry-gemma-4-e2b"].tap()
         waitEnabled(element(app, "chatInput"))
     }
 
-    func testABundledEmbedderMeansNoSetupScreenAndOnlyTheLanguageModelIsDownloaded() {
-        let app = launch("bundled", extra: ["-uiTestSeed"])
-        // Straight to the workspace: importing and searching need nothing to be downloaded.
-        waitFor(app.navigationBars["Library"])
-        XCTAssertFalse(app.navigationBars["Set up models"].exists)
-        XCTAssertFalse(element(app, "chatInput").isEnabled, "chat waits for the language model")
-        waitFor(element(app, "languageModelBanner"))
-        XCTAssertFalse(app.staticTexts["EmbeddingGemma 300M"].exists, "the built-in model is not offered for download")
-        XCTAssertTrue(app.staticTexts["Gemma 4 E4B"].exists)
+    func testASetupScreenOffersTheEmbeddingModelFirstAndImportOnlyAfterIt() {
+        let app = launch(extra: ["-uiTestSeed"])
+        waitFor(app.navigationBars["Set up models"], timeout: 5)
+        // Nothing is built in: both models are listed with their sizes, the embedding model above the language model.
+        let embedder = app.staticTexts["EmbeddingGemma 2"], generator = app.staticTexts["Gemma 4 E2B"]
+        XCTAssertTrue(embedder.exists && generator.exists)
+        XCTAssertLessThan(embedder.frame.minY, generator.frame.minY, "the embedding model is listed and downloaded first")
+        XCTAssertFalse(app.navigationBars["Library"].exists, "no import before the embedding model is installed")
 
         app.buttons["startDownload"].tap()
+        waitFor(app.navigationBars["Library"])
         waitEnabled(element(app, "chatInput"))
     }
 
     func testAboutCarriesTheGemmaNotice() {
-        let app = launch("bundled", extra: ["-uiTestSeed"])
+        let app = launch(extra: ["-uiTestSeed"])
+        app.buttons["startDownload"].tap()
         waitFor(app.navigationBars["Library"])
         element(app, "aboutButton").tap()
-        waitFor(app.staticTexts["EmbeddingGemma 300M"])
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Gemma Terms of Use'")).firstMatch.exists)
-        XCTAssertTrue(app.staticTexts["Gemma 4 E4B"].exists)
+        waitFor(app.staticTexts["EmbeddingGemma 2"])
+        // Each model is named with its licence (both are Apache 2.0, so no Gemma terms apply), and the tokenizer library
+        // that served the earlier embedding model is gone.
+        let apache = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Licensed under the Apache License 2.0'"))
+        XCTAssertEqual(apache.count, 2, "one notice for each model")
+        XCTAssertTrue(app.staticTexts["Gemma 4 E2B"].exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "label == 'Apache License 2.0'")).firstMatch.exists,
+                      "a link to the full terms")
+        XCTAssertFalse(app.staticTexts["swift-transformers"].exists)
+        XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Core ML'")).firstMatch.exists)
+    }
+
+    func testTheSetupScreenSaysTheModelsAreDownloadedOnceAndImportWaitsForTheFirst() {
+        let app = launch()
+        let text = element(app, "setupExplanation")
+        waitFor(text, timeout: 5)
+        XCTAssertTrue(text.label.contains("downloaded once"), text.label)
+        XCTAssertTrue(text.label.contains("search model first"), text.label)
+        XCTAssertTrue(text.label.contains("Nothing can be imported until the search model is installed"), text.label)
     }
 
     func testInsufficientStorageDisablesDownload() {
@@ -195,6 +212,26 @@ final class WorkspaceUITests: UITestCase {
         photo.tap()   // opens the page the photo is on
         waitFor(element(app, "sourcePage"))
         XCTAssertEqual(element(app, "sourcePage").label, "Page 2 of 3")
+    }
+
+    func testATypedQuestionShowsAMatchingPhotoBesideItsAnswer() {
+        let app = readyApp()
+        // No photo is attached: the words alone find the photo by meaning (the stand-in model anchors this phrase to it).
+        ask(app, "Where is the X100 nameplate?")
+        waitFor(element(app, "assistantMessage"), timeout: 15)
+        let match = element(app, "imageMatch-1")
+        waitFor(match)
+        XCTAssertTrue(match.label.contains("Nameplate X100"), match.label)
+        XCTAssertFalse(element(app, "matchesMessage").exists, "it is an answer with a photo beside it, not a photo-only reply")
+        XCTAssertFalse(element(app, "userPhoto").exists)
+        waitFor(element(app, "citation-1"))
+    }
+
+    func testAnAnswerToAnUnrelatedQuestionShowsNoPhoto() {
+        let app = readyApp()
+        ask(app, "How often should I replace the HEPA filter?")
+        waitFor(element(app, "assistantMessage"), timeout: 15)
+        XCTAssertFalse(element(app, "imageMatch-1").exists)
     }
 
     func testAPhotoAndAQuestionTogetherAreAnsweredWithCitations() {

@@ -7,17 +7,20 @@ import Testing
 /// A repository over a throwaway database directory.
 struct RepoFixture {
     static let identity = EmbeddingModelIdentity(id: "test-embedder", version: "1", dimensions: 768)
+    /// The photo model of tests that do not name one: same size as the text stand-in, so `vector(_:)` serves both.
+    static let imageIdentity = EmbeddingModelIdentity(id: "test-image", version: "1", dimensions: 768)
     let root: URL
     let repo: CouchbaseDocumentRepository
 
     init(
-        root: URL? = nil, tracer: any Tracer = NoTracer(), imageFeatures: EmbeddingModelIdentity = CouchbaseSchema.defaultImageFeatures
+        root: URL? = nil, tracer: any Tracer = NoTracer(), embedding: EmbeddingModelIdentity = RepoFixture.identity,
+        imageFeatures: EmbeddingModelIdentity = RepoFixture.imageIdentity
     ) throws {
         self.root = root ?? FileManager.default.temporaryDirectory.appendingPathComponent("repo-\(UUID().uuidString)")
         repo = try CouchbaseDocumentRepository(
             directory: self.root.appendingPathComponent("db"),
             originalsCache: self.root.appendingPathComponent("originals"),
-            embedding: Self.identity, imageFeatures: imageFeatures, tracer: tracer)
+            embedding: embedding, imageFeatures: imageFeatures, tracer: tracer)
     }
 
     func cleanUp() async {

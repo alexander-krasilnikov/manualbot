@@ -20,6 +20,7 @@ public final class FakeModelBackend: ModelDownloading, ModelFiles {
         var discarded: [URL] = []
         var digests: [URL: String] = [:]
         var backupExcluded: Set<String> = []
+        var removedUnlisted: [String] = []
     }
     private let state = Mutex(State())
 
@@ -35,6 +36,7 @@ public final class FakeModelBackend: ModelDownloading, ModelFiles {
     public var downloads: [String] { state.withLock { $0.downloads } }
     public var discarded: [URL] { state.withLock { $0.discarded } }
     public var backupExcluded: Set<String> { state.withLock { $0.backupExcluded } }
+    public var removedUnlisted: [String] { state.withLock { $0.removedUnlisted } }
     public func isInstalledID(_ id: String) -> Bool { state.withLock { $0.installed.contains(id) } }
 
     // ModelDownloading
@@ -76,6 +78,16 @@ public final class FakeModelBackend: ModelDownloading, ModelFiles {
     }
     public func discard(_ file: URL) { state.withLock { $0.discarded.append(file) } }
     public func uninstall(_ spec: ModelSpec) { state.withLock { _ = $0.installed.remove(spec.id) } }
+    @discardableResult
+    public func removeUnlisted(keeping manifest: ModelManifest) -> [String] {
+        let listed = Set(manifest.models.map(\.id))
+        return state.withLock { s in
+            let stale = s.installed.subtracting(listed).sorted()
+            s.installed.subtract(stale)
+            s.removedUnlisted.append(contentsOf: stale)
+            return stale
+        }
+    }
 
     public struct FakeError: Error, LocalizedError {
         let message: String

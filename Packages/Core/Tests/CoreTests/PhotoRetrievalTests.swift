@@ -62,7 +62,7 @@ import Testing
         recognizer: FakeTextRecognizer = FakeTextRecognizer(), tracer: any Tracer = NoTracer()
     ) -> Retriever {
         Retriever(
-            embedder: FakeEmbedder(), search: text, repository: world.repo, tracer: tracer,
+            embedder: FakeEmbedder(), search: text, repository: world.repo, configuration: .standIn, tracer: tracer,
             photoSearch: PhotoSearch(features: features, search: images, recognizer: recognizer))
     }
 
@@ -203,7 +203,7 @@ import Testing
         let images = FakeImageSearch(hits: [ScoredImage(image: w.photoOnPage14, score: 0.1)])
         let recognizer = FakeTextRecognizer(lines: ["MODEL X200-B"])
         let withServices = try await retriever(w, text: text, images: images, recognizer: recognizer).retrieve("how do I descale it")
-        let plain = try await Retriever(embedder: FakeEmbedder(), search: text, repository: w.repo).retrieve("how do I descale it")
+        let plain = try await Retriever(embedder: FakeEmbedder(), search: text, repository: w.repo, configuration: .standIn).retrieve("how do I descale it")
 
         #expect(withServices == plain)
         #expect(images.filters.isEmpty && recognizer.calls.isEmpty)
@@ -213,7 +213,7 @@ import Testing
     @Test func aPhotoIsIgnoredWhenTheRetrieverHasNoPhotoServices() async throws {
         let w = try await world()
         let text = FakeChunkSearch(vectorHits: [scored(chunk("a", 0, page: 14, "Descale the X200 every six months."), 0.3)])
-        let result = try await Retriever(embedder: FakeEmbedder(), search: text, repository: w.repo).retrieve("descale", photo: photo())
+        let result = try await Retriever(embedder: FakeEmbedder(), search: text, repository: w.repo, configuration: .standIn).retrieve("descale", photo: photo())
         #expect(result.photo == nil && result.images.isEmpty && result.relevant)
     }
 

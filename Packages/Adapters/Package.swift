@@ -12,7 +12,6 @@ let package = Package(
         .package(url: "https://github.com/couchbase/couchbase-lite-swift-ee.git", exact: "4.1.2"),
         .package(url: "https://github.com/couchbase/couchbase-lite-vector-search-spm.git", exact: "2.0.0"),
         .package(url: "https://github.com/weichsel/ZIPFoundation.git", exact: "0.9.9"),
-        .package(url: "https://github.com/huggingface/swift-transformers.git", exact: "1.3.4"),
     ],
     targets: [
         .target(
@@ -22,7 +21,6 @@ let package = Package(
                 .product(name: "CouchbaseLiteSwift", package: "couchbase-lite-swift-ee"),
                 .product(name: "CouchbaseLiteVectorSearch", package: "couchbase-lite-vector-search-spm"),
                 .product(name: "ZIPFoundation", package: "ZIPFoundation"),
-                .product(name: "Tokenizers", package: "swift-transformers"),
                 .product(name: "LiteRTLM", package: "LiteRTLMKit"),
             ]),
         .testTarget(

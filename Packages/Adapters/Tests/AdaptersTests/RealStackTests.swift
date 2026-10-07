@@ -4,21 +4,20 @@ import Ports
 import Testing
 @testable import Adapters
 
-/// The whole app pipeline on real parts. Needs both EMBEDDER_MODEL_DIR and GENERATOR_MODEL_PATH.
-private let embedderDir = ProcessInfo.processInfo.environment["EMBEDDER_MODEL_DIR"]
+/// The whole app pipeline on real parts. Needs both EMBEDDER_MODEL_PATH and GENERATOR_MODEL_PATH.
+private let embedderPath = ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"]
 private let generatorPath = ProcessInfo.processInfo.environment["GENERATOR_MODEL_PATH"]
 
-@Suite(.serialized, .enabled(if: embedderDir != nil && generatorPath != nil))
+@Suite(.serialized, .enabled(if: embedderPath != nil && generatorPath != nil))
 struct RealStackTests {
-    static let identity = EmbeddingModelIdentity(id: "embeddinggemma-300m", version: "1", dimensions: 768)
+    static let identity = LiteRTEmbedder.modelIdentity
 
     private let fx = Fixtures()
 
     struct Stack {
         let repo: CouchbaseDocumentRepository
-        let embedder: CoreMLEmbedder
+        let embedder: LiteRTEmbedder
         let generator: LiteRTGenerator
-        let tokenizer: GemmaTokenizer
         let ingestion: IngestionService
         let retriever: Retriever
         let chat: ChatService
@@ -26,17 +25,15 @@ struct RealStackTests {
     }
 
     private func makeStack(_ config: RetrievalConfiguration = .init()) async throws -> Stack {
-        let dir = URL(fileURLWithPath: try #require(embedderDir))
-        let tokenizer = try await GemmaTokenizer(folder: dir.appendingPathComponent("hf_model"))
-        let embedder = CoreMLEmbedder(modelURL: dir.appendingPathComponent("encoder.mlmodelc"), tokenizer: tokenizer, identity: Self.identity)
+        let embedder = LiteRTEmbedder(modelPath: try #require(embedderPath))
         let generator = LiteRTGenerator(modelPath: try #require(generatorPath))
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("stack-\(UUID().uuidString)")
         let repo = try CouchbaseDocumentRepository(directory: root.appendingPathComponent("db"), originalsCache: root.appendingPathComponent("o"), embedding: Self.identity)
         let ingestion = IngestionService(
             extractor: FileDocumentExtractor(), embedder: embedder, repository: repo, jobs: repo,
-            chunker: Chunker(configuration: .embeddingGemma, counter: tokenizer), supportedType: FileDocumentExtractor.documentType(for:))
+            chunker: Chunker(configuration: .embeddingGemma2), supportedType: FileDocumentExtractor.documentType(for:))
         let retriever = Retriever(embedder: embedder, search: repo, repository: repo, configuration: config)
-        return Stack(repo: repo, embedder: embedder, generator: generator, tokenizer: tokenizer, ingestion: ingestion, retriever: retriever,
+        return Stack(repo: repo, embedder: embedder, generator: generator, ingestion: ingestion, retriever: retriever,
                      chat: ChatService(chats: repo, retriever: retriever, generator: generator), root: root)
     }
 

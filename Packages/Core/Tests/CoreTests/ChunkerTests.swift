@@ -38,6 +38,23 @@ private let small = ChunkerConfiguration(targetTokens: 60, maxTokens: 90, overla
         #expect(sizes.allSatisfy { $0 >= small.targetTokens / 2 })
     }
 
+    @Test func embeddingGemma2PassagesStayWithinTheirMaximum() {
+        let config = ChunkerConfiguration.embeddingGemma2
+        let blocks = [
+            Block(text: "Chapter", page: 1, heading: "Chapter"),
+            Block(text: sentences(120, wordsEach: 14), page: 1),
+            Block(text: sentences(90, prefix: "T", wordsEach: 25), page: 2, heading: "Service"),
+            Block(text: String(repeating: "A single sentence with no full stop that keeps going ", count: 80), page: 3),
+        ]
+        let drafts = Chunker(configuration: config).chunk(blocks)
+        #expect(drafts.count > 6)
+        for d in drafts {
+            #expect(counter.count(d.text) <= config.maxTokens, "chunk \(d.ordinal) too big: \(counter.count(d.text))")
+        }
+        let sizes = drafts.filter { $0.page == 1 }.dropLast().map { counter.count($0.text) }
+        #expect(sizes.allSatisfy { $0 >= config.targetTokens / 2 }, "sizes: \(sizes)")
+    }
+
     @Test func ordinalsAreSequentialAcrossThePage() {
         let drafts = Chunker(configuration: small).chunk([
             Block(text: sentences(30), page: 1), Block(text: sentences(30), page: 2),

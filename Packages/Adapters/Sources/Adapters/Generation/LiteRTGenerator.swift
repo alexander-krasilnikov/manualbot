@@ -35,14 +35,17 @@ public final class LiteRTGenerator: Generator, @unchecked Sendable {
     private let cacheDirectory: String
     private let contextTokens: Int
     private let backend: GeneratorBackend
+    private let seed: Int
     private let holder = EngineHolder()
     private let queue = AsyncMutex()
 
     /// - Parameter contextTokens: KV-cache size; must fit the prompt plus the longest answer.
+    /// - Parameter seed: Seeds the sampler, so the same prompt gives the same answer. The answer evaluation depends on it.
     public init(
         modelPath: String, cacheDirectory: String = NSTemporaryDirectory(), contextTokens: Int = 4096,
-        backend: GeneratorBackend = .platformDefault
+        backend: GeneratorBackend = .platformDefault, seed: Int = 0
     ) {
+        self.seed = seed
         self.backend = backend
         self.modelPath = modelPath
         self.cacheDirectory = cacheDirectory
@@ -79,7 +82,7 @@ public final class LiteRTGenerator: Generator, @unchecked Sendable {
     ) async throws {
         let conversation = try await engine.createConversation(with: ConversationConfig(
             systemMessage: Message(request.system, role: .system),
-            samplerConfig: try SamplerConfig(topK: 40, topP: 0.95, temperature: request.temperature)))
+            samplerConfig: try SamplerConfig(topK: 40, topP: 0.95, temperature: request.temperature, seed: seed)))
 
         var produced = ""
         try await withTaskCancellationHandler {

@@ -4,13 +4,16 @@ import Foundation
 import Ports
 import PortsTesting
 
-/// Real database, extraction, ingestion, retrieval and chat logic with a hashing embedder and a scripted
+/// Real database, extraction, ingestion, retrieval and chat logic with a stand-in embedder and a scripted
 /// language model, so UI tests run instantly and offline. Enabled by `-uiTestServices`.
 final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
     struct Options: Sendable {
         var seedDocuments = false
         var slowAnswers = false
     }
+
+    /// The stand-in's distances (hashed words, colour cells) are on their own scale, far above the real model's.
+    static let maxDistance = 0.76
 
     /// Distances between the stand-in image features are on their own scale; see `SamplePhotoMatchTests`.
     static let imageMaxDistance = 0.5
@@ -24,26 +27,32 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
         self.tracer = tracer
     }
 
+    /// Words that find the X100 nameplate photo in the stub, standing in for the real model's shared space.
+    static let nameplatePhrase = "x100 nameplate"
+    /// The stand-in's words-to-photo distances are on their own scale: an anchored question is the photo's own vector.
+    static let textToImageMaxDistance = 0.15
+
     func makeCore(onProgress: @escaping @Sendable (String) -> Void) async throws -> CoreServices {
-        let identity = EmbeddingModelIdentity(id: "stub-embedder", version: "1", dimensions: 768)
-        let embedder = FakeEmbedder(identity: identity)
-        // Text on photos is read by the operating system, so that is real here. How photos look is a stand-in:
-        // the iOS Simulator gives every picture the same Vision feature print, which would make every photo match.
-        let features = FakeImageFeaturer()
+        // One stand-in model for words and photos, like the real one. Which pictures words find is scripted.
+        let nameplate = PhotoData.image(from: SampleDocuments.nameplatePhoto(model: "X100-A", serial: "2208-91", style: .label))
+        let model = FakeJointEmbedder(anchors: nameplate.map { [(Self.nameplatePhrase, $0)] } ?? [])
+        let identity = model.identity
+        // Text on photos is read by the operating system, so that is real here.
         let recognizer = VisionTextRecognizer()
         let repository = try CouchbaseDocumentRepository(
             directory: root.appendingPathComponent("db"), originalsCache: root.appendingPathComponent("originals"),
-            embedding: identity, imageFeatures: features.identity, tracer: tracer)
+            embedding: identity, imageFeatures: identity, tracer: tracer)
         let extractor = FileDocumentExtractor()
         let ingestion = IngestionService(
-            extractor: extractor, embedder: embedder, repository: repository, jobs: repository,
+            extractor: extractor, embedder: model, repository: repository, jobs: repository,
             chunker: Chunker(), supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer,
-            imageFeatures: features, recognizer: recognizer)
+            imageFeatures: model, recognizer: recognizer)
         let retriever = Retriever(
-            embedder: embedder, search: repository, repository: repository,
-            configuration: RetrievalConfiguration(imageMaxDistance: Self.imageMaxDistance), tracer: tracer,
-            photoSearch: PhotoSearch(features: features, search: repository, recognizer: recognizer))
-        let core = CoreServices(repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor)
+            embedder: model, search: repository, repository: repository,
+            configuration: RetrievalConfiguration(
+                maxDistance: Self.maxDistance, imageMaxDistance: Self.imageMaxDistance, textToImageMaxDistance: Self.textToImageMaxDistance),
+            tracer: tracer, photoSearch: PhotoSearch(features: model, search: repository, recognizer: recognizer))
+        let core = CoreServices(repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor, embedding: identity)
         if options.seedDocuments { try await seed(core) }
         return core
     }

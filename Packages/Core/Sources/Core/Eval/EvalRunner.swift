@@ -9,11 +9,42 @@ public struct EvalCase: Codable, Sendable, Equatable {
     public var contains: String?
 
     public var isAnswerable: Bool { doc != nil }
+
+    public init(question: String, doc: String?, contains: String?) {
+        self.question = question
+        self.doc = doc
+        self.contains = contains
+    }
+}
+
+/// A question followed by one that cannot be understood without it ("And how long do I hold it?"). Both have expected
+/// passages. Only the answer evaluation uses these: retrieval alone has no conversation.
+public struct EvalFollowUp: Codable, Sendable, Equatable {
+    public var question: String
+    public var doc: String?
+    public var contains: String?
+    public var followUp: EvalCase
+
+    public init(first: EvalCase, followUp: EvalCase) {
+        question = first.question
+        doc = first.doc
+        contains = first.contains
+        self.followUp = followUp
+    }
+
+    public var first: EvalCase { EvalCase(question: question, doc: doc, contains: contains) }
 }
 
 public struct EvalSuite: Codable, Sendable, Equatable {
     public var documents: [String]
     public var cases: [EvalCase]
+    public var followUps: [EvalFollowUp]?
+
+    public init(documents: [String], cases: [EvalCase], followUps: [EvalFollowUp]? = nil) {
+        self.documents = documents
+        self.cases = cases
+        self.followUps = followUps
+    }
 
     public static func decode(from data: Data) throws -> EvalSuite { try JSONDecoder().decode(EvalSuite.self, from: data) }
 }

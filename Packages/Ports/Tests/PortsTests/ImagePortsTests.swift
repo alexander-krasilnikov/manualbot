@@ -32,6 +32,18 @@ import Testing
 
     // MARK: 2.1 fakes
 
+    @Test func theJointFakeLetsAnchoredWordsFindTheirPictureAndNothingElse() async throws {
+        let model = FakeJointEmbedder(anchors: [(phrase: "red plug", image: Self.picture(7))])
+        let plug = try await model.features(of: Self.picture(7))
+        let other = try await model.features(of: Self.picture(8))
+        let asked = try await model.embed(["Where is the RED PLUG?"], kind: .query)[0]
+        let unrelated = try await model.embed(["how do I reset the unit"], kind: .query)[0]
+        #expect(model.identity.dimensions == plug.count && asked.count == plug.count && unrelated.count == plug.count)
+        #expect(Self.distance(asked, plug) < 0.0001, "the anchored words are the picture's vector")
+        #expect(Self.distance(asked, other) > Self.distance(asked, plug))
+        #expect(Self.distance(unrelated, plug) > 0.2, "other words are not near the picture")
+    }
+
     @Test func fakeFeaturerKeepsARecropCloserThanAnotherPicture() async throws {
         let featurer = FakeImageFeaturer()
         let original = try await featurer.features(of: Self.picture(1))

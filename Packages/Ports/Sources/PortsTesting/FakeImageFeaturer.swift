@@ -11,7 +11,10 @@ public struct FakeImageFeaturer: ImageFeaturing {
         self.identity = identity
     }
 
-    public func features(of image: CGImage) async throws -> [Float] {
+    public func features(of image: CGImage) async throws -> [Float] { Self.vector(of: image) }
+
+    /// The same vector, without waiting; the joint stand-in uses it to anchor words to a picture.
+    static func vector(of image: CGImage) -> [Float] {
         let side = Self.side
         var pixels = [UInt8](repeating: 0, count: side * side * 4)
         pixels.withUnsafeMutableBytes { buffer in

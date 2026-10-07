@@ -7,11 +7,9 @@ public enum ModelInstallError: Error, LocalizedError, Equatable {
     case invalidArchive
     case unsafeArchiveEntry(String)
     case missingEntry(String)
-    case bundledModel
 
     public var errorDescription: String? {
         switch self {
-        case .bundledModel: "This model ships inside the app and cannot be installed."
         case .invalidArchive: "The downloaded archive could not be opened."
         case .unsafeArchiveEntry(let path): "The archive contains an unsafe path (\(path)) and was rejected."
         case .missingEntry(let name): "The archive does not contain the expected model (\(name))."
@@ -23,13 +21,10 @@ public enum ModelInstallError: Error, LocalizedError, Equatable {
 /// Point `root` at Application Support (not visible in the Files app) and it is excluded from backup.
 public struct FileModelFiles: ModelFiles {
     public let root: URL
-    /// Where models that ship inside the app live (`<bundleRoot>/<id>/<fileName>`); the app's resource folder.
-    public let bundleRoot: URL?
     private let availableBytesOverride: (@Sendable () throws -> Int64)?
 
-    public init(root: URL, bundleRoot: URL? = nil, availableBytesOverride: (@Sendable () throws -> Int64)? = nil) {
+    public init(root: URL, availableBytesOverride: (@Sendable () throws -> Int64)? = nil) {
         self.root = root
-        self.bundleRoot = bundleRoot
         self.availableBytesOverride = availableBytesOverride
     }
 
@@ -41,9 +36,6 @@ public struct FileModelFiles: ModelFiles {
     }
 
     public func installedURL(for spec: ModelSpec) -> URL {
-        if spec.packaging == .bundled {
-            return (bundleRoot ?? root).appendingPathComponent(spec.id, isDirectory: true).appendingPathComponent(spec.fileName)
-        }
         return root.appendingPathComponent(spec.id, isDirectory: true)
             .appendingPathComponent(spec.version, isDirectory: true)
             .appendingPathComponent(spec.fileName)
@@ -57,7 +49,6 @@ public struct FileModelFiles: ModelFiles {
     private func marker(for spec: ModelSpec) -> URL { versionDirectory(for: spec).appendingPathComponent(".installed") }
 
     public func isInstalled(_ spec: ModelSpec) -> Bool {
-        if spec.packaging == .bundled { return bundleRoot != nil && FileManager.default.fileExists(atPath: installedURL(for: spec).path) }
         if spec.packaging == .zip {
             let fm = FileManager.default
             return fm.fileExists(atPath: marker(for: spec).path) && fm.fileExists(atPath: installedURL(for: spec).path)
@@ -82,7 +73,6 @@ public struct FileModelFiles: ModelFiles {
     }
 
     public func install(_ file: URL, for spec: ModelSpec) throws {
-        if spec.packaging == .bundled { throw ModelInstallError.bundledModel }
         if spec.packaging == .zip { return try installArchive(file, for: spec) }
         let fm = FileManager.default
         var destination = installedURL(for: spec)
@@ -132,8 +122,31 @@ public struct FileModelFiles: ModelFiles {
 
     public func discard(_ file: URL) { try? FileManager.default.removeItem(at: file) }
 
+    @discardableResult
+    public func removeUnlisted(keeping manifest: ModelManifest) -> [String] {
+        let fm = FileManager.default
+        guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
+        var removed: [String] = []
+        for entry in entries {
+            let name = entry.lastPathComponent
+            // Scratch folders of an unpacking in progress (".unpack-…") belong to a running install; leave them.
+            guard !name.hasPrefix(".") else { continue }
+            let versions = Set(manifest.models.filter { $0.id == name }.map(\.version))
+            if versions.isEmpty {
+                if (try? fm.removeItem(at: entry)) != nil { removed.append(name) }
+                continue
+            }
+            let kept = (try? fm.contentsOfDirectory(at: entry, includingPropertiesForKeys: nil)) ?? []
+            var changed = false
+            for version in kept where !versions.contains(version.lastPathComponent) {
+                if (try? fm.removeItem(at: version)) != nil { changed = true }
+            }
+            if changed { removed.append(name) }
+        }
+        return removed.sorted()
+    }
+
     public func uninstall(_ spec: ModelSpec) {
-        guard spec.packaging != .bundled else { return }  // the app bundle is read-only
         try? FileManager.default.removeItem(at: root.appendingPathComponent(spec.id, isDirectory: true)
             .appendingPathComponent(spec.version, isDirectory: true))
     }

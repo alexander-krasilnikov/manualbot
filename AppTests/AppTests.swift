@@ -30,7 +30,7 @@ import Testing
         let (model, _) = makeModel(llmBehavior: .fail("offline"))
         let observer = Task { await model.observe() }
         await model.start()
-        for _ in 0..<200 where !model.canImport { try? await Task.sleep(for: .milliseconds(5)) }
+        for _ in 0..<400 where !(model.canImport && model.hasFailure) { try? await Task.sleep(for: .milliseconds(5)) }
         #expect(model.canImport)
         #expect(!model.canChat)
         #expect(model.hasFailure)
@@ -49,32 +49,44 @@ import Testing
 }
 
 @Suite struct BundledManifestTests {
-    @Test func theBundledManifestIsValidAndCoversBothRoles() throws {
+    @Test func theBundledManifestIsValidAndBothModelsAreDownloaded() throws {
         let url = try #require(Bundle(for: BundleToken.self).url(forResource: "ModelManifest", withExtension: "json")
             ?? Bundle.main.url(forResource: "ModelManifest", withExtension: "json"))
         let manifest = try ModelManifest.decode(from: Data(contentsOf: url))
         let embedder = try #require(manifest.models.first { $0.role == .embedder })
         let generator = try #require(manifest.models.first { $0.role == .generator })
-        #expect(embedder.packaging == .bundled && embedder.fileName == "encoder.mlmodelc")
+        #expect(embedder.id == "embeddinggemma-2-text-vision-440m" && embedder.packaging == .file)
+        #expect(embedder.fileName == "embeddinggemma-2-text-vision-440m.litertlm")
+        #expect(embedder.bytes == 387_710_976)
+        #expect(embedder.sha256 == "92dcbea108899e5d6e30d919b0744f90d9967e80c67a4ab5503ac16d54f62eb0")
+        #expect(embedder.url.absoluteString == "https://huggingface.co/litert-community/embeddinggemma-2-text-vision-440m-litert-lm/resolve/main/embeddinggemma-2-text-vision-440m.litertlm")
+        #expect(embedder.displayName == "EmbeddingGemma 2")
         #expect(generator.packaging == .file && generator.fileName.hasSuffix(".litertlm"))
-        #expect(generator.bytes == 3_659_530_240)
+        #expect(generator.id == "gemma-4-e2b" && generator.displayName == "Gemma 4 E2B")
+        #expect(generator.bytes == 2_588_147_712)
+        #expect(generator.sha256 == "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c")
+        #expect(generator.fileName == "gemma-4-E2B-it.litertlm")
+        #expect(embedder.identityMatchesTheEmbedder, "the manifest's model is the one `LiteRTEmbedder` makes vectors for")
     }
+
+    @Test func theManifestsEmbedderDownloadsFirstAndImportOpensBeforeTheLanguageModelArrives() async throws {
+        let url = try #require(Bundle.main.url(forResource: "ModelManifest", withExtension: "json"))
+        let manifest = try ModelManifest.decode(from: Data(contentsOf: url))
+        let backend = FakeModelBackend()
+        backend.setBehavior(.suspend, for: "gemma-4-e2b")
+        let store = ModelStore(manifest: manifest, downloader: backend, files: backend, safetyMargin: 0)
+        let task = Task { try await store.start() }
+        while await store.state(of: "embeddinggemma-2-text-vision-440m") != .installed { try await Task.sleep(for: .milliseconds(5)) }
+        #expect(await store.canImport)
+        #expect(await store.canChat == false)
+        task.cancel()
+        _ = try? await task.value
+    }
+}
+
+private extension ModelSpec {
+    /// Whether this entry is the model `LiteRTEmbedder` declares.
+    var identityMatchesTheEmbedder: Bool { id == LiteRTEmbedder.modelIdentity.id && version == LiteRTEmbedder.modelIdentity.version }
 }
 
 private final class BundleToken {}
-
-@Suite struct BundledEmbedderTests {
-    @Test func theEmbeddingModelShipsInsideTheApp() throws {
-        let url = try #require(Bundle.main.url(forResource: "ModelManifest", withExtension: "json"))
-        let manifest = try ModelManifest.decode(from: Data(contentsOf: url))
-        let embedder = try #require(manifest.models.first { $0.role == .embedder })
-        let root = try #require(Bundle.main.resourceURL).appendingPathComponent("BundledModels", isDirectory: true)
-        let files = FileModelFiles(root: FileManager.default.temporaryDirectory, bundleRoot: root)
-
-        #expect(files.isInstalled(embedder), "run ./scripts/fetch-embedder.sh, then xcodegen generate")
-        let model = files.installedURL(for: embedder)
-        #expect(FileManager.default.fileExists(atPath: model.appendingPathComponent("weights/weight.bin").path))
-        // The tokenizer sits next to the model, where the live setup looks for it.
-        #expect(FileManager.default.fileExists(atPath: model.deletingLastPathComponent().appendingPathComponent("hf_model/tokenizer.json").path))
-    }
-}

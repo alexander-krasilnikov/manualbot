@@ -115,6 +115,8 @@ struct XrayEventDetail: View {
             case .imagesWritten(let collection, let count, let blobBytes, let dimensions):
                 Text("\(count) documents in “\(collection)”, each a JSON record with a \(dimensions)-number vector and the photo itself as a blob (\(XrayFormat.bytes(blobBytes)) in all), committed together.")
                     .font(.callout)
+            case .wordsMatchedPhotos(let matches, let best, let threshold):
+                Text(XrayText.wordsMatch(matches: matches, best: best, threshold: threshold)).font(.callout)
             case .photoAnalyzed(let length, let identifiers, let dimensions):
                 LabeledText("Text read from the photo", length == 0 ? "none" : "\(length) characters")
                 LabeledText("Identifiers kept for the search", identifiers.isEmpty ? "none" : identifiers.joined(separator: ", "))
@@ -204,6 +206,7 @@ private struct QueryDetail: View {
                     case .vector: $0.vectorPosition != nil
                     case .keyword: $0.keywordPosition != nil
                     case .image: $0.imagePosition != nil
+                    case .imageByWords: $0.wordsPosition != nil
                     case .other: false
                     }
                 }.count
@@ -234,6 +237,8 @@ private struct FusionDetail: View {
 
     /// The photo column only appears when the question came with a photo.
     private var showsPhotoColumn: Bool { entries.contains { $0.imagePosition != nil } }
+    /// The words column only appears when typed words matched a photo.
+    private var showsWordsColumn: Bool { entries.contains { $0.wordsPosition != nil } }
 
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
@@ -241,6 +246,7 @@ private struct FusionDetail: View {
                 Text("Passage").gridColumnAlignment(.leading).accessibilityIdentifier("xrayFusionTable")
                 Text("Vector"); Text("Keyword")
                 if showsPhotoColumn { Text("Photo") }
+                if showsWordsColumn { Text("Words → photo") }
                 Text("Distance"); Text("Score")
             }
             .font(.caption.weight(.semibold))
@@ -254,6 +260,7 @@ private struct FusionDetail: View {
                     Text(entry.vectorPosition.map { "#\($0 + 1)" } ?? "–")
                     Text(entry.keywordPosition.map { "#\($0 + 1)" } ?? "–")
                     if showsPhotoColumn { Text(entry.imagePosition.map { "#\($0 + 1)" } ?? "–") }
+                    if showsWordsColumn { Text(entry.wordsPosition.map { "#\($0 + 1)" } ?? "–") }
                     Text(entry.distance.map { String(format: "%.3f", $0) } ?? "–")
                     Text(String(format: "%.4f", entry.score))
                 }

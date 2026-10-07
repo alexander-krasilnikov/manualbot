@@ -21,10 +21,15 @@ public struct TraceOperation: Sendable, Equatable, Hashable, Identifiable {
 /// so events from parallel searches land in the right group without passing IDs through the ports.
 public enum TraceContext {
     @TaskLocal public static var operation: TraceOperation?
+    /// Set while the image index is searched with the vector of typed words, so that query is labelled as such.
+    @TaskLocal public static var imageQueryIsWords = false
 }
 
 public enum QueryPurpose: String, Sendable {
-    case vector, keyword, image, other
+    case vector, keyword, image
+    /// The image index searched with the vector of the question's words instead of a photo's.
+    case imageByWords
+    case other
 }
 
 /// One pass of a search over the index: how many rows came back and how many were usable.
@@ -77,14 +82,17 @@ public struct FusionEntry: Sendable, Equatable {
     public var keywordPosition: Int?
     /// Position among the passages reached through the question's photo, `nil` when it had none or did not reach this one.
     public var imagePosition: Int?
+    /// Position among the passages reached through photos that matched the question's words, `nil` when none did.
+    public var wordsPosition: Int?
     public var distance: Double?
     public var score: Double
 
     public init(
         chunkID: String, documentTitle: String, vectorPosition: Int?, keywordPosition: Int?, imagePosition: Int? = nil,
-        distance: Double?, score: Double
+        wordsPosition: Int? = nil, distance: Double?, score: Double
     ) {
         self.imagePosition = imagePosition
+        self.wordsPosition = wordsPosition
         self.chunkID = chunkID
         self.documentTitle = documentTitle
         self.vectorPosition = vectorPosition
@@ -129,6 +137,9 @@ public enum TraceKind: Sendable, Equatable {
     /// The photo attached to a question was read: how much text was found, the identifiers kept from it, and the
     /// size of its feature vector.
     case photoAnalyzed(recognizedLength: Int, identifiers: [String], dimensions: Int)
+    /// Typed words were compared with the library's photos: how many were within the text-to-photo threshold, and the
+    /// closest distance. Matches never make a question relevant on their own.
+    case wordsMatchedPhotos(matches: Int, bestDistance: Double?, threshold: Double)
     /// `firstToken` is `nil` when the model was not called.
     case generation(firstToken: TimeInterval?, skipped: Bool)
 }

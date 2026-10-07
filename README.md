@@ -4,11 +4,16 @@ An iPad app that answers questions about your own documents (PDF, Word, text, ph
 Import documents, and ask in a chat, with words, with a photo, or both. Answers come only from your documents and cite
 the page or section they came from; if the documents don't say, the app says so.
 
-- Search: vector search (EmbeddingGemma 300M, Core ML) plus keyword search, stored in Couchbase Lite.
-- Photos: photos are searched by how they look (Apple's Vision feature print, in a second vector index in the same
-  database) and by the text on them (Vision text recognition). Both come with the operating system: no extra model.
-- Answers: Gemma 4 E4B (LiteRT-LM), constrained to the retrieved passages.
-- Offline: after the language model is downloaded once, nothing needs the network.
+- Search: vector search (EmbeddingGemma 2, 256 dimensions) plus keyword search, stored in Couchbase Lite.
+- Photos: the same model embeds photos into the same space as the text, in a second vector index in the same database, so
+  a photo finds photos that look like it and typed words find photos by meaning ("the red pump"), even uncaptioned ones.
+  The text printed on a photo (a nameplate, say) is read by Apple's Vision text recognition.
+- Answers: Gemma 4 E2B, constrained to the retrieved passages.
+- Runtime: both models run on [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) (GPU on devices and Mac, CPU in the
+  simulator). The one Apple framework left is Vision's text recognition, which reads scanned pages, photos and nameplates:
+  it ships with the operating system, needs no model of its own, and replacing it (a second runtime, hand-written
+  pre- and post-processing) was judged not worth it.
+- Offline: after both models are downloaded once, nothing needs the network.
 - Targets: iPadOS 26 on M4/M5 iPads.
 
 ## Set up
@@ -16,21 +21,27 @@ the page or section they came from; if the documents don't say, the app says so.
 Requirements: Xcode 26 or later, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
 
 ```sh
-./scripts/fetch-embedder.sh   # once: fetches the embedding model that ships inside the app (~330 MB, verified)
 xcodegen generate             # creates ManualBot.xcodeproj from project.yml
 open ManualBot.xcodeproj      # run on an iPad simulator, landscape
 ```
 
-The build fails with instructions if the embedding model has not been fetched.
+Nothing is built into the app. On first launch it needs a network connection to download two models from Hugging Face,
+each verified by checksum: the embedding model (EmbeddingGemma 2, 388 MB) first, so documents can be imported as soon as it
+arrives, then the language model (Gemma 4 E2B, 2.6 GB). Until the embedding model is installed nothing can be imported. If
+a model file is deleted later, the app returns to the setup screen for it and keeps every document and chat. A language model
+that the app no longer lists (the earlier Gemma 4 E4B, 3.7 GB) is deleted at launch.
 
-The language model (3.7 GB) is downloaded from inside the app on first use. In the simulator it runs on the CPU
-(the simulator's Metal cannot run it), so answers are much slower than on an iPad.
+**After an update that changes the embedding model**, every document is re-indexed automatically in the background
+(the library shows "Updating index"), because vectors from different models cannot be compared. Keyword search keeps
+finding the documents meanwhile, and vector and photo search return as each one finishes. Chats and originals are untouched.
+
+In the simulator both models run on the CPU (its Metal cannot run them), so indexing and answers are much slower than on an iPad.
 
 ### Try it without the real models
 
 Add launch arguments in the scheme (Run, Arguments): `-uiTestModelStub happy -uiTestSeed`. This uses the real database,
-extraction, ingestion, retrieval and chat logic with fake models (text on photos is still read by the operating system; how a photo *looks* is a stand-in too), and five sample documents already indexed, including a photo and a manual with a photo in it.
-Other flags: `-uiTestSlow` (slow, stoppable answers). Stub scenarios: `happy`, `bundled`, `llmFailsOnce`, `lowStorage`.
+extraction, ingestion, retrieval and chat logic with stand-in models (text on photos is still read by the operating system; one stand-in model embeds words and photos, and the words "x100 nameplate" are scripted to find the sample nameplate photo), and five sample documents already indexed, including a photo and a manual with a photo in it.
+Other flags: `-uiTestSlow` (slow, stoppable answers). Stub scenarios: `happy`, `llmFailsOnce`, `lowStorage`.
 
 ## Photos
 
@@ -49,16 +60,20 @@ question.
   passages from those pages. Nothing is generated.
 - An answer shows the photos on the pages it cites, and tapping one opens that page.
 
+**Ask with words.** A typed question also searches the photos by meaning, so "where is the drain plug?" finds a photo of
+the drain plug that nobody captioned, and the answer shows it beside the text, with the passages of its page. Matching
+photos only add to the answer: a photo whose look merely resembles the words never makes a question answerable on its own.
+
 Photos are analyzed on the iPad and are never given to the language model: answers still come only from document text.
 A photo kept with a question is stored without its metadata (no location, camera or time).
 
-**On a device only.** Photo similarity needs the system's image model, which the iOS Simulator does not have (it returns the
-same result for every picture). The app checks for this at start-up and leaves photo search off there rather than
-matching everything with everything, so try photos on an iPad, or in stub mode (stand-in features, `-uiTestModelStub`).
+**Simulator.** Photo search works in the simulator too, on the CPU with the real embedding model (about a second per
+photo), or in stub mode with stand-in features (`-uiTestModelStub`).
 
-The distance that counts as "looks like" is `imageMaxDistance` in `RetrievalConfiguration`. It is **provisional**: tuned on
-transformed landscape photographs, not on photos of equipment. Re-tune it with real photos before relying on it (see
-Tests, `IMAGE_EVAL_DIR`).
+The distances that count as a match are `imageMaxDistance` (photo to photo) and `textToImageMaxDistance` (words to photo)
+in `RetrievalConfiguration`. Both are **provisional**: tuned on 14 Wikimedia Commons photos of equipment, where the query is
+a *different* photo of the same kind of thing, not photos taken in the field. Re-tune them with real photos before relying on
+them (see Tests, `IMAGE_EVAL_DIR`).
 
 ## Demo mode (X-ray)
 
@@ -86,7 +101,7 @@ want to talk about relevance.
    passages and their vectors are written in one transaction, and the passage set is made searchable in a second one. The
    indexing job is saved in a collection that never replicates.
 2. **Ask.** "How do I reset the X200?" Open the vector search: one SQL++ query over the same database that holds the
-   documents, the index it used, and the stored passage with its 768-number vector as an ordinary JSON field.
+   documents, the index it used, and the stored passage with its 256-number vector as an ordinary JSON field.
 3. **Exact codes.** "What does error E-042 mean?" Open the keyword search and the merge: a full-text query in the same
    engine, and the two result lists merged by rank. This is why a code and a description both land on the right page.
 4. **Follow-up.** Ask "And the X100?" and show the rewritten standalone query, then an off-topic question and the
@@ -95,6 +110,8 @@ want to talk about relevance.
    "MODEL X200-B" off the plate, finds the manual page whose figure looks like it, and lists that page's passages. In
    X-ray, open the photo analysis, then the image search: a second vector index (`images_vec`) in the same database,
    queried with the same SQL++, and the merge now has a third list. Add "how do I descale it?" to get a cited answer.
+   Then type "where is the nameplate?" with no photo: the question's own vector searches the same photo index (Words → photos
+   search), and a fourth column appears in the merge.
 6. **Offline.** Turn on airplane mode: the network indicator flips and everything above still works and is still traced.
 
 ### If asked: "so filtered vector search is slow?"
@@ -114,32 +131,49 @@ xcodebuild test -project ManualBot.xcodeproj -scheme ManualBot \
   -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'         # app unit and UI tests
 ```
 
-Tests against the real models are skipped unless you point them at the files:
+Tests against the real models are skipped unless you point them at the files (the app downloads its models; to run these
+tests fetch them yourself from the `url` entries in `App/Resources/ModelManifest.json`, into a folder outside the
+repository or into `LocalModels/`, which git ignores):
 
 | Variable | Points at | Enables |
 |---|---|---|
-| `EMBEDDER_MODEL_DIR` | `BundledModels/embeddinggemma-300m` | embedder, retrieval evaluation, large-document tests |
-| `GENERATOR_MODEL_PATH` | `gemma-4-E4B-it.litertlm` | generator and full-pipeline tests |
-| `RUN_BENCHMARKS=1` | | 20,000-passage retrieval benchmark and 5,000-photo search benchmark |
-| `RUN_SPIKES=1` | | the Vision feature print spike (format, ranking, index behaviour) |
-| `IMAGE_EVAL_DIR` | a folder of real photos (below) | photo search evaluation on real photos |
+| `EMBEDDER_MODEL_PATH` | `embeddinggemma-2-text-vision-440m.litertlm` | embedder, retrieval and photo evaluations, large-document tests |
+| `GENERATOR_MODEL_PATH` | `gemma-4-E2B-it.litertlm` | generator, full-pipeline tests, answer evaluation |
+| `ANSWER_EVAL_BASELINE_MODEL_PATH` | `gemma-4-E4B-it.litertlm` | with the two above, runs a baseline model first and prints whether the candidate meets the pass criteria |
+| `ANSWER_EVAL_REPORT`, `ANSWER_EVAL_MODEL` | a Markdown file, a name | save the answer evaluation's report and name the model in it |
+| `RUN_BENCHMARKS=1` | | 20,000-passage retrieval benchmark and 5,000-photo search benchmark (add `EMBEDDER_MODEL_PATH`) |
+| `RUN_SPIKES=1` | | the EmbeddingGemma 2 spike (output size, input limits, templates, latency) |
+| `IMAGE_EVAL_DIR` | a folder of photos (below) | photo and words-to-photo search evaluation on those photos |
 
 For the iOS simulator, prefix the variables with `TEST_RUNNER_`.
 
-The photo evaluation (`ImageEvalTests`) always runs on a generated set, which checks the harness but cannot judge real
-photos. For real ones, point `IMAGE_EVAL_DIR` at a folder with the library's photos in `references/`, new photos of the
-same things (other angle, light, crop) and unrelated photos in `queries/`, and an `eval.json`:
+```sh
+# Retrieval quality (recall, relevance threshold, passage sizes), in Packages/Adapters:
+EMBEDDER_MODEL_PATH=…/embeddinggemma-2-text-vision-440m.litertlm swift test --filter RealEvalTests
+# Answer quality of a language model (31 questions and 6 follow-up pairs), comparing a candidate with the current one:
+EMBEDDER_MODEL_PATH=… GENERATOR_MODEL_PATH=…/gemma-4-E2B-it.litertlm ANSWER_EVAL_BASELINE_MODEL_PATH=…/gemma-4-E4B-it.litertlm \
+  swift test --filter AnswerEvalTests
+```
+
+The photo evaluation (`ImageEvalTests`) always runs on a generated set (procedural scenes and drawn shapes such as "a red
+circle"), which checks the harness but cannot judge real photos. For real ones, point `IMAGE_EVAL_DIR` at a folder with the
+library's photos in `references/`, other photos of the same things (other angle, light, crop) and unrelated photos in
+`queries/`, and an `eval.json` that may also list typed descriptions of the reference photos:
 
 ```json
-{"queries": [{"file": "pump-angle2.jpg", "expected": "pump.jpg"}, {"file": "unrelated.jpg", "expected": null}]}
+{"queries": [{"file": "pump-angle2.jpg", "expected": "pump.jpg"}, {"file": "unrelated.jpg", "expected": null}],
+ "texts": [{"text": "a centrifugal pump", "expected": "pump.jpg"}],
+ "unrelatedTexts": ["a plate of spaghetti"]}
 ```
 
 ```sh
-IMAGE_EVAL_DIR=~/image-eval swift test --filter ImageEvalTests    # in Packages/Adapters; prints recall and a threshold table
+IMAGE_EVAL_DIR=~/image-eval EMBEDDER_MODEL_PATH=…/embeddinggemma-2-text-vision-440m.litertlm \
+  swift test --filter ImageEvalTests    # in Packages/Adapters; prints recall and a threshold table
 ```
 
-It reports the share of query photos whose expected photo is in the top three, and, for each candidate threshold, how
-many matches are kept and how many unrelated photos are rejected. Use it to set `imageMaxDistance`.
+It reports the share of query photos and of descriptions whose expected photo is in the top three, and, for each candidate
+threshold, how many matches are kept and how many unrelated photos or descriptions are rejected. Use it to set
+`imageMaxDistance` and `textToImageMaxDistance`.
 
 The simulator needs an iOS 26 runtime; the app tests above name `iPad Pro 13-inch (M5)`, which is one.
 
@@ -148,6 +182,6 @@ The simulator needs an iOS 26 runtime; the app tests above name `iPad Pro 13-inc
 - `App/`: SwiftUI app (library, chat, source viewer, model setup).
 - `Packages/Ports`: the interfaces between parts, plus test fakes.
 - `Packages/Core`: model-independent logic (chunking, retrieval, chat, ingestion).
-- `Packages/Adapters`: Couchbase Lite, Core ML, LiteRT-LM, extractors, downloader.
+- `Packages/Adapters`: Couchbase Lite, LiteRT-LM (embedding and answers), Vision text recognition, extractors, downloader.
 - `Packages/LiteRTLMKit`: vendored, patched Swift wrapper for LiteRT-LM (see its README).
 - `openspec/`: the change's proposal, specs, design and task list.

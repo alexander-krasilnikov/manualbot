@@ -89,7 +89,7 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
 
 @Suite struct RetrieverTests {
     private func make(
-        _ search: ScriptedSearch, config: RetrievalConfiguration = .init(), tracer: any Tracer = NoTracer()
+        _ search: ScriptedSearch, config: RetrievalConfiguration = .standIn, tracer: any Tracer = NoTracer()
     ) async throws -> Retriever {
         let repo = InMemoryDocumentRepository()
         try await repo.upsert(DocumentRecord(id: "a", title: "Manual A", type: .pdf))

@@ -11,7 +11,7 @@ extension CouchbaseDocumentRepository: ImageSearching {
         let visible = try visibleGenerations(for: filter)
         guard !visible.isEmpty else { return [] }
         return try search(
-            in: collections.images, limit: limit, visible: visible, requireModel: filter.embeddingModel, purpose: .image,
+            in: collections.images, limit: limit, visible: visible, requireModel: filter.embeddingModel, purpose: TraceContext.imageQueryIsWords ? .imageByWords : .image,
             parseID: { ImageRecord.parseID($0).map { ($0.docId, $0.generation) } },
             load: { try Self.image(from: $0) }, model: \.featureModel
         ) { window, parameters in

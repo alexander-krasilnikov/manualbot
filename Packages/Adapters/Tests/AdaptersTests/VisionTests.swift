@@ -46,34 +46,6 @@ private final class FakeCountingRecognizer: TextRecognizing, @unchecked Sendable
     }
 }
 
-@Suite struct VisionFeaturePrinterTests {
-    private func unit(_ v: [Float]) -> Bool { abs(v.reduce(0) { $0 + $1 * $1 }.squareRoot() - 1) < 1e-3 }
-    private func distance(_ a: [Float], _ b: [Float]) -> Float { 1 - zip(a, b).reduce(0) { $0 + $1.0 * $1.1 } }
-
-    @Test func identityNamesTheRevisionAndSize() throws {
-        let printer = try VisionFeaturePrinter()
-        #expect(printer.identity.id == "vision-featureprint")
-        #expect(printer.identity.dimensions == 768)
-        #expect(printer.identity.tag == "vision-featureprint@\(printer.identity.version)/768")
-    }
-
-    @Test func aRecropIsNearerThanAnUnrelatedPhoto() async throws {
-        let printer = try VisionFeaturePrinter()
-        let original = try await printer.features(of: ImageFeaturePrintSpikeTests.scene(11))
-        let reshot = try await printer.features(of: ImageFeaturePrintSpikeTests.scene(11, variant: 2))
-        let other = try await printer.features(of: ImageFeaturePrintSpikeTests.scene(12))
-        #expect(original.count == printer.identity.dimensions && unit(original))
-        #expect(distance(original, reshot) < distance(original, other))
-    }
-
-    @Test func theSamePictureGivesTheSameVector() async throws {
-        let printer = try VisionFeaturePrinter()
-        let a = try await printer.features(of: ImageFeaturePrintSpikeTests.scene(5))
-        let b = try await printer.features(of: ImageFeaturePrintSpikeTests.scene(5))
-        #expect(distance(a, b) < 1e-4)
-    }
-}
-
 @Suite struct ImageExtractorTests {
     let fx = Fixtures()
 

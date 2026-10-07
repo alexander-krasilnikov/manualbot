@@ -68,7 +68,7 @@ private func write(_ data: Data, as name: String) throws -> URL {
         let indexed = DocumentRecord(id: "d", title: "T", type: .pdf, activeGeneration: 1)
         let job = IngestJobRecord(docId: "d", targetGeneration: 1, state: .analyzingImages, progress: 0.4)
         #expect(LibraryViewModel.status(of: fresh, job: job) == .analyzing(0.4))
-        #expect(LibraryViewModel.status(of: indexed, job: job) == .ready)
+        #expect(LibraryViewModel.status(of: indexed, job: job) == .updating(0.4), "searchable from the old index meanwhile")
         #expect(LibraryViewModel.Status.analyzing(0.4).isWorking && !LibraryViewModel.Status.analyzing(0.4).isReady)
     }
 
@@ -288,8 +288,24 @@ private func write(_ data: Data, as name: String) throws -> URL {
         #expect(XrayText.title(for: query) == "Image search" && query.tag == .imageQuery)
     }
 
+    @Test func theWordsToPhotosSearchIsTitledCaptionedAndTraced() {
+        let query = TraceKind.query(QueryTrace(sql: "", purpose: .imageByWords, returnedRows: 3))
+        #expect(XrayText.title(for: query) == "Words → photos search" && query.tag == .imageByWordsQuery)
+        #expect(XrayText.symbol(for: .imageByWordsQuery) != XrayText.symbol(for: .imageQuery) || !XrayText.symbol(for: .imageByWordsQuery).isEmpty)
+        let hit = TraceKind.wordsMatchedPhotos(matches: 2, bestDistance: 0.18, threshold: 0.25)
+        #expect(hit.tag == .wordsMatchedPhotos)
+        #expect(XrayText.title(for: hit) == "2 photos match the words")
+        #expect(XrayText.detail(for: hit) == "closest photo 0.180 ≤ threshold 0.25; the passages beside it were added to the search")
+        let one = TraceKind.wordsMatchedPhotos(matches: 1, bestDistance: 0.1, threshold: 0.25)
+        #expect(XrayText.title(for: one) == "1 photo matches the words")
+        let miss = TraceKind.wordsMatchedPhotos(matches: 0, bestDistance: 0.6, threshold: 0.25)
+        #expect(XrayText.title(for: miss) == "No photo matches the words")
+        #expect(XrayText.detail(for: miss) == "closest photo 0.600 > threshold 0.25, so no photo is shown")
+        #expect(XrayText.detail(for: .wordsMatchedPhotos(matches: 0, bestDistance: nil, threshold: 0.25)) == "the library has no photos to compare with")
+    }
+
     @Test func theImageCaptionsPresentASecondVectorIndexInTheSameDatabase() {
-        let all = [XrayEventTag.imageQuery, .imagesWritten].map { XrayText.caption(for: $0).lowercased() }.joined(separator: " ")
+        let all = [XrayEventTag.imageQuery, .imageByWordsQuery, .imagesWritten].map { XrayText.caption(for: $0).lowercased() }.joined(separator: " ")
         #expect(all.contains("same embedded database") && all.contains("one atomic transaction"))
     }
 }
@@ -319,17 +335,16 @@ private func write(_ data: Data, as name: String) throws -> URL {
         #expect(toFigure < toOther, "the right plate must rank first")
     }
 
-    #if !targetEnvironment(simulator)
-    /// The same claim with the real Vision feature print, which only means something on a device (the simulator gives
-    /// every picture the same vector).
-    @Test func theSampleNameplateIsNearestTheManualFigureUnderVision() async throws {
-        let printer = try VisionFeaturePrinter()
+    /// The same claim with the real embedding model, when `EMBEDDER_MODEL_PATH` points at it (in the simulator:
+    /// `TEST_RUNNER_EMBEDDER_MODEL_PATH`).
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] != nil))
+    func theSampleNameplateIsNearestTheManualFigureUnderTheRealModel() async throws {
+        let printer = LiteRTEmbedder(modelPath: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] ?? "")
         func vector(_ data: Data) async throws -> [Float] { try await printer.features(of: try #require(PhotoData.image(from: data))) }
         let query = try await vector(SampleDocuments.x200Nameplate)
         let toFigure = distance(query, try await printer.features(of: try await figure(cropped: true)))
         let toOther = distance(query, try await vector(SampleDocuments.nameplatePhoto(model: "X100-A", serial: "2208-91", style: .label)))
-        print("SAMPLEPHOTO vision: to the manual's figure \(toFigure), to the X100 label \(toOther)")
+        print("SAMPLEPHOTO real model: to the manual's figure \(toFigure), to the X100 label \(toOther)")
         #expect(toFigure <= RetrievalConfiguration().imageMaxDistance && toFigure < toOther)
     }
-    #endif
 }
