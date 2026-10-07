@@ -186,7 +186,7 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
     @Test func theVectorCaptionPresentsUnfilteredSearchAsADesignChoice() {
         let caption = XrayText.caption(for: .vectorQuery)
         #expect(caption.contains("unfiltered"))
-        #expect(caption.contains("passage ID"))
+        #expect(caption.contains("chunk ID"))
         #expect(caption.contains("re-index"))
     }
 

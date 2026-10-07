@@ -5,7 +5,7 @@ public struct EvalCase: Codable, Sendable, Equatable {
     public var question: String
     /// Title of the document that answers the question; `nil` for questions the documents cannot answer.
     public var doc: String?
-    /// Text that a retrieved passage from `doc` must contain (compared ignoring case).
+    /// Text that a retrieved chunk from `doc` must contain (compared ignoring case).
     public var contains: String?
 
     public var isAnswerable: Bool { doc != nil }
@@ -18,7 +18,7 @@ public struct EvalCase: Codable, Sendable, Equatable {
 }
 
 /// A question followed by one that cannot be understood without it ("And how long do I hold it?"). Both have expected
-/// passages. Only the answer evaluation uses these: retrieval alone has no conversation.
+/// chunks. Only the answer evaluation uses these: retrieval alone has no conversation.
 public struct EvalFollowUp: Codable, Sendable, Equatable {
     public var question: String
     public var doc: String?
@@ -54,9 +54,9 @@ public struct EvalCaseResult: Sendable, Equatable {
     public var bestDistance: Double?
     /// Whether the relevance gate passed at the retriever's configured threshold.
     public var relevant: Bool
-    /// An identifier in the question appears verbatim in a top passage, which passes the gate at any threshold.
+    /// An identifier in the question appears verbatim in a top chunk, which passes the gate at any threshold.
     public var codeMatch: Bool
-    /// Position (from 1) of the first passage from the expected document containing the expected text.
+    /// Position (from 1) of the first chunk from the expected document containing the expected text.
     public var hitRank: Int?
     public var topDocuments: [String]
 
@@ -75,7 +75,7 @@ public struct EvalReport: Sendable {
     var answerable: [EvalCaseResult] { results.filter { $0.testCase.isAnswerable } }
     var unanswerable: [EvalCaseResult] { results.filter { !$0.testCase.isAnswerable } }
 
-    /// Share of answerable questions whose answer passage is among the returned passages.
+    /// Share of answerable questions whose answer chunk is among the returned chunks.
     public var recall: Double { Self.ratio(answerable.filter(\.hit).count, answerable.count) }
     /// Share of answerable questions the relevance gate lets through (the rest would be wrongly refused).
     public var answerRate: Double { Self.ratio(answerable.filter(\.relevant).count, answerable.count) }
@@ -123,16 +123,16 @@ public struct EvalRunner: Sendable {
             let retrieval = try await retriever.retrieve(testCase.question)
             let terms = QueryTerms.keywords(from: testCase.question)
             let codes = QueryTerms.codes(in: terms)
-            let top = retrieval.passages.prefix(retriever.configuration.suggestionCount)
+            let top = retrieval.chunks.prefix(retriever.configuration.suggestionCount)
             let codeMatch = !codes.isEmpty && top.contains { p in codes.contains { QueryTerms.contains(p.chunk.text, code: $0) } }
 
             var hitRank: Int?
             if let doc = testCase.doc, let needle = testCase.contains?.lowercased() {
-                hitRank = retrieval.passages.firstIndex { $0.documentTitle == doc && $0.chunk.text.lowercased().contains(needle) }.map { $0 + 1 }
+                hitRank = retrieval.chunks.firstIndex { $0.documentTitle == doc && $0.chunk.text.lowercased().contains(needle) }.map { $0 + 1 }
             }
             results.append(EvalCaseResult(
                 testCase: testCase, bestDistance: retrieval.bestDistance, relevant: retrieval.relevant, codeMatch: codeMatch,
-                hitRank: hitRank, topDocuments: retrieval.passages.map(\.documentTitle)))
+                hitRank: hitRank, topDocuments: retrieval.chunks.map(\.documentTitle)))
         }
         return EvalReport(results: results, resultLimit: retriever.configuration.resultLimit, threshold: retriever.configuration.maxDistance)
     }

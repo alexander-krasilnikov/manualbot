@@ -125,7 +125,7 @@ private func makeService(
         #expect(try await repo.jobs().isEmpty)
     }
 
-    @Test func passagesOnlyBecomeSearchableTogether() async throws {
+    @Test func chunksOnlyBecomeSearchableTogether() async throws {
         let repo = InMemoryDocumentRepository()
         let embedder = SpyEmbedder(repo: repo)
         let service = makeService(repo: repo, extractor: FakeExtractor(results: ["a.txt": .success(document())]), embedder: embedder)
@@ -247,7 +247,7 @@ private func makeService(
         #expect(progress.last == 1)
     }
 
-    @Test func reindexingKeepsOldPassagesUntilTheNewSetIsReady() async throws {
+    @Test func reindexingKeepsOldChunksUntilTheNewSetIsReady() async throws {
         let repo = InMemoryDocumentRepository()
         let extractor = FakeExtractor(results: ["a.txt": .success(document())])
         let service = makeService(repo: repo, extractor: extractor)
@@ -340,7 +340,7 @@ private func waitUntil(_ timeout: Duration = .seconds(5), _ condition: () async 
         #expect(try await repo.documents().isEmpty)
     }
 
-    @Test func deletingAReadyDocumentRemovesItsPassages() async throws {
+    @Test func deletingAReadyDocumentRemovesItsChunks() async throws {
         let repo = InMemoryDocumentRepository()
         let service = makeService(repo: repo, extractor: FakeExtractor(results: ["a.txt": .success(document())]))
         let id = try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/a.txt"))
@@ -370,7 +370,7 @@ private func waitUntil(_ timeout: Duration = .seconds(5), _ condition: () async 
         await run.value
 
         #expect(try await repo.document(id: first) == nil)
-        #expect(try await repo.chunks(docId: first, generation: 1).isEmpty, "no passages may be left behind")
+        #expect(try await repo.chunks(docId: first, generation: 1).isEmpty, "no chunks may be left behind")
         #expect(try await repo.job(docId: first) == nil)
         // The queue carries on with the next document.
         #expect(try await repo.job(docId: second)?.state == .ready)

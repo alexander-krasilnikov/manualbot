@@ -17,7 +17,7 @@ import Testing
             batchSize: 4, supportedType: FileDocumentExtractor.documentType(for:))
     }
 
-    @Test func docxAndPdfBecomeSearchablePassagesInCouchbase() async throws {
+    @Test func docxAndPdfBecomeSearchableChunksInCouchbase() async throws {
         let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
         let sentences = (0..<25).map { "Step \($0) says to check valve number \($0) carefully." }.joined(separator: " ")
         let docx = fx.docx(body: Fixtures.paragraph("Maintenance", style: "Heading1") + Fixtures.paragraph(sentences),
@@ -54,7 +54,7 @@ import Testing
     @Test func aCorruptFileFailsAndTheNextOneStillIndexes() async throws {
         let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
         let bad = fx.write(Data("not a pdf".utf8), as: "broken.pdf")
-        let good = fx.write(Data("A readable text file with enough words to make a passage.".utf8), as: "ok.txt")
+        let good = fx.write(Data("A readable text file with enough words to make a chunk.".utf8), as: "ok.txt")
         let service = makeService(f)
         let badID = try await service.enqueue(fileURL: bad)
         let goodID = try await service.enqueue(fileURL: good)

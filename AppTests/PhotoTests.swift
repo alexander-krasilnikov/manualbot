@@ -85,7 +85,7 @@ private func write(_ data: Data, as name: String) throws -> URL {
 
 // MARK: - Chat
 
-/// Manual "Service" has a photo on page 3 beside a text passage. Searches and image matches are scripted.
+/// Manual "Service" has a photo on page 3 beside a text chunk. Searches and image matches are scripted.
 @MainActor private struct PhotoChatHarness {
     let repo = InMemoryDocumentRepository()
     let search = FakeChunkSearch()
@@ -171,14 +171,14 @@ private func write(_ data: Data, as name: String) throws -> URL {
         #expect(await h.model.photos.attachment(h.model.messages[0]) == nil)
     }
 
-    @Test func thePhotosOnACitedPageAreFoundByPageHeadingAndPassage() async throws {
+    @Test func thePhotosOnACitedPageAreFoundByPageHeadingAndChunk() async throws {
         let h = try await PhotoChatHarness()
         func citation(page: Int? = nil, heading: String? = nil, imageId: String? = nil) -> Citation {
             Citation(n: 1, chunkId: "c", docId: "doc", docTitle: "Service", page: page, heading: heading, snippet: "", imageId: imageId)
         }
         #expect(await h.model.photos.cited(citation(page: 3)).map(\.id) == [h.photo.id])
         #expect(await h.model.photos.cited(citation(heading: "Maintenance")).map(\.id) == [h.photo.id])
-        #expect(await h.model.photos.cited(citation(page: 9, imageId: h.photo.id)).map(\.id) == [h.photo.id], "a cited photo passage shows its photo")
+        #expect(await h.model.photos.cited(citation(page: 9, imageId: h.photo.id)).map(\.id) == [h.photo.id], "a cited photo chunk shows its photo")
         #expect(await h.model.photos.cited(citation(page: 9)).isEmpty)
         #expect(await h.model.photos.cited(citation(heading: "")).isEmpty)
     }
@@ -231,7 +231,7 @@ private func write(_ data: Data, as name: String) throws -> URL {
         guard case .text(_, _, let highlighted) = model.content else { Issue.record("expected text"); return }
         #expect(highlighted == [2])
 
-        // A plain citation with no passage text marks nothing.
+        // A plain citation with no chunk text marks nothing.
         await model.open(Citation(n: 1, chunkId: "w:1:5", docId: "w", docTitle: "Guide", heading: "Installation", snippet: ""))
         guard case .text(_, _, let none) = model.content else { Issue.record("expected text"); return }
         #expect(none.isEmpty)
@@ -244,7 +244,7 @@ private func write(_ data: Data, as name: String) throws -> URL {
         try await repo.attachOriginal(fileURL: pdf, contentType: "application/pdf", to: "s")
         let model = SourceViewerModel(documents: repo, extractor: FileDocumentExtractor())
         await model.open(Citation(n: 0, chunkId: "", docId: "s", docTitle: "Service", page: 2, snippet: "", imageId: "s:1:img:0"))
-        #expect(model.content == .pdf(url: pdf, page: 2, passage: "", title: "Service"))
+        #expect(model.content == .pdf(url: pdf, page: 2, chunk: "", title: "Service"))
     }
 }
 
@@ -266,11 +266,11 @@ private func write(_ data: Data, as name: String) throws -> URL {
 
     @Test func activationAndDeletionCountPhotosOnlyWhenThereAreSome() {
         #expect(XrayText.detail(for: .generationActivated(docId: "d", generation: 2, removed: 3, removedImages: 2))
-            == "removed 3 passages and 2 photos from the older set in the same transaction")
-        #expect(XrayText.detail(for: .generationActivated(docId: "d", generation: 2, removed: 3)) == "removed 3 passages from the older set in the same transaction")
+            == "removed 3 chunks and 2 photos from the older set in the same transaction")
+        #expect(XrayText.detail(for: .generationActivated(docId: "d", generation: 2, removed: 3)) == "removed 3 chunks from the older set in the same transaction")
         #expect(XrayText.detail(for: .generationActivated(docId: "d", generation: 1, removed: 0)) == "nothing to remove")
-        #expect(XrayText.detail(for: .documentDeleted(docId: "d", passagesRemoved: 1, imagesRemoved: 1)) == "1 passage and 1 photo removed in the same transaction")
-        #expect(XrayText.detail(for: .documentDeleted(docId: "d", passagesRemoved: 2)) == "2 passages removed in the same transaction")
+        #expect(XrayText.detail(for: .documentDeleted(docId: "d", chunksRemoved: 1, imagesRemoved: 1)) == "1 chunk and 1 photo removed in the same transaction")
+        #expect(XrayText.detail(for: .documentDeleted(docId: "d", chunksRemoved: 2)) == "2 chunks removed in the same transaction")
     }
 
     @Test func theRelevanceTextExplainsAPassOnAnImage() {
@@ -295,7 +295,7 @@ private func write(_ data: Data, as name: String) throws -> URL {
         let hit = TraceKind.wordsMatchedPhotos(matches: 2, bestDistance: 0.18, threshold: 0.25)
         #expect(hit.tag == .wordsMatchedPhotos)
         #expect(XrayText.title(for: hit) == "2 photos match the words")
-        #expect(XrayText.detail(for: hit) == "closest photo 0.180 ≤ threshold 0.25; the passages beside it were added to the search")
+        #expect(XrayText.detail(for: hit) == "closest photo 0.180 ≤ threshold 0.25; the chunks beside it were added to the search")
         let one = TraceKind.wordsMatchedPhotos(matches: 1, bestDistance: 0.1, threshold: 0.25)
         #expect(XrayText.title(for: one) == "1 photo matches the words")
         let miss = TraceKind.wordsMatchedPhotos(matches: 0, bestDistance: 0.6, threshold: 0.25)

@@ -142,7 +142,7 @@ final class WorkspaceUITests: UITestCase {
         XCTAssertGreaterThanOrEqual(ready.count, 2)
     }
 
-    func testAnswerCitesASourceThatOpensWithTheHighlightedPassage() {
+    func testAnswerCitesASourceThatOpensWithTheHighlightedChunk() {
         let app = readyApp()
         ask(app, "How do I reset the X200?")
 
@@ -153,7 +153,7 @@ final class WorkspaceUITests: UITestCase {
         waitFor(citation)
 
         citation.tap()
-        waitFor(element(app, "highlightedPassage"))
+        waitFor(element(app, "highlightedChunk"))
         XCTAssertEqual(element(app, "sourceTitle").label, "X200 Manual")
     }
 
@@ -240,7 +240,7 @@ final class WorkspaceUITests: UITestCase {
         waitFor(element(app, "citation-1"))
     }
 
-    func testCitingAPdfOpensTheCitedPageWithTheHighlightedPassage() {
+    func testCitingAPdfOpensTheCitedPageWithTheHighlightedChunk() {
         let app = readyApp()
         ask(app, "How often should I replace the HEPA filter?")
         let source = element(app, "citation-1")
@@ -255,10 +255,10 @@ final class WorkspaceUITests: UITestCase {
         let cited = sourceLabel.components(separatedBy: "page ").last?.prefix(while: \.isNumber) ?? ""
         XCTAssertFalse(cited.isEmpty, sourceLabel)
         XCTAssertEqual(element(app, "sourcePage").label, "Page \(cited) of 3")
-        waitFor(element(app, "passageHighlighted"))
+        waitFor(element(app, "chunkHighlighted"))
     }
 
-    func testCitationToADeletedDocumentShowsTheStoredPassage() {
+    func testCitationToADeletedDocumentShowsTheStoredChunk() {
         let app = readyApp()
         ask(app, "How do I reset the X200?")
         waitFor(element(app, "citation-1"), timeout: 15)
@@ -274,7 +274,7 @@ final class WorkspaceUITests: UITestCase {
 
         element(app, "citation-1").tap()
         waitFor(element(app, "documentDeleted"))
-        waitFor(element(app, "highlightedPassage"))
+        waitFor(element(app, "highlightedChunk"))
     }
 
     func testCitationsStillOpenInPortrait() {
@@ -284,7 +284,7 @@ final class WorkspaceUITests: UITestCase {
         let citation = element(app, "citation-1")
         waitFor(citation, timeout: 15)
         citation.tap()
-        waitFor(element(app, "highlightedPassage"))   // the source column is reachable in the collapsed layout
+        waitFor(element(app, "highlightedChunk"))   // the source column is reachable in the collapsed layout
     }
 
     func testOffTopicQuestionIsRefusedWithSuggestions() {
@@ -292,7 +292,7 @@ final class WorkspaceUITests: UITestCase {
         ask(app, "Tell me about quantum computing")
         waitFor(element(app, "notFoundMessage"), timeout: 15)
         XCTAssertTrue(element(app, "notFoundMessage").label.contains("couldn't find"))
-        XCTAssertTrue(element(app, "citation-1").exists, "closest passages should be offered")
+        XCTAssertTrue(element(app, "citation-1").exists, "closest chunks should be offered")
     }
 
     func testStoppingKeepsThePartialAnswerMarkedStopped() {

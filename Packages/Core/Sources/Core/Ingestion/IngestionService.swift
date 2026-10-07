@@ -21,9 +21,9 @@ public enum IngestionError: Error, Equatable, LocalizedError {
     }
 }
 
-/// Turns imported files into searchable, citable passages. Work is a persistent queue of jobs that
+/// Turns imported files into searchable, citable chunks. Work is a persistent queue of jobs that
 /// resumes after the app is killed: chunk IDs are deterministic, so redoing a batch overwrites it
-/// rather than duplicating it, and a document's passages only become visible in one atomic switch.
+/// rather than duplicating it, and a document's chunks only become visible in one atomic switch.
 public actor IngestionService {
     private let extractor: any DocumentExtractor
     private let embedder: any Embedder
@@ -110,7 +110,7 @@ public actor IngestionService {
         }
     }
 
-    /// Builds a complete new set of passages. The document stays searchable from its current set
+    /// Builds a complete new set of chunks. The document stays searchable from its current set
     /// until the new one is ready and switched in.
     public func reindex(docId: String) async throws {
         guard let document = try await repository.document(id: docId) else { throw IngestionError.documentNotFound(docId) }
@@ -123,7 +123,7 @@ public actor IngestionService {
     }
 
     /// Queues a re-index of every searchable document whose vectors came from a model other than `identity` (the
-    /// installed embedding model), so a change of model needs no action from the user. Until its new passages are
+    /// installed embedding model), so a change of model needs no action from the user. Until its new chunks are
     /// switched in, a document stays findable by keyword search, and vector search skips its old vectors. Documents
     /// that already have unfinished work queued are left alone: that work embeds with the installed model. Returns how
     /// many documents were queued.
@@ -141,8 +141,8 @@ public actor IngestionService {
 
     // MARK: Deleting
 
-    /// Removes a document with its passages, stored original and job. If the document is being indexed
-    /// right now, indexing stops after the current batch and then everything is removed, so no passages
+    /// Removes a document with its chunks, stored original and job. If the document is being indexed
+    /// right now, indexing stops after the current batch and then everything is removed, so no chunks
     /// are left behind.
     public func delete(docId: String) async throws {
         if activeDocID == docId {
@@ -349,7 +349,7 @@ public actor IngestionService {
 
     /// Reads each image on the device (text in it, similarity vector, a display copy) and stores it. Images are
     /// stored in batches under deterministic IDs, so an interrupted job continues from `nextImage` and never
-    /// leaves a second copy. Returns one passage per stored image, so images can be found by their words too.
+    /// leaves a second copy. Returns one chunk per stored image, so images can be found by their words too.
     /// An image that cannot be analyzed is skipped; it never fails the document.
     private func analyzeImages(
         _ images: [ExtractedImage], of document: DocumentRecord, firstOrdinal: Int, job: inout IngestJobRecord
@@ -387,7 +387,7 @@ public actor IngestionService {
         return try await repository.images(docId: job.docId, generation: generation).enumerated().map { offset, image in
             ChunkDraft(
                 ordinal: firstOrdinal + offset, page: image.page, heading: image.heading,
-                text: ImagePassage.text(for: image, title: document.title, chunker: chunker), imageId: image.id)
+                text: ImageChunk.text(for: image, title: document.title, chunker: chunker), imageId: image.id)
         }
     }
 
@@ -430,7 +430,7 @@ public actor IngestionService {
             try await checkpoint(job.docId)
             let end = min(start + batchSize, drafts.count)
             let batch = Array(drafts[start..<end])
-            let vectors = try await embedder.embed(batch.map(\.text), kind: .passage(title: document.title))
+            let vectors = try await embedder.embed(batch.map(\.text), kind: .chunk(title: document.title))
             guard vectors.count == batch.count, vectors.allSatisfy({ $0.count == identity.dimensions }) else {
                 throw IngestionError.embeddingMismatch(expected: identity.dimensions, got: vectors.first?.count ?? vectors.count)
             }

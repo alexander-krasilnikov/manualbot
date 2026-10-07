@@ -2,11 +2,11 @@
 import Foundation
 import Ports
 
-/// Search over the passages of each ready document's active generation.
+/// Search over the chunks of each ready document's active generation.
 ///
 /// The index queries run with no `WHERE` clause on purpose. With one, Couchbase Lite must read every
 /// candidate row to evaluate it (a vector query then scans all vectors; a full-text query parses every
-/// match), which cost 160-330 ms at 20,000 passages against a few milliseconds without. Chunk IDs encode
+/// match), which cost 160-330 ms at 20,000 chunks against a few milliseconds without. Chunk IDs encode
 /// `docId:generation:ordinal`, so visibility is checked from the ID alone; the query fetches extra
 /// candidates and retries with a larger window if too few survive.
 extension CouchbaseDocumentRepository: ChunkSearching {

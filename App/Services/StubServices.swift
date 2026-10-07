@@ -96,7 +96,7 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
     }
 }
 
-/// Answers from the first numbered passage and cites it; rewrites follow-ups to themselves.
+/// Answers from the first numbered chunk and cites it; rewrites follow-ups to themselves.
 struct StubGenerator: Generator {
     var slow = false
 

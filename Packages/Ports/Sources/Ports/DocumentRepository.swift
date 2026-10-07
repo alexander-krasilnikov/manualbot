@@ -35,7 +35,7 @@ public protocol DocumentRepository: Sendable {
     /// or `nil` if the document has none.
     func originalFileURL(docId: String) async throws -> URL?
 
-    /// IDs of the documents whose active generation holds a passage embedded by a model other than `textModel`, or an image
+    /// IDs of the documents whose active generation holds a chunk embedded by a model other than `textModel`, or an image
     /// whose vector came from a model other than `imageModel` (both are model tags). Documents without an active generation
     /// are not included: they have nothing searchable yet.
     func documentIDs(notEmbeddedBy textModel: String, imageModel: String) async throws -> [String]

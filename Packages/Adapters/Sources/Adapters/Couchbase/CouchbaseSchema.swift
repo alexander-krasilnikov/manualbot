@@ -24,11 +24,11 @@ public enum CouchbaseSchema {
 
     /// Vector dimension and index parameters (design D5).
     public static let centroids: UInt32 = 64
-    /// Photo libraries are far smaller than passage sets. A spike (since removed with the Vision feature print) found 8 and 16
+    /// Photo libraries are far smaller than chunk sets. A spike (since removed with the Vision feature print) found 8 and 16
     /// centroids equally accurate from 10 to 1,000 images.
     public static let imageCentroids: UInt32 = 8
 
-    /// The feature model assumed when none is given: photos share the embedding model of the passages.
+    /// The feature model assumed when none is given: photos share the embedding model of the chunks.
     public static let defaultImageFeatures = LiteRTEmbedder.modelIdentity
 
     struct Collections {

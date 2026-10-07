@@ -5,7 +5,7 @@ import Testing
 @testable import Core
 
 @Suite struct RankFusionTests {
-    @Test func aPassageFoundByBothListsRanksFirst() {
+    @Test func aChunkFoundByBothListsRanksFirst() {
         // "shared" is 2nd in one list and 3rd in the other; "only-v" is 1st in just one.
         let fused = RankFusion.fuse([["only-v", "shared", "v3"], ["k1", "k2", "shared"]], limit: 10)
         #expect(fused.first?.id == "shared")
@@ -99,13 +99,13 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
 
     // MARK: Tracing
 
-    @Test func fusionEventShowsWhereEachSearchFoundThePassage() async throws {
+    @Test func fusionEventShowsWhereEachSearchFoundTheChunk() async throws {
         let search = ScriptedSearch()
-        let shared = chunk("a", 2, "shared passage")
+        let shared = chunk("a", 2, "shared chunk")
         search.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "v only"), score: 0.1), ScoredChunk(chunk: shared, score: 0.2)]
         search.keywordHits = [ScoredChunk(chunk: chunk("b", 0, "k only"), score: 1), ScoredChunk(chunk: shared, score: 2)]
         let tracer = RecordingTracer()
-        _ = try await make(search, tracer: tracer).retrieve("passage")
+        _ = try await make(search, tracer: tracer).retrieve("chunk")
 
         let fusion = try #require(tracer.kinds.compactMap { kind -> (String, Double, [FusionEntry])? in
             if case .fusion(let method, let k, let entries) = kind { return (method, k, entries) }
@@ -122,7 +122,7 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
         #expect(fusion.2.first?.chunkID == shared.id, "the entries keep the fused order")
     }
 
-    @Test func aCodeFoundInATopPassageIsNamedInTheRelevanceEvent() async throws {
+    @Test func aCodeFoundInATopChunkIsNamedInTheRelevanceEvent() async throws {
         let search = ScriptedSearch()
         search.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "Something else entirely."), score: 0.95)]
         search.keywordHits = [ScoredChunk(chunk: chunk("b", 4, "Error E-042 means the motor overheated."), score: 1)]
@@ -179,8 +179,8 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
         let result = try await make(search).retrieve("how do I reset it")
         #expect(result.relevant)
         #expect(result.bestDistance == 0.2)
-        #expect(result.passages.first?.documentTitle == "Manual A")
-        #expect(result.passages.first?.distance == 0.2)
+        #expect(result.chunks.first?.documentTitle == "Manual A")
+        #expect(result.chunks.first?.distance == 0.2)
     }
 
     @Test func distantMatchesAreNotRelevantButStillOfferedAsSuggestions() async throws {
@@ -199,10 +199,10 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
         let result = try await make(search).retrieve("what does E-042 mean")
         #expect(result.relevant, "an exact code match should count")
         #expect(result.bestDistance == 0.95)
-        #expect(result.passages.contains { $0.chunk.text.contains("E-042") })
+        #expect(result.chunks.contains { $0.chunk.text.contains("E-042") })
     }
 
-    @Test func aCodeThatIsNotInTheTopPassagesDoesNotBypass() async throws {
+    @Test func aCodeThatIsNotInTheTopChunksDoesNotBypass() async throws {
         let search = ScriptedSearch()
         search.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "Nothing about that."), score: 0.95)]
         search.keywordHits = [ScoredChunk(chunk: chunk("b", 1, "Error E-0421 is different."), score: 1)]
@@ -221,7 +221,7 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
     @Test func emptyLibraryIsNotRelevant() async throws {
         let result = try await make(ScriptedSearch()).retrieve("anything at all")
         #expect(!result.relevant)
-        #expect(result.passages.isEmpty)
+        #expect(result.chunks.isEmpty)
         #expect(result.bestDistance == nil)
     }
 
@@ -232,16 +232,16 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
         #expect(!(try await make(search, config: .init(maxDistance: 0.39)).retrieve("q").relevant))
     }
 
-    @Test func passageFoundByBothSearchesRanksFirstAndAppearsOnce() async throws {
+    @Test func chunkFoundByBothSearchesRanksFirstAndAppearsOnce() async throws {
         let search = ScriptedSearch()
-        let shared = chunk("a", 2, "shared passage")
+        let shared = chunk("a", 2, "shared chunk")
         search.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "v only"), score: 0.1), ScoredChunk(chunk: shared, score: 0.2)]
         search.keywordHits = [ScoredChunk(chunk: chunk("b", 0, "k only"), score: 1), ScoredChunk(chunk: shared, score: 2)]
-        let result = try await make(search).retrieve("passage")
-        #expect(result.passages.first?.chunk == shared)
-        #expect(result.passages.filter { $0.chunk == shared }.count == 1)
-        #expect(result.passages.first?.distance == 0.2)
-        #expect(result.passages.first?.keywordRank == 1)
+        let result = try await make(search).retrieve("chunk")
+        #expect(result.chunks.first?.chunk == shared)
+        #expect(result.chunks.filter { $0.chunk == shared }.count == 1)
+        #expect(result.chunks.first?.distance == 0.2)
+        #expect(result.chunks.first?.keywordRank == 1)
     }
 
     @Test func scopeAndEmbeddingModelAreForwardedToSearch() async throws {
@@ -258,10 +258,10 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
         #expect(search.keywordTerms.isEmpty)
     }
 
-    @Test func resultLimitCapsThePassages() async throws {
+    @Test func resultLimitCapsTheChunks() async throws {
         let search = ScriptedSearch()
         search.vectorHits = (0..<20).map { ScoredChunk(chunk: chunk("a", $0, "p\($0)"), score: 0.1) }
         let result = try await make(search, config: .init(resultLimit: 4)).retrieve("q")
-        #expect(result.passages.count == 4)
+        #expect(result.chunks.count == 4)
     }
 }

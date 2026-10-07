@@ -296,12 +296,12 @@ private struct ChatHarness {
         #expect(marked == ["Hold the power button for ten seconds until it blinks."])
     }
 
-    @Test func aPassageSpanningParagraphsMarksAllOfThem() {
+    @Test func aChunkSpanningParagraphsMarksAllOfThem() {
         let paragraphs = ["First short paragraph.", "Second one continues.", "Unrelated tail."].enumerated()
             .map { SourceViewerModel.Paragraph(id: $0.offset, text: $0.element, isHeading: false) }
-        let marked = SourceViewerModel.highlighted(in: paragraphs, passage: "First short paragraph. Second one continues.")
+        let marked = SourceViewerModel.highlighted(in: paragraphs, chunk: "First short paragraph. Second one continues.")
         #expect(marked == [0, 1])
-        #expect(SourceViewerModel.highlighted(in: paragraphs, passage: "").isEmpty)
+        #expect(SourceViewerModel.highlighted(in: paragraphs, chunk: "").isEmpty)
     }
 
     @Test func aPdfOpensAtTheCitedPage() async throws {
@@ -314,14 +314,14 @@ private struct ChatHarness {
         let model = SourceViewerModel(documents: repo, extractor: FileDocumentExtractor())
 
         await model.open(citation(page: 3, snippet: "three"))
-        #expect(model.content == .pdf(url: pdf, page: 3, passage: "three", title: "Guide"))
+        #expect(model.content == .pdf(url: pdf, page: 3, chunk: "three", title: "Guide"))
         await model.openDocument("d")
-        #expect(model.content == .pdf(url: pdf, page: 1, passage: "", title: "Guide"))
+        #expect(model.content == .pdf(url: pdf, page: 1, chunk: "", title: "Guide"))
     }
 
-    @Test func aDeletedDocumentFallsBackToTheStoredPassage() async {
+    @Test func aDeletedDocumentFallsBackToTheStoredChunk() async {
         let model = SourceViewerModel(documents: InMemoryDocumentRepository(), extractor: FileDocumentExtractor())
-        let cited = citation(doc: "gone", snippet: "The quoted passage.")
+        let cited = citation(doc: "gone", snippet: "The quoted chunk.")
         await model.open(cited)
         #expect(model.content == .deleted(cited))
     }

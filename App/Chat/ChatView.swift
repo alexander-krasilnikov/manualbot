@@ -282,7 +282,7 @@ struct MessageView: View {
                         ImageMatchGrid(matches: message.imageMatches, photos: photos, onOpen: onOpenMatch)
                     }
                     if !message.citations.isEmpty {
-                        Text(message.notFound ? "Closest passages" : message.matchesOnly ? "Passages from those pages" : "Sources")
+                        Text(message.notFound ? "Closest chunks" : message.matchesOnly ? "Chunks from those pages" : "Sources")
                             .font(.caption.bold()).foregroundStyle(.secondary)
                         ForEach(message.citations, id: \.n) { citation in
                             CitationChip(citation: citation, isSuggestion: message.notFound) { onOpen(citation) }
@@ -303,7 +303,7 @@ struct MessageView: View {
         }
     }
 
-    /// Each photo stored on a cited page or section, and each cited photo passage, once, beside the sources.
+    /// Each photo stored on a cited page or section, and each cited photo chunk, once, beside the sources.
     private func loadCitedPhotos() async {
         guard !message.notFound, !message.matchesOnly else { return }
         var found: [CitedPhoto] = []
@@ -358,7 +358,7 @@ struct CitationChip: View {
 
     private var location: String {
         [citation.page.map { "page \($0)" }, citation.heading.flatMap { $0.isEmpty ? nil : "“\($0)”" }]
-            .compactMap { $0 }.joined(separator: " · ").ifEmpty("passage")
+            .compactMap { $0 }.joined(separator: " · ").ifEmpty("chunk")
     }
 }
 

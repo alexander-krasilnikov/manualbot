@@ -16,7 +16,7 @@ public struct AnswerEvalResult: Sendable, Equatable {
     public var searchedFor: String?
     /// The answer states the expected text (ignoring case and spacing).
     public var states: Bool
-    /// A cited passage contains the expected text.
+    /// A cited chunk contains the expected text.
     public var cites: Bool
     /// A question the documents can answer got the not-found reply.
     public var wronglyRefused: Bool
@@ -24,7 +24,7 @@ public struct AnswerEvalResult: Sendable, Equatable {
     public var answeredWhenUnanswerable: Bool
     /// The model wrote an answer, but no valid citation remained, so it was replaced by the not-found reply.
     public var groundingFailure: Bool
-    /// For a follow-up: the rewritten query retrieved the expected passage.
+    /// For a follow-up: the rewritten query retrieved the expected chunk.
     public var followUpHit: Bool?
     public var timeToFirstText: TimeInterval?
     /// Text fragments per second while the answer streamed (about tokens per second).
@@ -116,11 +116,11 @@ public struct AnswerEvalReport: Sendable {
         lines += [
             "ANSWEREVAL questions: \(s.answerable) answerable, \(s.unanswerable) unanswerable (\(s.followUps) of them follow-ups)",
             "ANSWEREVAL states the expected fact: \(Self.pct(s.statesRate)) (\(s.states)/\(s.answerable))",
-            "ANSWEREVAL cites a passage containing it: \(Self.pct(s.citesRate)) (\(s.cites)/\(s.answerable))",
+            "ANSWEREVAL cites a chunk containing it: \(Self.pct(s.citesRate)) (\(s.cites)/\(s.answerable))",
             "ANSWEREVAL wrongly refused: \(s.wronglyRefused)/\(s.answerable)",
             "ANSWEREVAL answered when unanswerable: \(s.answeredWhenUnanswerable)/\(s.unanswerable)",
             "ANSWEREVAL grounding failures (answer replaced by not-found): \(s.groundingFailures)",
-            "ANSWEREVAL follow-up hits (rewritten query retrieved the expected passage): \(s.followUpHits)/\(s.followUps)",
+            "ANSWEREVAL follow-up hits (rewritten query retrieved the expected chunk): \(s.followUpHits)/\(s.followUps)",
             "ANSWEREVAL speed: median time to first text \(seconds(s.medianTimeToFirstText)), "
                 + "median \(s.medianFragmentsPerSecond.map { String(format: "%.1f", $0) } ?? "-") text fragments per second",
         ]
@@ -156,7 +156,7 @@ public struct AnswerEvalReport: Sendable {
             |---|---|
             | Questions | \(s.answerable) answerable, \(s.unanswerable) unanswerable (\(s.followUps) follow-ups among them) |
             | States the expected fact | \(Self.pct(s.statesRate)) (\(s.states)/\(s.answerable)) |
-            | Cites a passage containing it | \(Self.pct(s.citesRate)) (\(s.cites)/\(s.answerable)) |
+            | Cites a chunk containing it | \(Self.pct(s.citesRate)) (\(s.cites)/\(s.answerable)) |
             | Wrongly refused | \(s.wronglyRefused)/\(s.answerable) |
             | Answered when unanswerable | \(s.answeredWhenUnanswerable)/\(s.unanswerable) |
             | Grounding failures | \(s.groundingFailures) |
@@ -251,7 +251,7 @@ public struct AnswerEvalRunner: Sendable {
         var hit: Bool?
         if kind == .followUp {
             let standalone = reply.standaloneQuery ?? testCase.question
-            hit = try await retrievedExpectedPassage(for: testCase, query: standalone)
+            hit = try await retrievedExpectedChunk(for: testCase, query: standalone)
         }
         var speed: Double?
         if let answer, answer.fragments > 1, let first = answer.firstAt, let last = answer.lastAt, last > first {
@@ -266,10 +266,10 @@ public struct AnswerEvalRunner: Sendable {
             timeToFirstText: firstText.map { started.duration(to: $0).seconds }, fragmentsPerSecond: speed)
     }
 
-    private func retrievedExpectedPassage(for testCase: EvalCase, query: String) async throws -> Bool {
+    private func retrievedExpectedChunk(for testCase: EvalCase, query: String) async throws -> Bool {
         guard let doc = testCase.doc, let needle = testCase.contains.map(Self.normalized) else { return false }
         let retrieval = try await retriever.retrieve(query)
-        return retrieval.passages.contains { $0.documentTitle == doc && Self.normalized($0.chunk.text).contains(needle) }
+        return retrieval.chunks.contains { $0.documentTitle == doc && Self.normalized($0.chunk.text).contains(needle) }
     }
 
     /// Lowercase, with every run of whitespace as one space.

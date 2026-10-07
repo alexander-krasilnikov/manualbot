@@ -35,7 +35,7 @@ import Testing
                 vectors.append(v)
                 let doc = MutableDocument(id: "d:1:\(i)")
                 doc.setValue(v, forKey: "embedding")
-                doc.setString("passage \(i)", forKey: "text")
+                doc.setString("chunk \(i)", forKey: "text")
                 try chunks.save(document: doc)
             }
         }

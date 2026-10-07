@@ -17,7 +17,7 @@ public struct ChunkDraft: Sendable, Equatable {
     public var page: Int?
     public var heading: String?
     public var text: String
-    /// Set on the passage that stands for an image.
+    /// Set on the chunk that stands for an image.
     public var imageId: String?
 }
 
@@ -41,17 +41,17 @@ public struct ChunkerConfiguration: Sendable, Equatable {
 
 extension ChunkerConfiguration {
     /// Sizes for EmbeddingGemma 2, which takes up to 512 tokens (`LiteRTEmbedder`). Chosen on the evaluation documents
-    /// (`RealEvalTests.comparesPassageSizes`, recall@6 was 100% at every size): the shorter the passage, the wider the gap
-    /// between the worst answerable question and the nearest off-topic one, because a long passage dilutes the sentence
+    /// (`RealEvalTests.comparesChunkSizes`, recall@6 was 100% at every size): the shorter the chunk, the wider the gap
+    /// between the worst answerable question and the nearest off-topic one, because a long chunk dilutes the sentence
     /// that answers. Gap by target size: 80 → 0.080, 100 → 0.080, 130 → 0.083, 150 → 0.065, 180 → 0.024, 220 → 0.029,
     /// 300 → 0.029, 400 → 0.029. 130 tokens keeps the room of the smaller sizes and still gives the language model whole
     /// paragraphs. The counter is approximate (the runtime has no token count) and over-counts English prose by about 6%,
-    /// so a 180-token passage is about 170 real tokens, far inside the 512-token input even with the template and title.
-    /// Text full of codes can use more; the embedder then shortens that passage instead of failing.
+    /// so a 180-token chunk is about 170 real tokens, far inside the 512-token input even with the template and title.
+    /// Text full of codes can use more; the embedder then shortens that chunk instead of failing.
     public static let embeddingGemma2 = ChunkerConfiguration(targetTokens: 130, maxTokens: 180, overlapTokens: 22, minTailTokens: 35)
 }
 
-/// Splits extracted blocks into overlapping passages. Splits on sentence boundaries, never
+/// Splits extracted blocks into overlapping chunks. Splits on sentence boundaries, never
 /// crosses a page, and carries the nearest heading along as provenance.
 public struct Chunker: Sendable {
     public let configuration: ChunkerConfiguration

@@ -49,7 +49,7 @@ struct AnswerEvalTests {
     }
 
     private static let settings = "temperature 0.2, at most 512 answer tokens, top-k 40, top-p 0.95, sampler seed 0, GPU; "
-        + "retrieval with EmbeddingGemma 2 (256 dimensions, passages of about 130 tokens, relevance threshold 0.28, six passages)"
+        + "retrieval with EmbeddingGemma 2 (256 dimensions, chunks of about 130 tokens, relevance threshold 0.28, six chunks)"
 
     private func evaluate(modelPath: String, name: String, reportPath: String?, in library: Library) async throws -> AnswerEvalReport {
         let generator = LiteRTGenerator(modelPath: modelPath, seed: 0)

@@ -1,17 +1,17 @@
 import Foundation
 import Ports
 
-/// Builds the strict, passage-only prompt and the follow-up rewrite prompt.
+/// Builds the strict, chunk-only prompt and the follow-up rewrite prompt.
 public enum PromptBuilder {
-    /// The model replies with exactly this when the passages do not contain the answer.
+    /// The model replies with exactly this when the chunks do not contain the answer.
     public static let notFoundMarker = "NOT_FOUND"
 
     public static let answerSystemPrompt = """
-        You answer questions using ONLY the numbered passages provided in the user message.
+        You answer questions using ONLY the numbered chunks provided in the user message.
         Rules:
-        1. Use only facts stated in the passages. Never use outside knowledge.
-        2. After every sentence that states a fact, cite the passage or passages it came from, like [1] or [1][3].
-        3. If the passages do not contain the answer, reply with exactly: \(notFoundMarker)
+        1. Use only facts stated in the chunks. Never use outside knowledge.
+        2. After every sentence that states a fact, cite the chunk or chunks it came from, like [1] or [1][3].
+        3. If the chunks do not contain the answer, reply with exactly: \(notFoundMarker)
         4. Be concise. Quote exact values, part numbers and steps as written.
         """
 
@@ -20,11 +20,11 @@ public enum PromptBuilder {
         Resolve pronouns and references using the conversation. Output only the query, nothing else.
         """
 
-    /// The passages, numbered from 1 in the given order, followed by the question.
-    public static func answerPrompt(question: String, passages: [RetrievedPassage]) -> String {
-        var lines = ["Passages:"]
-        for (index, passage) in passages.enumerated() {
-            lines.append("[\(index + 1)] (\(label(for: passage))) \(passage.chunk.text)")
+    /// The chunks, numbered from 1 in the given order, followed by the question.
+    public static func answerPrompt(question: String, chunks: [RetrievedChunk]) -> String {
+        var lines = ["Chunks:"]
+        for (index, retrieved) in chunks.enumerated() {
+            lines.append("[\(index + 1)] (\(label(for: retrieved))) \(retrieved.chunk.text)")
         }
         lines.append("")
         lines.append("Question: \(question)")
@@ -32,10 +32,10 @@ public enum PromptBuilder {
     }
 
     /// `Manual A, page 42, section “Reset”`
-    static func label(for passage: RetrievedPassage) -> String {
-        var parts = [passage.documentTitle]
-        if let page = passage.chunk.page { parts.append("page \(page)") }
-        if let heading = passage.chunk.heading, !heading.isEmpty { parts.append("section “\(heading)”") }
+    static func label(for retrieved: RetrievedChunk) -> String {
+        var parts = [retrieved.documentTitle]
+        if let page = retrieved.chunk.page { parts.append("page \(page)") }
+        if let heading = retrieved.chunk.heading, !heading.isEmpty { parts.append("section “\(heading)”") }
         return parts.joined(separator: ", ")
     }
 

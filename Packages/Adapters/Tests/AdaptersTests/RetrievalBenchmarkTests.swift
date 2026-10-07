@@ -5,16 +5,16 @@ import PortsTesting
 import Testing
 @testable import Adapters
 
-/// Retrieval latency over a 20,000-passage library (spec: p95 <= 500 ms, excluding one-time index training).
+/// Retrieval latency over a 20,000-chunk library (spec: p95 <= 500 ms, excluding one-time index training).
 /// Slow to seed, so it runs only when RUN_BENCHMARKS is set:
 ///   RUN_BENCHMARKS=1 swift test --filter RetrievalBenchmarkTests
 ///   TEST_RUNNER_RUN_BENCHMARKS=1 xcodebuild test ...   (simulator or device)
 /// With EMBEDDER_MODEL_PATH set, the questions are embedded by the real model (256 dimensions, the library's own model
-/// tag), so each timing includes embedding the question; the 20,000 passages are hashed stand-in vectors of the same
+/// tag), so each timing includes embedding the question; the 20,000 chunks are hashed stand-in vectors of the same
 /// size, because search time depends on the number and size of the vectors, not on what they mean.
 ///
 /// Measured on a Mac (Apple silicon, debug build, 2026-10-06) with the real model embedding the questions: 20,000
-/// passages, first query (index training) 0.25 s, then p50 95 ms, p95 119 ms, max 132 ms. **Not yet measured on an iPad.**
+/// chunks, first query (index training) 0.25 s, then p50 95 ms, p95 119 ms, max 132 ms. **Not yet measured on an iPad.**
 @Suite(.serialized, .enabled(if: ProcessInfo.processInfo.environment["RUN_BENCHMARKS"] != nil))
 struct RetrievalBenchmarkTests {
     /// Small deterministic generator so every run measures the same corpus.
@@ -29,8 +29,8 @@ struct RetrievalBenchmarkTests {
         }
     }
 
-    @Test func retrievalP95StaysUnderHalfASecondAt20kPassages() async throws {
-        let passageCount = 20_000, documents = 40
+    @Test func retrievalP95StaysUnderHalfASecondAt20kChunks() async throws {
+        let chunkCount = 20_000, documents = 40
         let real = ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"].map { LiteRTEmbedder(modelPath: $0) }
         let identity = real?.identity ?? RepoFixture.identity
         let f = try RepoFixture(embedding: identity); defer { Task { await f.cleanUp() } }
@@ -44,10 +44,10 @@ struct RetrievalBenchmarkTests {
             let id = "doc\(d)"
             try await f.repo.upsert(DocumentRecord(id: id, title: "Manual \(d)", type: .pdf))
             var batch: [Chunk] = []
-            let texts = (0..<(passageCount / documents)).map { _ in
+            let texts = (0..<(chunkCount / documents)).map { _ in
                 (0..<60).map { _ in vocabulary.randomElement(using: &rng)! }.joined(separator: " ")
             }
-            let vectors = try await embedder.embed(texts, kind: .passage(title: id))
+            let vectors = try await embedder.embed(texts, kind: .chunk(title: id))
             for (i, text) in texts.enumerated() {
                 batch.append(Chunk(docId: id, generation: 1, ordinal: i, page: i / 4 + 1, text: text,
                                    embedding: vectors[i], embeddingModel: embedder.identity.tag))
@@ -77,11 +77,11 @@ struct RetrievalBenchmarkTests {
             let result = try await retriever.retrieve(q, scope: scope)
             timings.append(Double((ContinuousClock.now - start).components.attoseconds) / 1e15
                 + Double((ContinuousClock.now - start).components.seconds) * 1000)
-            #expect(result.passages.count <= 6)
+            #expect(result.chunks.count <= 6)
         }
         timings.sort()
         let p50 = timings[timings.count / 2], p95 = timings[Int(Double(timings.count) * 0.95) - 1], worst = timings.last!
-        print("BENCHMARK embedder=\(real == nil ? "stand-in" : "EmbeddingGemma 2") passages=\(passageCount) seed=\(seedTime) firstQuery(training)=\(warmTime) p50=\(p50)ms p95=\(p95)ms max=\(worst)ms")
+        print("BENCHMARK embedder=\(real == nil ? "stand-in" : "EmbeddingGemma 2") chunks=\(chunkCount) seed=\(seedTime) firstQuery(training)=\(warmTime) p50=\(p50)ms p95=\(p95)ms max=\(worst)ms")
         #expect(p95 <= 500, "p95 was \(p95) ms")
     }
 }

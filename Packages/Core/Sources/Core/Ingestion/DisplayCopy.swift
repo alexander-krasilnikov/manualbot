@@ -40,14 +40,14 @@ public enum DisplayCopy {
 }
 
 /// The text that makes an image findable by words: its caption, section heading and the text read from it.
-enum ImagePassage {
+enum ImageChunk {
     static func text(for image: ImageRecord, title: String, chunker: Chunker) -> String {
         let parts = [image.caption, image.heading, image.ocrText.isEmpty ? nil : image.ocrText]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         guard !parts.isEmpty else { return title }
         let joined = parts.joined(separator: " · ")
-        // Long recognized text is cut to what one passage can hold; the caption comes first, so it is kept.
+        // Long recognized text is cut to what one chunk can hold; the caption comes first, so it is kept.
         return chunker.chunk([Block(text: joined)]).first?.text ?? joined
     }
 }

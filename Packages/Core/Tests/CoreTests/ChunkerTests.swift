@@ -38,7 +38,7 @@ private let small = ChunkerConfiguration(targetTokens: 60, maxTokens: 90, overla
         #expect(sizes.allSatisfy { $0 >= small.targetTokens / 2 })
     }
 
-    @Test func embeddingGemma2PassagesStayWithinTheirMaximum() {
+    @Test func embeddingGemma2ChunksStayWithinTheirMaximum() {
         let config = ChunkerConfiguration.embeddingGemma2
         let blocks = [
             Block(text: "Chapter", page: 1, heading: "Chapter"),

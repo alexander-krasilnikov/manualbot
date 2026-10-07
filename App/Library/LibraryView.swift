@@ -104,7 +104,7 @@ struct LibraryView: View {
                             titleVisibility: .visible) {
             Button("Delete", role: .destructive) { if let item = deleting { Task { await library.delete(item.id) } } }
         } message: {
-            Text("The document and its search index are removed from this iPad. Earlier answers keep their quoted passages.")
+            Text("The document and its search index are removed from this iPad. Earlier answers keep their quoted chunks.")
         }
     }
 }

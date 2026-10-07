@@ -36,7 +36,7 @@ struct RepoFixture {
 
     static func chunk(_ doc: String, _ generation: Int, _ ordinal: Int, text: String? = nil) -> Chunk {
         Chunk(docId: doc, generation: generation, ordinal: ordinal, page: ordinal + 1, heading: "H\(ordinal)",
-              text: text ?? "passage \(generation)-\(ordinal)", embedding: vector(ordinal),
+              text: text ?? "chunk \(generation)-\(ordinal)", embedding: vector(ordinal),
               embeddingModel: identity.tag)
     }
 }
@@ -122,7 +122,7 @@ struct RepoFixture {
         #expect(vectorPlan.contains(CouchbaseSchema.vectorIndex), "\(vectorPlan)")
 
         let ftsPlan = try await f.repo.explain(
-            "SELECT meta().id FROM manualbot.chunks AS c WHERE MATCH(chunks_fts, $text)", text: "passage")
+            "SELECT meta().id FROM manualbot.chunks AS c WHERE MATCH(chunks_fts, $text)", text: "chunk")
         #expect(ftsPlan.contains(CouchbaseSchema.ftsIndex), "\(ftsPlan)")
 
         let valuePlan = try await f.repo.explain(

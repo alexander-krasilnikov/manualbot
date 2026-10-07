@@ -7,8 +7,8 @@ import Testing
 
 // MARK: - Fixtures
 
-private func passage(_ n: Int, doc: String = "Manual A", page: Int? = 42, heading: String? = nil, text: String) -> RetrievedPassage {
-    RetrievedPassage(
+private func chunk(_ n: Int, doc: String = "Manual A", page: Int? = 42, heading: String? = nil, text: String) -> RetrievedChunk {
+    RetrievedChunk(
         chunk: Chunk(docId: "doc-\(n)", generation: 1, ordinal: n, page: page, heading: heading, text: text,
                      embedding: [], embeddingModel: "m"),
         documentTitle: doc, distance: 0.2, keywordRank: nil, fusedScore: 0.03)
@@ -17,14 +17,14 @@ private func passage(_ n: Int, doc: String = "Manual A", page: Int? = 42, headin
 // MARK: - 7.3 Prompt building
 
 @Suite struct PromptBuilderTests {
-    @Test func answerPromptNumbersPassagesAndAsksTheQuestion() {
-        let prompt = PromptBuilder.answerPrompt(question: "How do I reset the X200?", passages: [
-            passage(1, doc: "Manual A", page: 42, heading: "Reset", text: "Hold the button for 10 seconds."),
-            passage(2, doc: "Guide B", page: nil, heading: "Maintenance", text: "Replace the filter yearly."),
-            passage(3, doc: "Notes", page: 7, heading: nil, text: "Error E-042 means overheating."),
+    @Test func answerPromptNumbersChunksAndAsksTheQuestion() {
+        let prompt = PromptBuilder.answerPrompt(question: "How do I reset the X200?", chunks: [
+            chunk(1, doc: "Manual A", page: 42, heading: "Reset", text: "Hold the button for 10 seconds."),
+            chunk(2, doc: "Guide B", page: nil, heading: "Maintenance", text: "Replace the filter yearly."),
+            chunk(3, doc: "Notes", page: 7, heading: nil, text: "Error E-042 means overheating."),
         ])
         #expect(prompt == """
-            Passages:
+            Chunks:
             [1] (Manual A, page 42, section “Reset”) Hold the button for 10 seconds.
             [2] (Guide B, section “Maintenance”) Replace the filter yearly.
             [3] (Notes, page 7) Error E-042 means overheating.
@@ -35,7 +35,7 @@ private func passage(_ n: Int, doc: String = "Manual A", page: Int? = 42, headin
 
     @Test func systemPromptEnforcesTheStrictRules() {
         let system = PromptBuilder.answerSystemPrompt
-        #expect(system.contains("ONLY the numbered passages"))
+        #expect(system.contains("ONLY the numbered chunks"))
         #expect(system.contains("Never use outside knowledge"))
         #expect(system.contains("reply with exactly: NOT_FOUND"))
         #expect(system.contains("[1]"))
@@ -57,50 +57,50 @@ private func passage(_ n: Int, doc: String = "Manual A", page: Int? = 42, headin
 
 @Suite struct CitationValidatorTests {
     @Test func validMarkersAreKeptInOrderOfFirstUse() {
-        let r = CitationValidator.validate("Hold the button [2]. Then wait [1][2].", passageCount: 3)
+        let r = CitationValidator.validate("Hold the button [2]. Then wait [1][2].", chunkCount: 3)
         #expect(r.text == "Hold the button [2]. Then wait [1][2].")
         #expect(r.cited == [2, 1])
         #expect(r.isGrounded)
     }
 
     @Test func inventedMarkersAreRemoved() {
-        let r = CitationValidator.validate("Hold it [1]. Also do this [7] and that [0].", passageCount: 3)
+        let r = CitationValidator.validate("Hold it [1]. Also do this [7] and that [0].", chunkCount: 3)
         #expect(r.text == "Hold it [1]. Also do this and that.")
         #expect(r.cited == [1])
     }
 
     @Test func anAnswerWithOnlyInventedCitationsIsNotGrounded() {
-        let r = CitationValidator.validate("Do this [9].", passageCount: 2)
+        let r = CitationValidator.validate("Do this [9].", chunkCount: 2)
         #expect(!r.isGrounded)
         #expect(r.text == "Do this.")
     }
 
     @Test func anAnswerWithoutCitationsIsNotGrounded() {
-        let r = CitationValidator.validate("Just trust me.", passageCount: 4)
+        let r = CitationValidator.validate("Just trust me.", chunkCount: 4)
         #expect(!r.isGrounded)
         #expect(r.cited.isEmpty)
     }
 
     @Test func groupedMarkersAreNormalizedAndFiltered() {
-        let r = CitationValidator.validate("Both apply [1, 3] and [2; 9].", passageCount: 3)
+        let r = CitationValidator.validate("Both apply [1, 3] and [2; 9].", chunkCount: 3)
         #expect(r.text == "Both apply [1][3] and [2].")
         #expect(r.cited == [1, 3, 2])
     }
 
-    @Test func nothingIsValidWhenThereAreNoPassages() {
-        let r = CitationValidator.validate("Claim [1].", passageCount: 0)
+    @Test func nothingIsValidWhenThereAreNoChunks() {
+        let r = CitationValidator.validate("Claim [1].", chunkCount: 0)
         #expect(!r.isGrounded)
         #expect(r.text == "Claim.")
     }
 
     @Test func ordinaryBracketsAreLeftAlone() {
-        let r = CitationValidator.validate("Use array[i] and [note] see [1].", passageCount: 1)
+        let r = CitationValidator.validate("Use array[i] and [note] see [1].", chunkCount: 1)
         #expect(r.text == "Use array[i] and [note] see [1].")
         #expect(r.cited == [1])
     }
 
     @Test func duplicateMarkersInOneGroupCountOnce() {
-        let r = CitationValidator.validate("Fact [1,1,2].", passageCount: 2)
+        let r = CitationValidator.validate("Fact [1,1,2].", chunkCount: 2)
         #expect(r.text == "Fact [1][2].")
         #expect(r.cited == [1, 2])
     }
@@ -236,7 +236,7 @@ private struct Harness {
 }
 
 @Suite struct ChatServiceTests {
-    @Test func answersFromPassagesWithValidatedCitations() async throws {
+    @Test func answersFromChunksWithValidatedCitations() async throws {
         let h = try await Harness(answer: ["Hold the button ", "for ten seconds [1]. ", "Release when it blinks [2][5]."])
         let events = try await h.ask("How do I reset it?")
 

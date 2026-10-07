@@ -81,7 +81,7 @@ import Testing
         #expect(try await f.repo.images(docId: "d1", generation: 1).map(\.caption) == ["replaced"])
     }
 
-    @Test func passagesKeepTheirImageReference() async throws {
+    @Test func chunksKeepTheirImageReference() async throws {
         let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
         var chunk = RepoFixture.chunk("d1", 1, 0)
         chunk.imageId = "d1:1:img:0"

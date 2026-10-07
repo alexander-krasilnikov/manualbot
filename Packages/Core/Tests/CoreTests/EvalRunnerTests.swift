@@ -27,7 +27,7 @@ import Testing
         let runner = try await runner([hit])
         let suite = EvalSuite(documents: [], cases: [
             EvalCase(question: "how to reset", doc: "manual", contains: "power button"),   // retrieved and relevant
-            EvalCase(question: "how to clean", doc: "manual", contains: "cotton swab"),    // relevant but the answer passage was not retrieved
+            EvalCase(question: "how to clean", doc: "manual", contains: "cotton swab"),    // relevant but the answer chunk was not retrieved
             EvalCase(question: "poem please", doc: nil, contains: nil),                    // gate lets it through here (distance 0.3)
         ])
         let report = try await runner.run(suite)

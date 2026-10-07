@@ -12,8 +12,8 @@ struct SourceViewerView: View {
                 ContentUnavailableView("No source open", systemImage: "doc.text.magnifyingglass",
                                        description: Text("Tap a source under an answer, or a document in the library, to read it here."))
                     .accessibilityIdentifier("sourceEmpty")
-            case .pdf(let url, let page, let passage, let title):
-                PDFSource(url: url, page: page, passage: passage, title: title, openCount: source.openCount)
+            case .pdf(let url, let page, let chunk, let title):
+                PDFSource(url: url, page: page, chunk: chunk, title: title, openCount: source.openCount)
             case .text(let title, let paragraphs, let highlighted):
                 TextSource(title: title, paragraphs: paragraphs, highlighted: highlighted, openCount: source.openCount)
             case .image(let url, let title):
@@ -35,7 +35,7 @@ struct SourceViewerView: View {
 private struct PDFSource: View {
     let url: URL
     let page: Int
-    let passage: String
+    let chunk: String
     let title: String
     let openCount: Int
     @State private var highlighted = false
@@ -47,15 +47,15 @@ private struct PDFSource: View {
                 Text(title).font(.headline).lineLimit(1).accessibilityIdentifier("sourceTitle")
                 Spacer()
                 if highlighted {
-                    Label("Passage highlighted", systemImage: "highlighter").font(.caption).foregroundStyle(.secondary)
-                        .accessibilityIdentifier("passageHighlighted")
+                    Label("Chunk highlighted", systemImage: "highlighter").font(.caption).foregroundStyle(.secondary)
+                        .accessibilityIdentifier("chunkHighlighted")
                 }
                 Text("Page \(page)\(pageCount > 0 ? " of \(pageCount)" : "")").font(.subheadline.monospacedDigit())
                     .accessibilityIdentifier("sourcePage")
             }
             .padding(.horizontal).padding(.vertical, 8)
             Divider()
-            PDFKitView(url: url, page: page, passage: passage, openCount: openCount) { found, count in
+            PDFKitView(url: url, page: page, chunk: chunk, openCount: openCount) { found, count in
                 highlighted = found
                 pageCount = count
             }
@@ -66,7 +66,7 @@ private struct PDFSource: View {
 private struct PDFKitView: UIViewRepresentable {
     let url: URL
     let page: Int
-    let passage: String
+    let chunk: String
     let openCount: Int
     let onResolved: (_ highlighted: Bool, _ pageCount: Int) -> Void
 
@@ -86,7 +86,7 @@ private struct PDFKitView: UIViewRepresentable {
 
         view.highlightedSelections = nil
         var found = false
-        if let selection = Self.selection(for: passage, on: target, in: document) {
+        if let selection = Self.selection(for: chunk, on: target, in: document) {
             selection.color = UIColor.systemYellow.withAlphaComponent(0.55)
             view.highlightedSelections = [selection]
             view.go(to: selection)
@@ -98,10 +98,10 @@ private struct PDFKitView: UIViewRepresentable {
         DispatchQueue.main.async { onResolved(found, count) }
     }
 
-    /// The passage may span line breaks that PDF search does not see, so search for its opening words,
+    /// The chunk may span line breaks that PDF search does not see, so search for its opening words,
     /// shortening the phrase until something on the cited page matches.
-    static func selection(for passage: String, on page: PDFPage, in document: PDFDocument) -> PDFSelection? {
-        let words = passage.split(whereSeparator: \.isWhitespace).map(String.init)
+    static func selection(for chunk: String, on page: PDFPage, in document: PDFDocument) -> PDFSelection? {
+        let words = chunk.split(whereSeparator: \.isWhitespace).map(String.init)
         guard !words.isEmpty else { return nil }
         for count in [10, 6, 4, 3, 2] where words.count >= min(count, words.count) {
             let phrase = words.prefix(count).joined(separator: " ")
@@ -132,7 +132,7 @@ private struct TextSource: View {
                             .background(highlighted.contains(paragraph.id) ? Color.yellow.opacity(0.35) : .clear, in: RoundedRectangle(cornerRadius: 8))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id(paragraph.id)
-                            .accessibilityIdentifier(highlighted.contains(paragraph.id) ? "highlightedPassage" : "paragraph-\(paragraph.id)")
+                            .accessibilityIdentifier(highlighted.contains(paragraph.id) ? "highlightedChunk" : "paragraph-\(paragraph.id)")
                     }
                 }
                 .padding()
@@ -155,12 +155,12 @@ private struct DeletedSource: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                Label("This document was deleted. Only the quoted passage remains.", systemImage: "trash")
+                Label("This document was deleted. Only the quoted chunk remains.", systemImage: "trash")
                     .foregroundStyle(.orange).accessibilityIdentifier("documentDeleted")
                 Text(citation.docTitle).font(.title3.bold())
                 if let page = citation.page { Text("Page \(page)").foregroundStyle(.secondary) }
                 Text(citation.snippet).padding(12).background(Color.yellow.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
-                    .accessibilityIdentifier("highlightedPassage")
+                    .accessibilityIdentifier("highlightedChunk")
             }
             .padding()
         }

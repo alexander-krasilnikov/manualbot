@@ -5,15 +5,15 @@ import Ports
 public struct RetrievalConfiguration: Sendable, Equatable {
     /// Candidates taken from each search before fusion.
     public var candidatesPerSearch: Int
-    /// Passages returned after fusion.
+    /// Chunks returned after fusion.
     public var resultLimit: Int
     /// A result is relevant when its best cosine distance is at most this. Tuned with `RealEvalTests` on the evaluation set
-    /// with real EmbeddingGemma 2 output (256 dimensions, passages of 130 tokens): answerable questions reach at most 0.239,
+    /// with real EmbeddingGemma 2 output (256 dimensions, chunks of 130 tokens): answerable questions reach at most 0.239,
     /// off-topic ones start at 0.323, and every threshold from 0.24 to 0.32 separates them perfectly; 0.28 sits in the
     /// middle of that range. Distances of this model are on a smaller scale than its predecessor's (0.66 and 0.87). The set
     /// has only six off-topic questions, so re-check this on a larger one before leaning on the margin.
     public var maxDistance: Double
-    /// Passages offered as suggestions when nothing is relevant.
+    /// Chunks offered as suggestions when nothing is relevant.
     public var suggestionCount: Int
     /// An image matches the question's photo when its cosine distance (EmbeddingGemma 2, 256 dimensions) is at most this.
     /// Provisional: tuned with `ImageEvalTests` on a stand-in set, not on photos of real equipment. The set is 14
@@ -33,12 +33,12 @@ public struct RetrievalConfiguration: Sendable, Equatable {
     public var textToImageMaxDistance: Double
     /// Images taken from the image index before the distance threshold is applied.
     public var imageCandidates: Int
-    /// Text passages taken from the page or section of each matching image, besides the image's own passage.
-    public var passagesPerImage: Int
+    /// Text chunks taken from the page or section of each matching image, besides the image's own chunk.
+    public var chunksPerImage: Int
 
     public init(
         candidatesPerSearch: Int = 20, resultLimit: Int = 6, maxDistance: Double = 0.28, suggestionCount: Int = 3,
-        imageMaxDistance: Double = 0.25, textToImageMaxDistance: Double = 0.30, imageCandidates: Int = 10, passagesPerImage: Int = 4
+        imageMaxDistance: Double = 0.25, textToImageMaxDistance: Double = 0.30, imageCandidates: Int = 10, chunksPerImage: Int = 4
     ) {
         self.candidatesPerSearch = candidatesPerSearch
         self.resultLimit = resultLimit
@@ -47,21 +47,21 @@ public struct RetrievalConfiguration: Sendable, Equatable {
         self.imageMaxDistance = imageMaxDistance
         self.textToImageMaxDistance = textToImageMaxDistance
         self.imageCandidates = imageCandidates
-        self.passagesPerImage = passagesPerImage
+        self.chunksPerImage = chunksPerImage
     }
 }
 
-public struct RetrievedPassage: Sendable, Equatable, Identifiable {
+public struct RetrievedChunk: Sendable, Equatable, Identifiable {
     public var chunk: Chunk
     public var documentTitle: String
-    /// Cosine distance from the query, when the vector search found this passage.
+    /// Cosine distance from the query, when the vector search found this chunk.
     public var distance: Double?
     /// Zero-based position in the keyword results, when the keyword search found it.
     public var keywordRank: Int?
     public var fusedScore: Double
-    /// Zero-based position among the passages reached through the question's photo, when it reached this one.
+    /// Zero-based position among the chunks reached through the question's photo, when it reached this one.
     public var imageRank: Int? = nil
-    /// Zero-based position among the passages reached through photos that matched the question's words, when one reached this.
+    /// Zero-based position among the chunks reached through photos that matched the question's words, when one reached this.
     public var wordsRank: Int? = nil
 
     public var id: String { chunk.id }
@@ -80,8 +80,8 @@ public struct RetrievedImage: Sendable, Equatable, Identifiable {
 }
 
 public struct RetrievalResult: Sendable, Equatable {
-    /// Fused passages, best first. Only use them to answer when `relevant` is true.
-    public var passages: [RetrievedPassage]
+    /// Fused chunks, best first. Only use them to answer when `relevant` is true.
+    public var chunks: [RetrievedChunk]
     public var relevant: Bool
     /// Best cosine distance seen, or `nil` if the library has nothing comparable.
     public var bestDistance: Double?
@@ -90,8 +90,8 @@ public struct RetrievalResult: Sendable, Equatable {
     /// What was read from the question's photo, when it had one.
     public var photo: PhotoQuery?
 
-    /// The nearest passages, offered to the user when nothing was relevant enough to answer from.
-    public func closest(_ count: Int = 3) -> [RetrievedPassage] { Array(passages.prefix(count)) }
+    /// The nearest chunks, offered to the user when nothing was relevant enough to answer from.
+    public func closest(_ count: Int = 3) -> [RetrievedChunk] { Array(chunks.prefix(count)) }
 }
 
 /// What a photo question needs besides text search: reading the photo, comparing it with library images.
@@ -107,7 +107,7 @@ public struct PhotoSearch: Sendable {
     }
 }
 
-/// Finds the passages that best answer a question: semantic (vector) and exact (keyword) search,
+/// Finds the chunks that best answer a question: semantic (vector) and exact (keyword) search,
 /// merged, then a relevance check. A question can come with a photo, which adds text read from it and
 /// the pages of similar-looking library images.
 public struct Retriever: Sendable {
@@ -161,8 +161,8 @@ public struct Retriever: Sendable {
             (vectorHits, keywordHits, wordMatches) = try await (semantic, keyword, byWords)
         }
 
-        let reached = try await passages(reachedBy: imageMatches)
-        let reachedByWords = try await passages(reachedBy: wordMatches)
+        let reached = try await chunks(reachedBy: imageMatches)
+        let reachedByWords = try await chunks(reachedBy: wordMatches)
         let titles = try await titles(for: Set(
             (vectorHits + keywordHits).map(\.chunk.docId) + reached.map(\.docId) + reachedByWords.map(\.docId)
                 + (imageMatches + wordMatches).map(\.image.docId)))
@@ -177,9 +177,9 @@ public struct Retriever: Sendable {
         let fused = RankFusion.fuse(lists, limit: configuration.resultLimit)
 
         let distances = Dictionary(vectorHits.map { ($0.chunk.id, $0.score) }, uniquingKeysWith: { a, _ in a })
-        let passages = fused.compactMap { item -> RetrievedPassage? in
+        let chunks = fused.compactMap { item -> RetrievedChunk? in
             guard let chunk = byID[item.id] else { return nil }
-            return RetrievedPassage(
+            return RetrievedChunk(
                 chunk: chunk, documentTitle: titles[chunk.docId] ?? "Untitled", distance: distances[item.id],
                 keywordRank: item.ranks[1], fusedScore: item.score,
                 imageRank: photoList.flatMap { item.ranks[$0] }, wordsRank: wordsList.flatMap { item.ranks[$0] })
@@ -187,18 +187,18 @@ public struct Retriever: Sendable {
 
         if tracer.isEnabled {
             let ranks = Dictionary(uniqueKeysWithValues: fused.map { ($0.id, $0.ranks) })
-            tracer.emit(.fusion(method: "Reciprocal Rank Fusion", k: RankFusion.defaultK, entries: passages.map { passage in
+            tracer.emit(.fusion(method: "Reciprocal Rank Fusion", k: RankFusion.defaultK, entries: chunks.map { retrieved in
                 FusionEntry(
-                    chunkID: passage.chunk.id, documentTitle: passage.documentTitle,
-                    vectorPosition: ranks[passage.chunk.id]?[0], keywordPosition: passage.keywordRank,
-                    imagePosition: passage.imageRank, wordsPosition: passage.wordsRank, distance: passage.distance,
-                    score: passage.fusedScore)
+                    chunkID: retrieved.chunk.id, documentTitle: retrieved.documentTitle,
+                    vectorPosition: ranks[retrieved.chunk.id]?[0], keywordPosition: retrieved.keywordRank,
+                    imagePosition: retrieved.imageRank, wordsPosition: retrieved.wordsRank, distance: retrieved.distance,
+                    score: retrieved.fusedScore)
             }))
         }
 
         let best = vectorHits.map(\.score).min()
         let bestImage = imageMatches.map(\.score).min()
-        let outcome = relevance(best: best, passages: passages, terms: terms, bestImage: bestImage)
+        let outcome = relevance(best: best, chunks: chunks, terms: terms, bestImage: bestImage)
         tracer.emit(.relevance(
             bestDistance: best, threshold: configuration.maxDistance, outcome: outcome,
             bestImageDistance: photoQuery == nil ? nil : bestImage,
@@ -210,7 +210,7 @@ public struct Retriever: Sendable {
         images += wordMatches.filter { !alreadyShown.contains($0.image.id) }.map {
             RetrievedImage(image: $0.image, documentTitle: titles[$0.image.docId] ?? "Untitled", distance: $0.score, viaWords: true)
         }
-        return RetrievalResult(passages: passages, relevant: outcome != .failed, bestDistance: best, images: images, photo: photoQuery)
+        return RetrievalResult(chunks: chunks, relevant: outcome != .failed, bestDistance: best, images: images, photo: photoQuery)
     }
 
     // MARK: Photo
@@ -249,9 +249,9 @@ public struct Retriever: Sendable {
         return (query, hits.filter { $0.score <= configuration.imageMaxDistance })
     }
 
-    /// For each matching image, best first: the passage that stands for the image, then the text on its page
+    /// For each matching image, best first: the chunk that stands for the image, then the text on its page
     /// (PDF) or under its heading (Word). The result is one ranked list for fusion.
-    private func passages(reachedBy matches: [ScoredImage]) async throws -> [Chunk] {
+    private func chunks(reachedBy matches: [ScoredImage]) async throws -> [Chunk] {
         var reached: [Chunk] = []
         var seen = Set<String>()
         for match in matches {
@@ -265,8 +265,8 @@ public struct Retriever: Sendable {
                 candidates = try await repository.activeChunks(docId: image.docId)
             }
             let own = candidates.filter { $0.imageId == image.id }
-            // A photo document has nothing but its own passage; for a document, text beside the image comes next.
-            let beside = candidates.filter { $0.imageId == nil }.prefix(configuration.passagesPerImage)
+            // A photo document has nothing but its own chunk; for a document, text beside the image comes next.
+            let beside = candidates.filter { $0.imageId == nil }.prefix(configuration.chunksPerImage)
             for chunk in own + beside where seen.insert(chunk.id).inserted { reached.append(chunk) }
         }
         return reached
@@ -278,13 +278,13 @@ public struct Retriever: Sendable {
         return titles
     }
 
-    /// Relevant when the closest passage is near enough in meaning, or when an identifier from the
-    /// question (an error code, a part number) appears verbatim in one of the top passages.
-    func relevance(best: Double?, passages: [RetrievedPassage], terms: [String], bestImage: Double? = nil) -> RelevanceOutcome {
+    /// Relevant when the closest chunk is near enough in meaning, or when an identifier from the
+    /// question (an error code, a part number) appears verbatim in one of the top chunks.
+    func relevance(best: Double?, chunks: [RetrievedChunk], terms: [String], bestImage: Double? = nil) -> RelevanceOutcome {
         if let best, best <= configuration.maxDistance { return .passedOnDistance }
         let codes = QueryTerms.codes(in: terms)
-        for passage in passages.prefix(configuration.suggestionCount) {
-            if let code = codes.first(where: { QueryTerms.contains(passage.chunk.text, code: $0) }) {
+        for retrieved in chunks.prefix(configuration.suggestionCount) {
+            if let code = codes.first(where: { QueryTerms.contains(retrieved.chunk.text, code: $0) }) {
                 return .passedOnIdentifier(code)
             }
         }

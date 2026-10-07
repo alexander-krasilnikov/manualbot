@@ -29,19 +29,19 @@ import UniformTypeIdentifiers
 ///    counts as 539 tokens, was 503 real tokens including the 7-token prompt, and fit under `maxInputLength` 512.
 ///    Identifier-heavy text tokenizes much worse (part numbers and codes reached about 4 tokens per word), so the
 ///    approximation can under-count by a factor of three on such text, and the embedder must shrink and retry.
-/// 4. Templates (13 passages of the 6 evaluation documents, 25 answerable questions, recall@6 was 25/25 for every
-///    variant): with the documented query `task: search query | text: Q`, passages as `task: search result | text: P`
+/// 4. Templates (13 chunks of the 6 evaluation documents, 25 answerable questions, recall@6 was 25/25 for every
+///    variant): with the documented query `task: search query | text: Q`, chunks as `task: search result | text: P`
 ///    gave MRR 0.908 and a gap of 0.003 between the worst answerable best-distance (0.306) and the nearest
 ///    unanswerable one (0.309). Adding the title as `task: search result | title: T | text: P` gave MRR 0.933 and a gap
 ///    of 0.027; the title in the text, `… | text: T. P`, MRR 0.953 and a gap of 0.018; no template, MRR 0.910 and
-///    no gap in the right direction. So passages carry their title, and queries use the documented template. The set
+///    no gap in the right direction. So chunks carry their title, and queries use the documented template. The set
 ///    is small; the full evaluation (task 6.1) can revisit it.
 ///    Photos (18 drawn scenes, colour x shape, described in words): image alone, with a search-result prefix and
 ///    with a search-query prefix all matched 18/18 in both directions. Prefixed photos sit nearer to words (own mean
 ///    0.11 against 0.175) but the gap to other photos is the same (about 0.10), so photos are embedded alone.
 ///    70 against 140 vision tokens: both 18/18, own mean 0.168 against 0.175, 445 against 954 ms per image on the
 ///    CPU. The default (140) is kept; 70 can be tried on real photos in task 6.2.
-/// 5. Latency (batch of 8 passages of about 300 tokens / one image / one query): GPU 414 / 174 / 22 ms, CPU
+/// 5. Latency (batch of 8 chunks of about 300 tokens / one image / one query): GPU 414 / 174 / 22 ms, CPU
 ///    2,331 / 973 / 74 ms (the simulator matches the CPU). Process footprint with both engines loaded was about
 ///    1.2 to 1.6 GB (embedder 0.6 to 1.1 GB on its own, as measured in a long-lived test process), the embedder
 ///    still returned identical vectors while the Gemma 4 E4B engine was resident, and its latency was unchanged
@@ -157,7 +157,7 @@ struct EmbeddingGemma2SpikeTests {
         await engine.close()
     }
 
-    // MARK: Q3: no token count in the Swift API, so find where a long passage is cut
+    // MARK: Q3: no token count in the Swift API, so find where a long chunk is cut
 
     /// Natural English (the evaluation documents, repeated), so the word-to-token ratio is realistic; the first
     /// `words` words, each numbered at the end so no two lengths share a tail.
@@ -169,7 +169,7 @@ struct EmbeddingGemma2SpikeTests {
         return (0..<words).map { base[$0 % base.count] }.joined(separator: " ")
     }
 
-    @Test func findsWhereLongPassagesAreCut() async throws {
+    @Test func findsWhereLongChunksAreCut() async throws {
         let counter = ApproximateTokenCounter()
         for maxLength in [nil, 256, 512, 1024] as [Int?] {
             let engine = try await Self.engine(.cpu(), maxInputLength: maxLength)
@@ -197,30 +197,30 @@ struct EmbeddingGemma2SpikeTests {
 
     // MARK: Q4: prompt variants on the real evaluation documents
 
-    struct Passage { let doc: String; let text: String }
+    struct Chunk { let doc: String; let text: String }
 
-    static func evalPassages(config: ChunkerConfiguration) async throws -> (passages: [Passage], suite: EvalSuite) {
+    static func evalChunks(config: ChunkerConfiguration) async throws -> (chunks: [Chunk], suite: EvalSuite) {
         let fx = Fixtures()
         let suite = try EvalCorpus.suite()
         let urls = try EvalCorpus.build(in: fx, suite: suite)
         let extractor = FileDocumentExtractor()
         let chunker = Chunker(configuration: config)
-        var passages: [Passage] = []
+        var chunks: [Chunk] = []
         for url in urls {
             let document = try await extractor.extract(from: url) { _ in }
             let stem = url.deletingPathExtension().lastPathComponent
-            passages += chunker.chunk(document.blocks).map { Passage(doc: stem, text: $0.text) }
+            chunks += chunker.chunk(document.blocks).map { Chunk(doc: stem, text: $0.text) }
         }
-        return (passages, suite)
+        return (chunks, suite)
     }
 
     static func squash(_ s: String) -> String { s.lowercased().split(whereSeparator: \.isWhitespace).joined(separator: " ") }
 
-    @Test func comparesPassageAndQueryTemplates() async throws {
+    @Test func comparesChunkAndQueryTemplates() async throws {
         let engine = try await Self.engine(.cpu(), maxInputLength: 512)
-        let (passages, suite) = try await Self.evalPassages(config: ChunkerConfiguration(targetTokens: 300, maxTokens: 380, overlapTokens: 40, minTailTokens: 60))
-        print("SPIKE templates: \(passages.count) passages from \(Set(passages.map(\.doc)).count) documents")
-        let variants: [(String, (Passage) -> String)] = [
+        let (chunks, suite) = try await Self.evalChunks(config: ChunkerConfiguration(targetTokens: 300, maxTokens: 380, overlapTokens: 40, minTailTokens: 60))
+        print("SPIKE templates: \(chunks.count) chunks from \(Set(chunks.map(\.doc)).count) documents")
+        let variants: [(String, (Chunk) -> String)] = [
             ("documented  `task: search result | text: P`", { "task: search result | text: \($0.text)" }),
             ("with title  `task: search result | title: T | text: P`", { "task: search result | title: \($0.doc) | text: \($0.text)" }),
             ("title inline `task: search result | text: T. P`", { "task: search result | text: \($0.doc). \($0.text)" }),
@@ -233,8 +233,8 @@ struct EmbeddingGemma2SpikeTests {
         for (queryLabel, queryTemplate) in queryTemplates {
             for (label, template) in variants {
                 var vectors: [[Float]] = []
-                for start in stride(from: 0, to: passages.count, by: 8) {
-                    vectors += try await Self.text(engine, passages[start..<min(start + 8, passages.count)].map(template))
+                for start in stride(from: 0, to: chunks.count, by: 8) {
+                    vectors += try await Self.text(engine, chunks[start..<min(start + 8, chunks.count)].map(template))
                 }
                 var hits = 0, reciprocal = 0.0, answerable = 0
                 var bestDistances: [(answerable: Bool, distance: Float)] = []
@@ -244,7 +244,7 @@ struct EmbeddingGemma2SpikeTests {
                     bestDistances.append((c.isAnswerable, 1 - Self.dot(q, vectors[ranked[0]])))
                     guard c.isAnswerable, let expected = c.contains.map(Self.squash) else { continue }
                     answerable += 1
-                    if let rank = ranked.firstIndex(where: { Self.squash(passages[$0].text).contains(expected) }) {
+                    if let rank = ranked.firstIndex(where: { Self.squash(chunks[$0].text).contains(expected) }) {
                         if rank < 6 { hits += 1 }
                         reciprocal += 1 / Double(rank + 1)
                     }
@@ -309,7 +309,7 @@ struct EmbeddingGemma2SpikeTests {
     // MARK: Q5: latency and memory, alongside a loaded Gemma 4 engine
 
     @Test func measuresLatencyAndMemoryNextToTheGenerator() async throws {
-        let passages = (0..<16).map { "task: search result | text: " + Self.longText(words: 220 + $0) }
+        let chunks = (0..<16).map { "task: search result | text: " + Self.longText(words: 220 + $0) }
         let png = Self.picture(colour: 2, shape: "triangle")
         for (name, backend) in [("cpu", Backend.cpu()), ("gpu", Backend.gpu)] {
             #if targetEnvironment(simulator)
@@ -318,7 +318,7 @@ struct EmbeddingGemma2SpikeTests {
             let engine = try await Self.engine(backend, maxInputLength: 512)
             _ = try await Self.text(engine, ["warm up"]); _ = try await Self.image(engine, png)
             let batchStart = ContinuousClock.now
-            _ = try await Self.text(engine, Array(passages.prefix(8)))
+            _ = try await Self.text(engine, Array(chunks.prefix(8)))
             let batch = Self.ms(ContinuousClock.now - batchStart)
             let imageStart = ContinuousClock.now
             for _ in 0..<5 { _ = try await Self.image(engine, png) }
@@ -326,7 +326,7 @@ struct EmbeddingGemma2SpikeTests {
             let queryStart = ContinuousClock.now
             for _ in 0..<5 { _ = try await Self.text(engine, ["task: search query | text: how do I reset the unit"]) }
             let query = Self.ms(ContinuousClock.now - queryStart) / 5
-            print("SPIKE latency[\(name)]: batch of 8 passages (~300 tokens) \(String(format: "%.0f", batch)) ms, one image \(String(format: "%.0f", image)) ms, one query \(String(format: "%.0f", query)) ms, footprint \(Int(Self.residentMB())) MB")
+            print("SPIKE latency[\(name)]: batch of 8 chunks (~300 tokens) \(String(format: "%.0f", batch)) ms, one image \(String(format: "%.0f", image)) ms, one query \(String(format: "%.0f", query)) ms, footprint \(Int(Self.residentMB())) MB")
 
             if let generatorPath = ProcessInfo.processInfo.environment["GENERATOR_MODEL_PATH"] {
                 let before = Self.residentMB()
@@ -335,11 +335,11 @@ struct EmbeddingGemma2SpikeTests {
                 for try await piece in generator.generate(GenerationRequest(system: "Be terse.", prompt: "Name two colours.", maxTokens: 16, temperature: 0, stop: [])) { answer += piece }
                 let both = Self.residentMB()
                 // The embedder must still work, and give the same vectors, with the generator resident.
-                let again = try await Self.text(engine, [passages[0]])[0]
-                let reference = try await Self.text(engine, [passages[0]])[0]
+                let again = try await Self.text(engine, [chunks[0]])[0]
+                let reference = try await Self.text(engine, [chunks[0]])[0]
                 print("SPIKE memory[\(name)]: embedder alone \(Int(before)) MB, with generator loaded \(Int(both)) MB; generator said “\(answer.prefix(40))”; embedder still consistent: cos \(Self.dot(again, reference))")
                 let afterStart = ContinuousClock.now
-                _ = try await Self.text(engine, Array(passages.prefix(8)))
+                _ = try await Self.text(engine, Array(chunks.prefix(8)))
                 print("SPIKE latency[\(name)] with generator loaded: batch of 8 \(String(format: "%.0f", Self.ms(ContinuousClock.now - afterStart))) ms")
                 await generator.unload()
             }

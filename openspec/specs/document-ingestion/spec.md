@@ -1,7 +1,7 @@
 # document-ingestion Specification
 
 ## Purpose
-Turns user-imported text, PDF, and DOCX files into searchable, citable passages stored on the device, and lets the user manage that library.
+Turns user-imported text, PDF, and DOCX files into searchable, citable chunks stored on the device, and lets the user manage that library.
 
 ## Requirements
 
@@ -32,7 +32,7 @@ The app SHALL extract text with location metadata: page numbers for PDF, and hea
 
 #### Scenario: PDF page provenance
 - **WHEN** a text-based PDF is indexed
-- **THEN** every stored passage records the page number it came from
+- **THEN** every stored chunk records the page number it came from
 
 #### Scenario: DOCX tables
 - **WHEN** a DOCX containing a table is indexed
@@ -43,28 +43,28 @@ For PDF pages with no extractable text layer, the app SHALL recognize text using
 
 #### Scenario: Scanned manual
 - **WHEN** the user imports a PDF made of scanned page images
-- **THEN** the document becomes searchable and passages cite the correct page numbers
+- **THEN** the document becomes searchable and chunks cite the correct page numbers
 
 ### Requirement: Chunking with provenance
-Extracted text SHALL be split into overlapping passages of bounded size. Each passage MUST record its document, its position in the document, its page (where applicable), and its nearest heading (where available). Passages MUST NOT span PDF page boundaries.
+Extracted text SHALL be split into overlapping chunks of bounded size. Each chunk MUST record its document, its position in the document, its page (where applicable), and its nearest heading (where available). Chunks MUST NOT span PDF page boundaries.
 
-#### Scenario: Passage metadata
+#### Scenario: Chunk metadata
 - **WHEN** a document finishes indexing
-- **THEN** each passage has a document reference, an ordinal, and a page or heading reference
+- **THEN** each chunk has a document reference, an ordinal, and a page or heading reference
 
 ### Requirement: Embedding with model identity
-Each passage and each photo SHALL be embedded with the installed embedding model, into the same vector space, and the stored vector MUST record the identifier and version of the embedding model and its vector dimension.
+Each chunk and each photo SHALL be embedded with the installed embedding model, into the same vector space, and the stored vector MUST record the identifier and version of the embedding model and its vector dimension.
 
 #### Scenario: Model recorded on chunks
-- **WHEN** a passage is stored
+- **WHEN** a chunk is stored
 - **THEN** it includes its vector, the embedding model identifier and version, and the dimension
 
 #### Scenario: Model recorded on photos
 - **WHEN** a photo from a document or an imported photo is stored
-- **THEN** its vector comes from the same embedding model as the passages and records the same model identifier, version and dimension
+- **THEN** its vector comes from the same embedding model as the chunks and records the same model identifier, version and dimension
 
 ### Requirement: Background ingestion with status
-Ingestion SHALL run without blocking the UI, SHALL process documents from a persistent queue, and SHALL show each document's status: queued, extracting, recognizing text, analyzing images (with progress), embedding (with progress), ready, or failed (with a reason). Ingestion that is interrupted by app suspension or termination MUST resume on the next launch without duplicating passages or images.
+Ingestion SHALL run without blocking the UI, SHALL process documents from a persistent queue, and SHALL show each document's status: queued, extracting, recognizing text, analyzing images (with progress), embedding (with progress), ready, or failed (with a reason). Ingestion that is interrupted by app suspension or termination MUST resume on the next launch without duplicating chunks or images.
 
 #### Scenario: Progress visible
 - **WHEN** a 300-page PDF is being indexed
@@ -72,32 +72,32 @@ Ingestion SHALL run without blocking the UI, SHALL process documents from a pers
 
 #### Scenario: App killed mid-ingestion
 - **WHEN** the app is terminated while a document is embedding and is later relaunched
-- **THEN** ingestion of that document resumes and the document ends with exactly one set of passages and one set of images
+- **THEN** ingestion of that document resumes and the document ends with exactly one set of chunks and one set of images
 
 #### Scenario: Unreadable file
 - **WHEN** a PDF is password-protected or corrupt
 - **THEN** the document shows status "failed" with a readable reason, and other queued documents keep processing
 
 ### Requirement: Search availability during ingestion
-Only documents with status "ready" SHALL be included in retrieval and image search. A document's passages and images MUST become searchable together, never partially.
+Only documents with status "ready" SHALL be included in retrieval and image search. A document's chunks and images MUST become searchable together, never partially.
 
 #### Scenario: Partially embedded document
 - **WHEN** the user asks a question while a document is still embedding
-- **THEN** no passages or images from that document are used to answer
+- **THEN** no chunks or images from that document are used to answer
 
 ### Requirement: Re-indexing
-The user SHALL be able to re-index a document. Re-indexing MUST produce a new, complete set of passages and images and remove the previous set only after the new set is ready, so the document stays searchable throughout.
+The user SHALL be able to re-index a document. Re-indexing MUST produce a new, complete set of chunks and images and remove the previous set only after the new set is ready, so the document stays searchable throughout.
 
 #### Scenario: Re-index keeps document available
 - **WHEN** the user re-indexes a ready document
-- **THEN** questions keep being answered from the previous passages and images until the new ones are ready, and afterwards only the new passages and images exist
+- **THEN** questions keep being answered from the previous chunks and images until the new ones are ready, and afterwards only the new chunks and images exist
 
 ### Requirement: Deletion
-Deleting a document SHALL remove the document record, its stored original file, and all of its passages, images and vectors in one operation. Citations to it in existing chats MUST remain visible as text, marked as belonging to a deleted document.
+Deleting a document SHALL remove the document record, its stored original file, and all of its chunks, images and vectors in one operation. Citations to it in existing chats MUST remain visible as text, marked as belonging to a deleted document.
 
 #### Scenario: Delete document
 - **WHEN** the user deletes a document
-- **THEN** it disappears from the library, none of its passages or images are returned by search, and earlier citations to it show as "document deleted"
+- **THEN** it disappears from the library, none of its chunks or images are returned by search, and earlier citations to it show as "document deleted"
 
 ### Requirement: Library view
 The library SHALL list every document with its title, type, page count (for PDF), number of photos found (when any), import date, and ingestion status, and SHALL let the user rename documents. Photo documents MUST show a thumbnail.

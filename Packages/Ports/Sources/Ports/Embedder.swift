@@ -1,7 +1,7 @@
 public enum EmbeddingKind: Sendable {
-    /// Text to be stored and searched. `title` is the document title, used by the model's passage template.
-    case passage(title: String)
-    /// A user question searching for passages.
+    /// Text to be stored and searched. `title` is the document title, used by the model's chunk template.
+    case chunk(title: String)
+    /// A user question searching for chunks.
     case query
 }
 

@@ -18,7 +18,7 @@ import Testing
     private func seed(_ f: RepoFixture, filler: Int = 120) async throws {
         for (id, gen) in [("A", 1), ("B", 1)] {
             try await f.repo.upsert(DocumentRecord(id: id, title: "Doc \(id)", type: .pdf, activeGeneration: nil))
-            var chunks = (0..<filler).map { chunk(id, $0, hot: id == "A" ? $0 : 200 + $0, text: "filler passage \($0) of \(id)") }
+            var chunks = (0..<filler).map { chunk(id, $0, hot: id == "A" ? $0 : 200 + $0, text: "filler chunk \($0) of \(id)") }
             if id == "A" { chunks[7].text = "To reset the unit hold the button for ten seconds."; chunks[9].text = "Replace the filter yearly." }
             if id == "B" { chunks[3].text = "Error E-042 means the motor overheated."; chunks[4].text = "Error E-0421 is unrelated." }
             try await f.repo.writeChunks(chunks)
@@ -39,7 +39,7 @@ import Testing
 
     // MARK: 5.1 vector
 
-    @Test func nearestPassageComesFirstWithZeroDistance() async throws {
+    @Test func nearestChunkComesFirstWithZeroDistance() async throws {
         let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
         try await seed(f)
         let hits = try await f.repo.vectorSearch(vec(7), limit: 5, filter: filter())
@@ -49,7 +49,7 @@ import Testing
         #expect(hits.map(\.score) == hits.map(\.score).sorted())
     }
 
-    @Test func draftSupersededAndMismatchedModelPassagesAreExcluded() async throws {
+    @Test func draftSupersededAndMismatchedModelChunksAreExcluded() async throws {
         let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
         try await seed(f)
         // Several chunks share hot index 7 (A:1:7, C, A gen2, mismatched B). Only A:1:7 may come back.
@@ -93,7 +93,7 @@ import Testing
         let hits = try await f.repo.vectorSearch(vec(7), limit: 400, filter: filter())
         #expect(hits.allSatisfy { $0.chunk.docId != "A" })
         // Keyword search ignores embedding models (the text is valid either way), so B's "other model"
-        // passage can still match, but nothing from the deleted document A may.
+        // chunk can still match, but nothing from the deleted document A may.
         let keyword = try await f.repo.keywordSearch(terms: ["reset"], limit: 10, filter: filter())
         #expect(keyword.map(\.chunk.id) == ["B:1:500"], "got \(keyword.map(\.chunk.id))")
     }
@@ -106,7 +106,7 @@ import Testing
         let hits = try await f.repo.keywordSearch(terms: ["E-042"], limit: 5, filter: filter())
         #expect(hits.first?.chunk.id == "B:1:3")
         #expect(hits.first?.chunk.text.contains("E-042") == true)
-        // The unrelated E-0421 passage must not be what ranks first.
+        // The unrelated E-0421 chunk must not be what ranks first.
         #expect(hits.map(\.chunk.id).first != "B:1:4")
     }
 

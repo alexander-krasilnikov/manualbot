@@ -34,7 +34,7 @@ public struct ImageRecord: Sendable, Codable, Hashable, Identifiable {
 
     public static func makeID(docId: String, generation: Int, n: Int) -> String { "\(docId):\(generation):img:\(n)" }
 
-    /// Reads an image ID back into its parts. `nil` if it is not an image ID (a passage ID never parses).
+    /// Reads an image ID back into its parts. `nil` if it is not an image ID (a chunk ID never parses).
     public static func parseID(_ id: String) -> (docId: String, generation: Int, n: Int)? {
         let parts = id.split(separator: ":", omittingEmptySubsequences: false)
         guard parts.count >= 4, parts[parts.count - 2] == "img", let n = Int(parts[parts.count - 1]),

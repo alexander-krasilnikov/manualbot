@@ -100,14 +100,14 @@ import Testing
 
     // MARK: 3.3 targets
 
-    @Test func openingAPassageSelectsItsCollectionAndShowsIt() async {
+    @Test func openingAChunkSelectsItsCollectionAndShowsIt() async {
         let (model, _) = model()
         await model.open(ExplorerTarget(collection: "chunks", documentID: "chunk-001"))
         #expect(model.selection == .collection("chunks"))
         #expect(model.path == [.document(collection: "chunks", id: "chunk-001")])
     }
 
-    @Test func goingBackFromAReferenceShowsThePassageAgain() async {
+    @Test func goingBackFromAReferenceShowsTheChunkAgain() async {
         let (model, _) = model()
         await model.open(ExplorerTarget(collection: "chunks", documentID: "chunk-001"))
         model.follow(collection: "documents", id: "d1")
@@ -184,7 +184,7 @@ import Testing
         let (model, _) = model()
         await model.open()
         let starters = model.starters
-        #expect(starters.map(\.title) == ["Keyword search", "Passages of one document", "Ingest jobs by state"])
+        #expect(starters.map(\.title) == ["Keyword search", "Chunks of one document", "Ingest jobs by state"])
         #expect(starters[0].sql.contains("MATCH(chunks_fts"))
         #expect(starters[1].sql.contains("\"d1\""))
         model.console.use(starters[2])

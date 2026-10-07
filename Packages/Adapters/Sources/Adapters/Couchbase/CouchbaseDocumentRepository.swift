@@ -324,7 +324,7 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
                 }
             }
         }
-        tracer.emit(duration: seconds, .documentDeleted(docId: id, passagesRemoved: chunkIDs.count, imagesRemoved: imageIDs.count))
+        tracer.emit(duration: seconds, .documentDeleted(docId: id, chunksRemoved: chunkIDs.count, imagesRemoved: imageIDs.count))
     }
 
     // MARK: Chats, messages, jobs

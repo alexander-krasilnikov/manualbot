@@ -59,13 +59,13 @@ enum XrayText {
         case .jobState:
             "Indexing progress sits in a collection that is local to this device and never replicated, so turning on sync later sends nothing about it."
         case .batchWritten:
-            "Many passages and their vectors go in as one atomic transaction, all of it or none of it, even if the app is killed."
+            "Many chunks and their vectors go in as one atomic transaction, all of it or none of it, even if the app is killed."
         case .generationActivated:
-            "One transaction makes the new passages searchable and removes the old ones, so a search never sees a half-built index."
+            "One transaction makes the new chunks searchable and removes the old ones, so a search never sees a half-built index."
         case .documentDeleted:
-            "Deleting a document removes its record, its file and its passages in one transaction, leaving nothing behind."
+            "Deleting a document removes its record, its file and its chunks in one transaction, leaving nothing behind."
         case .vectorQuery:
-            "Vector search runs inside the same embedded database as the documents, with no network and no separate vector store, and the index is queried unfiltered for speed while visibility is decided from the passage ID (document, generation, position) so a re-index in progress is never seen."
+            "Vector search runs inside the same embedded database as the documents, with no network and no separate vector store, and the index is queried unfiltered for speed while visibility is decided from the chunk ID (document, generation, position) so a re-index in progress is never seen."
         case .keywordQuery:
             "Full-text search uses the same SQL++ as every other query and runs offline in the same engine as the vector search, which is what makes exact codes like E-042 findable."
         case .keywordSkipped:
@@ -81,15 +81,15 @@ enum XrayText {
         case .relevance:
             "A distance threshold keeps the app from answering with weak matches, so it says it found nothing instead of guessing."
         case .generation:
-            "Only passages retrieved from the local database reach the language model, and the answer cites them, so nothing leaves the device."
+            "Only chunks retrieved from the local database reach the language model, and the answer cites them, so nothing leaves the device."
         case .imageAnalyzed:
-            "Each photo is read on the iPad, for the text on it by the operating system and for a vector by the same model that embeds the passages, so no photo leaves the device."
+            "Each photo is read on the iPad, for the text on it by the operating system and for a vector by the same model that embeds the chunks, so no photo leaves the device."
         case .imagesWritten:
             "The photos are stored as blobs beside their JSON records, each with its vector, in one atomic transaction, so a photo and its record can never come apart."
         case .photoAnalyzed:
             "Your photo is read on the device: its text (a model number, say) joins the keyword search, and its vector is searched against the library's photos."
         case .imageQuery:
-            "A second vector index, over photos, sits in the same embedded database as the passage index and is queried with the same SQL++, so finding a similar photo is one query, not another system."
+            "A second vector index, over photos, sits in the same embedded database as the chunk index and is queried with the same SQL++, so finding a similar photo is one query, not another system."
         case .imageByWordsQuery:
             "Words and photos share one vector space, so the question's own vector searches the photo index with the same SQL++ and finds a photo that nobody captioned."
         case .wordsMatchedPhotos:
@@ -104,8 +104,8 @@ enum XrayText {
         case .blobStored: "Stored the original file as a blob"
         case .blobRead(_, _, let cacheHit): cacheHit ? "Opened the original file (already on disk)" : "Read the original file from the blob"
         case .jobState(_, let state, _, _): "Indexing job: \(state)"
-        case .batchWritten(_, let count, _): "Wrote \(count) passage\(count == 1 ? "" : "s") in one transaction"
-        case .generationActivated(_, let generation, _, _): "Made passage set \(generation) searchable"
+        case .batchWritten(_, let count, _): "Wrote \(count) chunk\(count == 1 ? "" : "s") in one transaction"
+        case .generationActivated(_, let generation, _, _): "Made chunk set \(generation) searchable"
         case .documentDeleted: "Deleted the document"
         case .query(let trace):
             switch trace.purpose {
@@ -141,8 +141,8 @@ enum XrayText {
         case .batchWritten(let collection, _, let dimensions): "\(collection) · \(dimensions)-dimension vectors"
         case .generationActivated(_, _, let removed, let removedImages):
             removed == 0 && removedImages == 0
-                ? "nothing to remove" : "removed \(removedText(passages: removed, photos: removedImages)) from the older set in the same transaction"
-        case .documentDeleted(_, let removed, let images): "\(removedText(passages: removed, photos: images)) removed in the same transaction"
+                ? "nothing to remove" : "removed \(removedText(chunks: removed, photos: removedImages)) from the older set in the same transaction"
+        case .documentDeleted(_, let removed, let images): "\(removedText(chunks: removed, photos: images)) removed in the same transaction"
         case .query(let trace):
             if let attempt = trace.attempts.last {
                 "returned \(trace.returnedRows) · usable \(attempt.kept)"
@@ -152,7 +152,7 @@ enum XrayText {
         case .keywordSearchSkipped: "the question has no searchable words"
         case .queryRewritten(let original, let standalone): "“\(original)” → “\(standalone)”"
         case .queryEmbedded(let dimensions): "\(dimensions)-dimension vector"
-        case .fusion(let method, let k, let entries): "\(entries.count) passage\(entries.count == 1 ? "" : "s") · \(method), k=\(Int(k))"
+        case .fusion(let method, let k, let entries): "\(entries.count) chunk\(entries.count == 1 ? "" : "s") · \(method), k=\(Int(k))"
         case .relevance(let best, let threshold, let outcome, let bestImage, let imageThreshold):
             relevance(best: best, threshold: threshold, outcome: outcome, bestImage: bestImage, imageThreshold: imageThreshold)
         case .generation(let firstToken, let skipped):
@@ -175,14 +175,14 @@ enum XrayText {
         guard let best else { return "the library has no photos to compare with" }
         let distance = String(format: "%.3f", best)
         return matches > 0
-            ? "closest photo \(distance) ≤ threshold \(limit); the passages beside it were added to the search"
+            ? "closest photo \(distance) ≤ threshold \(limit); the chunks beside it were added to the search"
             : "closest photo \(distance) > threshold \(limit), so no photo is shown"
     }
 
-    /// "3 passages", "3 passages and 2 photos"; photos are left out when there are none.
-    private static func removedText(passages: Int, photos: Int) -> String {
+    /// "3 chunks", "3 chunks and 2 photos"; photos are left out when there are none.
+    private static func removedText(chunks: Int, photos: Int) -> String {
         let parts = [
-            passages > 0 || photos == 0 ? "\(passages) passage\(passages == 1 ? "" : "s")" : nil,
+            chunks > 0 || photos == 0 ? "\(chunks) chunk\(chunks == 1 ? "" : "s")" : nil,
             photos > 0 ? "\(photos) photo\(photos == 1 ? "" : "s")" : nil,
         ]
         return parts.compactMap { $0 }.joined(separator: " and ")
@@ -206,7 +206,7 @@ enum XrayText {
             switch outcome {
             case .passedOnDistance: text = "best distance \(distance) ≤ threshold \(limit)"
             case .passedOnIdentifier(let code):
-                text = "best distance \(distance) > threshold \(limit), but “\(code)” appears word for word in a top passage"
+                text = "best distance \(distance) > threshold \(limit), but “\(code)” appears word for word in a top chunk"
             case .passedOnImage(let imageDistance):
                 text = "best distance \(distance) > threshold \(limit), but the photo matches a library photo at distance "
                     + "\(String(format: "%.3f", imageDistance)) ≤ \(String(format: "%.2f", imageThreshold ?? 0))"
@@ -214,11 +214,11 @@ enum XrayText {
             }
         } else {
             switch outcome {
-            case .passedOnIdentifier(let code): text = "“\(code)” from the photo appears word for word in a top passage"
+            case .passedOnIdentifier(let code): text = "“\(code)” from the photo appears word for word in a top chunk"
             case .passedOnImage(let imageDistance):
                 text = "the photo matches a library photo at distance \(String(format: "%.3f", imageDistance)) ≤ \(String(format: "%.2f", imageThreshold ?? 0))"
             case .passedOnDistance, .failed:
-                text = bestImage == nil ? "no comparable passages in the library" : "no passage was compared by meaning"
+                text = bestImage == nil ? "no comparable chunks in the library" : "no chunk was compared by meaning"
             }
         }
         if case .passedOnImage = outcome {} else if let bestImage, let imageThreshold {

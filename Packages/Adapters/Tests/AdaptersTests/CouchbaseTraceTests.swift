@@ -60,13 +60,13 @@ import Testing
     }
 
     private func chunk(gen: Int, _ ordinal: Int, embedding: [Float]) -> Chunk {
-        Chunk(docId: "D", generation: gen, ordinal: ordinal, page: 1, text: "passage \(gen)-\(ordinal)",
+        Chunk(docId: "D", generation: gen, ordinal: ordinal, page: 1, text: "chunk \(gen)-\(ordinal)",
               embedding: embedding, embeddingModel: RepoFixture.identity.tag)
     }
 
     @Test func theFunnelCountsWhatWasHiddenFromTheResult() async throws {
         let (f, tracer) = try tracedFixture(); defer { Task { await f.cleanUp() } }
-        // Visible: D gen 1 (30). Hidden: a newer gen 2 (a re-index in progress) with 3 passages that match best.
+        // Visible: D gen 1 (30). Hidden: a newer gen 2 (a re-index in progress) with 3 chunks that match best.
         try await f.repo.upsert(DocumentRecord(id: "D", title: "D", type: .pdf))
         try await f.repo.writeChunks((0..<30).map { chunk(gen: 1, $0, embedding: vector(hot: 7, plus: 100 + $0)) })
         try await f.repo.activate(generation: 1, for: "D")
@@ -83,14 +83,14 @@ import Testing
         #expect(attempt.notVisible == 3)
         #expect(attempt.kept == 5)
         #expect(attempt.visible == 5)
-        #expect(attempt.notExamined == 7, "the search stopped once five passages were found")
+        #expect(attempt.notExamined == 7, "the search stopped once five chunks were found")
         #expect(attempt.notVisible + attempt.visible + attempt.notExamined == attempt.returned)
         #expect(search[0].trace.parameters["vector"]?.hasSuffix("768 values]") == true)
     }
 
     @Test func aWidenedWindowIsShownAsOneEventPerAttempt() async throws {
         let (f, tracer) = try tracedFixture(); defer { Task { await f.cleanUp() } }
-        // 100 hidden passages match the query exactly, so the first two windows (15, 60) hold nothing visible.
+        // 100 hidden chunks match the query exactly, so the first two windows (15, 60) hold nothing visible.
         try await f.repo.upsert(DocumentRecord(id: "D", title: "D", type: .pdf))
         try await f.repo.writeChunks((0..<30).map { chunk(gen: 1, $0, embedding: vector(hot: 7, plus: 100 + $0)) })
         try await f.repo.activate(generation: 1, for: "D")
@@ -165,7 +165,7 @@ import Testing
         #expect(kinds.contains(.blobRead(docId: "d1", length: 16, cacheHit: false)))
         #expect(kinds.contains(.blobRead(docId: "d1", length: 16, cacheHit: true)))
         #expect(kinds.contains(.messageSaved(id: "m1")))
-        #expect(kinds.contains(.documentDeleted(docId: "d1", passagesRemoved: 2)))
+        #expect(kinds.contains(.documentDeleted(docId: "d1", chunksRemoved: 2)))
     }
 
     // MARK: 2.4 inspector
@@ -184,11 +184,11 @@ import Testing
         #expect(ftsPlan.contains(CouchbaseSchema.ftsIndex), "\(ftsPlan)")
     }
 
-    @Test func aStoredPassageIsShownWithAShortenedVector() async throws {
+    @Test func aStoredChunkIsShownWithAShortenedVector() async throws {
         let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
         try await f.repo.writeChunks([RepoFixture.chunk("d1", 1, 4)])
         let json = try #require(try await f.repo.storedDocument(collection: "chunks", id: "d1:1:4"))
-        #expect(json.contains("\"text\" : \"passage 1-4\""), "\(json)")
+        #expect(json.contains("\"text\" : \"chunk 1-4\""), "\(json)")
         #expect(json.contains("768 values]"), "\(json)")
         #expect(json.contains("\"embeddingModel\""), "\(json)")
         #expect(json.contains("\"generation\" : 1"), "\(json)")

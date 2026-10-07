@@ -67,7 +67,7 @@ public struct BlobContent: Sendable, Equatable {
     }
 }
 
-/// The IDs of the passages and images that belong to a document record.
+/// The IDs of the chunks and images that belong to a document record.
 public struct DocumentChildren: Sendable, Equatable {
     public var chunks: [String]
     public var images: [String]

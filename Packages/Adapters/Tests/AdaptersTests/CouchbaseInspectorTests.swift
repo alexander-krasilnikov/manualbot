@@ -101,7 +101,7 @@ import Testing
         #expect((summary["image"] as? [String: Any])?["@type"] as? String == "blob")
     }
 
-    @Test func aDocumentListsThePassagesAndImagesOfItsActiveGeneration() async throws {
+    @Test func aDocumentListsTheChunksAndImagesOfItsActiveGeneration() async throws {
         let f = try await seeded(chunks: 3); defer { Task { await f.cleanUp() } }
         try await f.repo.writeChunks([RepoFixture.chunk("d1", 2, 0), RepoFixture.chunk("d1", 2, 1)])
         try await f.repo.writeImages([CouchbaseImageTests.image("d1", 1, 0), CouchbaseImageTests.image("d1", 1, 1), CouchbaseImageTests.image("d1", 2, 0)])

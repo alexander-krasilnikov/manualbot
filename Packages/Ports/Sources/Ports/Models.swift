@@ -56,7 +56,7 @@ public struct Chunk: Sendable, Codable, Hashable, Identifiable {
     public var embedding: [Float]
     /// Tag of the `EmbeddingModelIdentity` that produced `embedding`.
     public var embeddingModel: String
-    /// Set on the passage that stands for an image (its caption, heading and recognized text).
+    /// Set on the chunk that stands for an image (its caption, heading and recognized text).
     public var imageId: String?
 
     /// Deterministic, so re-writing a chunk overwrites it instead of duplicating it.
@@ -110,7 +110,7 @@ public struct ChatRecord: Sendable, Codable, Hashable, Identifiable {
     }
 }
 
-/// A reference from an answer to a retrieved passage. It carries a snapshot of the passage so it
+/// A reference from an answer to a retrieved chunk. It carries a snapshot of the chunk so it
 /// keeps rendering after the document is deleted.
 public struct Citation: Sendable, Codable, Hashable {
     public var n: Int
@@ -120,7 +120,7 @@ public struct Citation: Sendable, Codable, Hashable {
     public var page: Int?
     public var heading: String?
     public var snippet: String
-    /// Set when the cited passage stands for an image.
+    /// Set when the cited chunk stands for an image.
     public var imageId: String?
 
     public init(
@@ -148,7 +148,7 @@ public struct MessageRecord: Sendable, Codable, Hashable, Identifiable {
     public var role: MessageRole
     public var text: String
     public var standaloneQuery: String?
-    /// For an answer, the passages it cites. For a not-found reply, the closest passages offered as suggestions.
+    /// For an answer, the chunks it cites. For a not-found reply, the closest chunks offered as suggestions.
     public var citations: [Citation]
     public var stopped: Bool
     /// The documents did not contain an answer.

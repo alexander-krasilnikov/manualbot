@@ -9,7 +9,7 @@ extension CouchbaseDocumentRepository: TraceInspector {
     public func plan(sql: String) throws -> String {
         let query = try database.createQuery(sql)
         let parameters = Parameters()
-        // Image queries bind a vector of the image feature model's size, passage queries of the embedding model's.
+        // Image queries bind a vector of the image feature model's size, chunk queries of the embedding model's.
         let dimensions = sql.contains("\(CouchbaseSchema.scope).\(CouchbaseSchema.images)")
             ? imageFeatures.dimensions : embedding.dimensions
         let names = try NSRegularExpression(pattern: #"\$([A-Za-z_][A-Za-z0-9_]*)"#)
@@ -82,7 +82,7 @@ extension CouchbaseDocumentRepository: TraceInspector {
         return BlobContent(contentType: blob.contentType ?? "", data: data)
     }
 
-    /// The passages and images of a document. Those of the active generation, or of every generation while the
+    /// The chunks and images of a document. Those of the active generation, or of every generation while the
     /// document has none yet (it is still being imported).
     public func children(documentID: String) throws -> DocumentChildren {
         let generation = try collections.documents.document(id: documentID)

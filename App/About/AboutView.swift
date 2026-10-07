@@ -13,7 +13,7 @@ struct AboutView: View {
                 Section("Models") {
                     notice(
                         "EmbeddingGemma 2",
-                        "Downloaded once on first use. Licensed under the Apache License 2.0. Finds passages and photos by meaning.",
+                        "Downloaded once on first use. Licensed under the Apache License 2.0. Finds chunks and photos by meaning.",
                         links: [("Apache License 2.0", "https://www.apache.org/licenses/LICENSE-2.0")])
                     notice(
                         "Gemma 4 E2B",

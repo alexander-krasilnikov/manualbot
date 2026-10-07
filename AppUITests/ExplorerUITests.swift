@@ -40,13 +40,13 @@ final class ExplorerUITests: UITestCase {
         ask(app, "How do I reset the X200?")
         waitFor(element(app, "assistantMessage"), timeout: 15)
         element(app, "citation-1").tap()
-        waitFor(element(app, "highlightedPassage"))
+        waitFor(element(app, "highlightedChunk"))
 
         openExplorer(app)
         closeExplorer(app)
 
         waitFor(element(app, "assistantMessage"))
-        waitFor(element(app, "highlightedPassage"))
+        waitFor(element(app, "highlightedChunk"))
         XCTAssertEqual(element(app, "sourceTitle").label, "X200 Manual")
     }
 
@@ -62,7 +62,7 @@ final class ExplorerUITests: UITestCase {
         XCTAssertTrue(element(app, "explorerCollection-documents").label.contains("5"), element(app, "explorerCollection-documents").label)
     }
 
-    func testAPassageReferenceOpensItsDocumentAndBackReturnsToThePassage() {
+    func testAChunkReferenceOpensItsDocumentAndBackReturnsToTheChunk() {
         let app = readyApp()
         openExplorer(app)
         element(app, "explorerCollection-chunks").tap()

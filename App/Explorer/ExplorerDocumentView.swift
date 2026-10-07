@@ -54,7 +54,7 @@ struct DocumentField: Identifiable, Equatable {
 }
 
 /// A stored document, field by field: references open the document they name, shortened vectors can be shown in full,
-/// image and text blobs can be previewed, and a document record lists its passages and images.
+/// image and text blobs can be previewed, and a document record lists its chunks and images.
 struct DocumentView: View {
     let explorer: ExplorerModel
     let collection: String
@@ -156,8 +156,8 @@ struct DocumentView: View {
     private func childrenView(_ children: DocumentChildren) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Divider()
-            Text("Passages and images").font(.headline)
-            reference(list: children.chunks, title: "Passages", collection: CollectionNames.chunks)
+            Text("Chunks and images").font(.headline)
+            reference(list: children.chunks, title: "Chunks", collection: CollectionNames.chunks)
             reference(list: children.images, title: "Images", collection: CollectionNames.images)
         }
         .accessibilityElement(children: .contain)

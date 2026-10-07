@@ -98,7 +98,7 @@ private let manualText = ExtractedDocument(
         #expect(recognizer.calls.allSatisfy { $0 == false })          // codes are never "corrected"
     }
 
-    @Test func theImagePassageJoinsCaptionHeadingAndRecognizedText() async throws {
+    @Test func theImageChunkJoinsCaptionHeadingAndRecognizedText() async throws {
         let repo = InMemoryDocumentRepository()
         let doc = ExtractedDocument(
             blocks: [Block(text: "Install the pump carefully.", heading: "Installation")],
@@ -106,14 +106,14 @@ private let manualText = ExtractedDocument(
         let service = makeService(repo: repo, extractor: FakeExtractor(results: ["a.pdf": .success(doc)]), recognizer: FakeTextRecognizer(lines: ["FH-220"]))
         let id = try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/a.pdf"))
         await service.run()
-        let passage = try #require(try await repo.activeChunks(docId: id).first { $0.imageId != nil })
-        #expect(passage.text == "Figure 3: Filter housing · Installation · FH-220")
-        #expect(passage.heading == "Installation")
+        let chunk = try #require(try await repo.activeChunks(docId: id).first { $0.imageId != nil })
+        #expect(chunk.text == "Figure 3: Filter housing · Installation · FH-220")
+        #expect(chunk.heading == "Installation")
         let image = try #require(try await repo.activeImages(docId: id).first)
         #expect(image.caption == "Figure 3: Filter housing" && image.captionSource == .nearby)
     }
 
-    @Test func aPhotoWithNoTextBecomesReadyWithOnePassageNamedAfterIt() async throws {
+    @Test func aPhotoWithNoTextBecomesReadyWithOneChunkNamedAfterIt() async throws {
         let repo = InMemoryDocumentRepository()
         let doc = ExtractedDocument(blocks: [], images: [ExtractedImage(image: picture())])
         let service = makeService(repo: repo, extractor: FakeExtractor(results: ["pump front.jpg": .success(doc)]), recognizer: FakeTextRecognizer())
@@ -231,8 +231,8 @@ private let manualText = ExtractedDocument(
         let stored = try await repo.activeImages(docId: id)
         #expect(stored.map(\.n) == [0, 1, 2, 3, 4] && Set(stored.map(\.id)).count == 5)
         #expect(healthy.calls == 3, "only the unfinished images are analyzed again")
-        let passages = try await repo.activeChunks(docId: id).filter { $0.imageId != nil }
-        #expect(passages.count == 5 && Set(passages.compactMap(\.imageId)).count == 5)
+        let chunks = try await repo.activeChunks(docId: id).filter { $0.imageId != nil }
+        #expect(chunks.count == 5 && Set(chunks.compactMap(\.imageId)).count == 5)
         #expect(try await repo.job(docId: id)?.state == .ready)
     }
 

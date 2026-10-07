@@ -37,7 +37,7 @@ private struct ProbeSearch: ChunkSearching {
     private let reset = "Hold the power button for ten seconds until the light blinks."
     private let erase = "A reset erases the saved Wi-Fi network and the filter timer."
 
-    /// `answers` maps a passage text in the prompt to the scripted reply; `rewrites` maps a follow-up to its standalone query.
+    /// `answers` maps a chunk text in the prompt to the scripted reply; `rewrites` maps a follow-up to its standalone query.
     private func run(
         _ suite: EvalSuite, table: [(contains: String, hits: [ScoredChunk])], answers: [(prompt: String, reply: String)],
         rewrites: [String: String] = [:]
@@ -122,7 +122,7 @@ private struct ProbeSearch: ChunkSearching {
                 followUp: EvalCase(question: "And what about the filter?", doc: "manual", contains: "saved wi-fi network")),
         ])
         let report = try await run(suite, table: [
-            (contains: "reset erase", hits: [hit(1, erase, 0.1)]),          // the good rewrite finds the passage
+            (contains: "reset erase", hits: [hit(1, erase, 0.1)]),          // the good rewrite finds the chunk
             (contains: "reset", hits: [hit(0, reset, 0.1)]),
             (contains: "filter", hits: [hit(0, reset, 0.1)]),               // the bad rewrite finds only the wrong one
         ], answers: [
@@ -154,7 +154,7 @@ private struct ProbeSearch: ChunkSearching {
         ])
         let report = try await run(suite, table: [], answers: [])
         let text = report.description(model: "Gemma 4 E4B")
-        for line in ["model: Gemma 4 E4B", "states the expected fact", "cites a passage", "wrongly refused: 1/1", "answered when unanswerable",
+        for line in ["model: Gemma 4 E4B", "states the expected fact", "cites a chunk", "wrongly refused: 1/1", "answered when unanswerable",
                      "grounding failures", "follow-up hits", "median time to first text", "wrongly refused: What is the part number?"] {
             #expect(text.contains(line) || text.contains("What is the part number? — wrongly refused"), "missing “\(line)” in:\n\(text)")
         }

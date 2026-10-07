@@ -14,7 +14,7 @@ private func samplePhoto() -> CGImage {
     return context.makeImage()!
 }
 
-/// Manual A has a photo on page 14 with two text passages beside it. Search results and image matches are scripted.
+/// Manual A has a photo on page 14 with two text chunks beside it. Search results and image matches are scripted.
 private struct PhotoHarness {
     let repo = InMemoryDocumentRepository()
     let text = FakeChunkSearch()
@@ -88,9 +88,9 @@ private struct PhotoHarness {
         #expect(h.text.keywordTerms == [["descale", "X200-B"]], "the model number read off the nameplate joins the keywords")
         #expect(reply.imageMatches.map(\.imageId) == [h.page14.id])
         #expect(h.generator.callCount == 1)
-        // The language model only ever sees passages and the question, never the photo or its transcript.
+        // The language model only ever sees chunks and the question, never the photo or its transcript.
         let prompt = try #require(h.generator.requests.last?.prompt)
-        #expect(prompt.contains("Passages:") && prompt.contains("Question: how do I descale it?") && !prompt.contains("X200-B"))
+        #expect(prompt.contains("Chunks:") && prompt.contains("Question: how do I descale it?") && !prompt.contains("X200-B"))
     }
 
     @Test func thePhotoIsStoredWithTheQuestionAndShownAgain() async throws {
@@ -115,8 +115,8 @@ private struct PhotoHarness {
         let match = try #require(reply.imageMatches.first)
         #expect(reply.imageMatches.count == 1)
         #expect(match.docTitle == "Manual A" && match.page == 14 && match.imageId == h.page14.id && match.distance == 0.2)
-        #expect(reply.citations.map(\.page) == [14, 14, 14], "the passages from the matching page")
-        #expect(reply.citations.contains { $0.imageId == h.page14.id }, "the image's own passage says so")
+        #expect(reply.citations.map(\.page) == [14, 14, 14], "the chunks from the matching page")
+        #expect(reply.citations.contains { $0.imageId == h.page14.id }, "the image's own chunk says so")
         #expect(h.generator.callCount == 0)
         #expect(events.allSatisfy { if case .delta = $0 { false } else { true } })
         #expect(try await h.repo.chat(id: h.chatID)?.title == "Photo question")

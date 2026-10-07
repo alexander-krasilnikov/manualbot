@@ -84,7 +84,7 @@ import Testing
         let id = try await ingestion.enqueue(fileURL: url)
         await ingestion.run()
         try await ingestion.delete(docId: id)
-        #expect(tracer.kinds.contains(.documentDeleted(docId: id, passagesRemoved: 1, imagesRemoved: 1)))
+        #expect(tracer.kinds.contains(.documentDeleted(docId: id, chunksRemoved: 1, imagesRemoved: 1)))
     }
 
     @Test func aDisabledTracerSeesNothingOfAPhotoImport() async throws {

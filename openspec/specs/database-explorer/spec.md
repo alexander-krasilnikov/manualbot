@@ -32,7 +32,7 @@ The explorer SHALL list every collection in the app's scope with its document co
 
 #### Scenario: Refresh
 - **WHEN** a document finishes importing while the explorer is open and the presenter refreshes
-- **THEN** the counts include the new document and its passages
+- **THEN** the counts include the new document and its chunks
 
 ### Requirement: Document list
 Selecting a collection SHALL list its document IDs in ascending order, a page at a time, with a way to load the next page. The presenter MUST be able to filter the list to IDs that contain a given text. An empty collection or a filter with no matches MUST say so.
@@ -42,7 +42,7 @@ Selecting a collection SHALL list its document IDs in ascending order, a page at
 - **THEN** the next IDs follow the previous ones in order, with no ID repeated or skipped
 
 #### Scenario: Filter
-- **WHEN** the presenter filters the chunks list by a document ID
+- **WHEN** the presenter filters the chunks collection by a document ID
 - **THEN** only chunk IDs containing that text are listed
 
 #### Scenario: Empty collection
@@ -52,8 +52,8 @@ Selecting a collection SHALL list its document IDs in ascending order, a page at
 ### Requirement: Document view
 Selecting a document SHALL show it as stored, with field names and values as in the X-ray document inspection: vectors shortened to a few leading values and their length, blobs shown as content type, size and digest. The presenter MUST be able to show any shortened vector in full. Image blobs MUST offer a preview of the image and text blobs a preview of their text; other blobs show only their summary. If the document no longer exists, the view MUST say so.
 
-#### Scenario: Passage
-- **WHEN** the presenter opens a passage
+#### Scenario: Chunk
+- **WHEN** the presenter opens a chunk
 - **THEN** it shows the text, page, generation, embedding model and a shortened embedding with its length
 
 #### Scenario: Full vector
@@ -69,29 +69,29 @@ Selecting a document SHALL show it as stored, with field names and values as in 
 - **THEN** the view says the document no longer exists
 
 ### Requirement: References
-A field that holds the ID of a document in another collection (a passage's or image's document, a passage's image, a message's chat) SHALL open that document in the explorer when tapped. Viewing a document record MUST also list its passages and images, each opening when tapped. The presenter MUST be able to go back to the document they came from.
+A field that holds the ID of a document in another collection (a chunk's or image's document, a chunk's image, a message's chat) SHALL open that document in the explorer when tapped. Viewing a document record MUST also list its chunks and images, each opening when tapped. The presenter MUST be able to go back to the document they came from.
 
-#### Scenario: Passage to document
-- **WHEN** the presenter taps the document ID in a passage
-- **THEN** the explorer shows that document record, and going back shows the passage again
+#### Scenario: Chunk to document
+- **WHEN** the presenter taps the document ID in a chunk
+- **THEN** the explorer shows that document record, and going back shows the chunk again
 
-#### Scenario: Document to passages
+#### Scenario: Document to chunks
 - **WHEN** the presenter opens a document record
-- **THEN** its passages and images are listed, and tapping one opens it
+- **THEN** its chunks and images are listed, and tapping one opens it
 
 ### Requirement: Indexes
 The explorer SHALL list every index with its name and collection. For indexes the app creates, it MUST show their kind (vector, full-text or value) and key settings: indexed expression or fields, and for vector indexes the dimensions, distance metric, centroids and encoding.
 
 #### Scenario: Vector index
-- **WHEN** the presenter opens the passage vector index
+- **WHEN** the presenter opens the chunk vector index
 - **THEN** it shows the chunks collection, the embedding expression, the embedding model's dimensions, cosine distance, 64 centroids and its encoding
 
 ### Requirement: SQL++ console
-The explorer SHALL offer a query editor that runs a SQL++ query typed by the presenter or chosen from a set of starter queries (at least a keyword search, the passages of one document, and ingest jobs by state). Results MUST show at most 200 rows, with values shortened as in the document view and a notice when more rows exist. The console MUST show the execution time and row count, and MUST show the query plan on request. A query that fails or uses a parameter MUST show the database error or a message that parameters are not supported, without leaving the explorer. A running query MUST be cancellable; after cancelling, the editor is usable again and the query's results are not shown.
+The explorer SHALL offer a query editor that runs a SQL++ query typed by the presenter or chosen from a set of starter queries (at least a keyword search, the chunks of one document, and ingest jobs by state). Results MUST show at most 200 rows, with values shortened as in the document view and a notice when more rows exist. The console MUST show the execution time and row count, and MUST show the query plan on request. A query that fails or uses a parameter MUST show the database error or a message that parameters are not supported, without leaving the explorer. A running query MUST be cancellable; after cancelling, the editor is usable again and the query's results are not shown.
 
 #### Scenario: Starter query
 - **WHEN** the presenter runs the keyword search starter query
-- **THEN** matching passages are listed with the row count and execution time, and the plan names the full-text index
+- **THEN** matching chunks are listed with the row count and execution time, and the plan names the full-text index
 
 #### Scenario: Capped results
 - **WHEN** the presenter runs a query that matches more than 200 rows

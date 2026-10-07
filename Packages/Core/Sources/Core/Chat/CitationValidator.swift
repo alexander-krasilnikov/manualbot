@@ -1,12 +1,12 @@
 import Foundation
 import Ports
 
-/// Checks the `[n]` markers in a generated answer against the passages that were actually supplied.
+/// Checks the `[n]` markers in a generated answer against the chunks that were actually supplied.
 public enum CitationValidator {
     public struct Result: Equatable {
         /// The answer with invalid markers removed and valid ones normalized to `[1][2]`.
         public var text: String
-        /// Passage numbers cited, in order of first appearance.
+        /// Chunk numbers cited, in order of first appearance.
         public var cited: [Int]
         /// Whether at least one valid marker remains. An answer without one is not grounded.
         public var isGrounded: Bool { !cited.isEmpty }
@@ -14,7 +14,7 @@ public enum CitationValidator {
 
     private static let marker = try! NSRegularExpression(pattern: #"\[\s*(\d+(?:\s*[,;]\s*\d+)*)\s*\]"#)
 
-    public static func validate(_ answer: String, passageCount: Int) -> Result {
+    public static func validate(_ answer: String, chunkCount: Int) -> Result {
         var cited: [Int] = []
         let ns = answer as NSString
         var output = ""
@@ -28,7 +28,7 @@ public enum CitationValidator {
                 .split(whereSeparator: { $0 == "," || $0 == ";" || $0.isWhitespace })
                 .compactMap { Int($0) }
             var valid: [Int] = []
-            for n in numbers where (1...max(passageCount, 1)).contains(n) && passageCount > 0 && !valid.contains(n) {
+            for n in numbers where (1...max(chunkCount, 1)).contains(n) && chunkCount > 0 && !valid.contains(n) {
                 valid.append(n)
                 if !cited.contains(n) { cited.append(n) }
             }

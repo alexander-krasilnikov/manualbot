@@ -21,7 +21,7 @@ struct StarterQuery: Identifiable, Equatable {
                     LIMIT 20
                     """),
             StarterQuery(
-                title: "Passages of one document",
+                title: "Chunks of one document",
                 sql: """
                     SELECT meta().id AS id, generation, ordinal, page, heading
                     FROM manualbot.chunks

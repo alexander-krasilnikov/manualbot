@@ -24,10 +24,10 @@ public enum ChatEvent: Sendable, Equatable {
 }
 
 /// Answers a question strictly from the user's documents: rewrite, retrieve, refuse when nothing is
-/// relevant, otherwise generate from the retrieved passages and keep only citations that are real.
+/// relevant, otherwise generate from the retrieved chunks and keep only citations that are real.
 public actor ChatService {
     public static let notFoundText = "I couldn't find an answer to that in your documents."
-    public static let notFoundWithSuggestionsText = notFoundText + " The closest passages are listed below."
+    public static let notFoundWithSuggestionsText = notFoundText + " The closest chunks are listed below."
     /// The reply to a photo sent without a question: what in the library matches it, with nothing generated.
     public static let photoMatchesText = "Here is what matches your photo in your documents."
     static let photoTitle = "Photo question"
@@ -111,7 +111,7 @@ public actor ChatService {
         let matches = retrieval.images.map(Self.match)
 
         // Nothing relevant: answer instantly, without the language model.
-        guard retrieval.relevant, !retrieval.passages.isEmpty else {
+        guard retrieval.relevant, !retrieval.chunks.isEmpty else {
             tracer.emit(.generation(firstToken: nil, skipped: true))
             try await finish(notFound: retrieval.closest(), chatId: chatId, standalone: standalone, after: asked, emit: emit)
             return
@@ -122,17 +122,17 @@ public actor ChatService {
             tracer.emit(.generation(firstToken: nil, skipped: true))
             let reply = MessageRecord(
                 id: UUID().uuidString, chatId: chatId, role: .assistant, text: Self.photoMatchesText,
-                citations: retrieval.passages.enumerated().map { Self.citation($0.offset + 1, $0.element) },
+                citations: retrieval.chunks.enumerated().map { Self.citation($0.offset + 1, $0.element) },
                 createdAt: Self.after(asked), imageMatches: matches, matchesOnly: true)
             try await chats.upsert(message: reply)
             emit(.completed(reply))
             return
         }
 
-        let passages = retrieval.passages
+        let chunks = retrieval.chunks
         let request = GenerationRequest(
             system: PromptBuilder.answerSystemPrompt,
-            prompt: PromptBuilder.answerPrompt(question: standalone, passages: passages),
+            prompt: PromptBuilder.answerPrompt(question: standalone, chunks: chunks),
             maxTokens: maxAnswerTokens, temperature: temperature)
 
         var text = ""
@@ -165,7 +165,7 @@ public actor ChatService {
             return  // stopped before any text: nothing to keep
         }
 
-        let validated = CitationValidator.validate(text, passageCount: passages.count)
+        let validated = CitationValidator.validate(text, chunkCount: chunks.count)
         if !validated.isGrounded && !stopped {
             // An answer that cites nothing real is not grounded in the documents.
             try await finish(notFound: retrieval.closest(), chatId: chatId, standalone: standalone, after: asked, emit: emit)
@@ -173,7 +173,7 @@ public actor ChatService {
         }
         let reply = MessageRecord(
             id: UUID().uuidString, chatId: chatId, role: .assistant, text: validated.text, standaloneQuery: standalone,
-            citations: validated.cited.map { Self.citation($0, passages[$0 - 1]) }, stopped: stopped,
+            citations: validated.cited.map { Self.citation($0, chunks[$0 - 1]) }, stopped: stopped,
             createdAt: Self.after(asked), imageMatches: matches)
         try await chats.upsert(message: reply)
         emit(.completed(reply))
@@ -181,7 +181,7 @@ public actor ChatService {
     }
 
     private func finish(
-        notFound suggestions: [RetrievedPassage], chatId: String, standalone: String, after asked: MessageRecord,
+        notFound suggestions: [RetrievedChunk], chatId: String, standalone: String, after asked: MessageRecord,
         emit: @Sendable (ChatEvent) -> Void
     ) async throws {
         let reply = MessageRecord(
@@ -196,10 +196,11 @@ public actor ChatService {
 
     // MARK: Helpers
 
-    private static func citation(_ n: Int, _ passage: RetrievedPassage) -> Citation {
+    private static func citation(_ n: Int, _ retrieved: RetrievedChunk) -> Citation {
         Citation(
-            n: n, chunkId: passage.chunk.id, docId: passage.chunk.docId, docTitle: passage.documentTitle,
-            page: passage.chunk.page, heading: passage.chunk.heading, snippet: passage.chunk.text, imageId: passage.chunk.imageId)
+            n: n, chunkId: retrieved.chunk.id, docId: retrieved.chunk.docId, docTitle: retrieved.documentTitle,
+            page: retrieved.chunk.page, heading: retrieved.chunk.heading, snippet: retrieved.chunk.text,
+            imageId: retrieved.chunk.imageId)
     }
 
     private static func match(_ image: RetrievedImage) -> ImageMatch {

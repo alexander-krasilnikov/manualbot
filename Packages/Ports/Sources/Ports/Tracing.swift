@@ -77,12 +77,12 @@ public struct QueryTrace: Sendable, Equatable {
 public struct FusionEntry: Sendable, Equatable {
     public var chunkID: String
     public var documentTitle: String
-    /// Zero-based position in the vector results, `nil` when that search did not find the passage.
+    /// Zero-based position in the vector results, `nil` when that search did not find the chunk.
     public var vectorPosition: Int?
     public var keywordPosition: Int?
-    /// Position among the passages reached through the question's photo, `nil` when it had none or did not reach this one.
+    /// Position among the chunks reached through the question's photo, `nil` when it had none or did not reach this one.
     public var imagePosition: Int?
-    /// Position among the passages reached through photos that matched the question's words, `nil` when none did.
+    /// Position among the chunks reached through photos that matched the question's words, `nil` when none did.
     public var wordsPosition: Int?
     public var distance: Double?
     public var score: Double
@@ -119,7 +119,7 @@ public enum TraceKind: Sendable, Equatable {
     case jobState(docId: String, state: String, progress: Double, localOnly: Bool)
     case batchWritten(collection: String, count: Int, dimensions: Int)
     case generationActivated(docId: String, generation: Int, removed: Int, removedImages: Int = 0)
-    case documentDeleted(docId: String, passagesRemoved: Int, imagesRemoved: Int = 0)
+    case documentDeleted(docId: String, chunksRemoved: Int, imagesRemoved: Int = 0)
     /// One image was read: how much text was found in it, where its caption came from, and the size of its feature vector.
     case imageAnalyzed(docId: String, generation: Int, n: Int, ocrLength: Int, captionSource: String, dimensions: Int)
     /// A batch of images (with their display copies) was written in one transaction.
@@ -206,7 +206,7 @@ public protocol TraceInspector: Sendable {
     func documentIDs(collection: String, after: String?, containing: String?, limit: Int) async throws -> [String]
     /// The blob stored under `key` of a document, or `nil` when there is none.
     func blob(collection: String, id: String, key: String) async throws -> BlobContent?
-    /// The passages and images of a document record.
+    /// The chunks and images of a document record.
     func children(documentID: String) async throws -> DocumentChildren
     func indexes() async throws -> [IndexSummary]
     /// Runs a read-only SQL++ query and returns at most `limit` rows.

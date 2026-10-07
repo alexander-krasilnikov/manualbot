@@ -26,7 +26,7 @@ import Testing
 
     private func chunks(_ model: EmbeddingModelIdentity, count: Int, doc: String = "d1", generation: Int = 1) -> [Chunk] {
         (0..<count).map {
-            Chunk(docId: doc, generation: generation, ordinal: $0, page: $0 + 1, text: "passage \($0) about valves",
+            Chunk(docId: doc, generation: generation, ordinal: $0, page: $0 + 1, text: "chunk \($0) about valves",
                   embedding: vector($0, dimensions: model.dimensions), embeddingModel: model.tag)
         }
     }
@@ -42,7 +42,7 @@ import Testing
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("migrate-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }
 
-        // The previous version: 768-dimension indexes holding passages and a photo.
+        // The previous version: 768-dimension indexes holding chunks and a photo.
         let before = try open(root, text: Self.old, images: Self.old)
         try await before.upsert(DocumentRecord(id: "d1", title: "Old", type: .pdf))
         try await before.writeChunks(chunks(Self.old, count: 120))

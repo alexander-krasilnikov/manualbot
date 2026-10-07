@@ -2,7 +2,7 @@
 import Foundation
 import Ports
 
-/// Search over the images of each ready document's active generation, on the same pattern as passage
+/// Search over the images of each ready document's active generation, on the same pattern as chunk
 /// search: the index is queried unfiltered, and visibility is decided from the image ID (it encodes
 /// `docId:generation:img:n`), widening the candidate window when too few survive.
 extension CouchbaseDocumentRepository: ImageSearching {

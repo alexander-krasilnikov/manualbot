@@ -90,7 +90,7 @@ struct XrayEventDetail: View {
                 Text(XrayText.relevance(best: best, threshold: threshold, outcome: outcome, bestImage: bestImage, imageThreshold: imageThreshold))
                     .font(.callout)
             case .generation(let firstToken, let skipped):
-                Text(skipped ? "No passage was relevant, so the language model was never started." :
+                Text(skipped ? "No chunk was relevant, so the language model was never started." :
                         "First text after \(firstToken.map(XrayFormat.duration) ?? "–"); finished after \(event.duration.map(XrayFormat.duration) ?? "–").")
                     .font(.callout)
             case .keywordSearchSkipped:
@@ -186,7 +186,7 @@ private struct QueryDetail: View {
         }
     }
 
-    /// Every pass over the same index in this operation. A search that finds too few visible passages widens its
+    /// Every pass over the same index in this operation. A search that finds too few visible chunks widens its
     /// window and runs again, and each pass is its own event.
     private var searchesOfThisKind: [TraceEvent] {
         group.events.filter { other in
@@ -196,7 +196,7 @@ private struct QueryDetail: View {
 
     private var attemptNumber: Int { (searchesOfThisKind.firstIndex { $0.id == event.id } ?? 0) + 1 }
 
-    /// How many of this search's passages made it into the merged list. Only the last pass produced the result.
+    /// How many of this search's chunks made it into the merged list. Only the last pass produced the result.
     private var usedAfterFusion: Int? {
         guard trace.purpose != .other, searchesOfThisKind.last?.id == event.id else { return nil }
         for later in group.events where later.timestamp >= event.timestamp {
@@ -243,7 +243,7 @@ private struct FusionDetail: View {
     var body: some View {
         Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 6) {
             GridRow {
-                Text("Passage").gridColumnAlignment(.leading).accessibilityIdentifier("xrayFusionTable")
+                Text("Chunk").gridColumnAlignment(.leading).accessibilityIdentifier("xrayFusionTable")
                 Text("Vector"); Text("Keyword")
                 if showsPhotoColumn { Text("Photo") }
                 if showsWordsColumn { Text("Words → photo") }

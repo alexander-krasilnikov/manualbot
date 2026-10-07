@@ -8,7 +8,7 @@ the page or section they came from; if the documents don't say, the app says so.
 - Photos: the same model embeds photos into the same space as the text, in a second vector index in the same database, so
   a photo finds photos that look like it and typed words find photos by meaning ("the red pump"), even uncaptioned ones.
   The text printed on a photo (a nameplate, say) is read by Apple's Vision text recognition.
-- Answers: Gemma 4 E2B, constrained to the retrieved passages.
+- Answers: Gemma 4 E2B, constrained to the retrieved chunks.
 - Runtime: both models run on [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) (GPU on devices and Mac, CPU in the
   simulator). The one Apple framework left is Vision's text recognition, which reads scanned pages, photos and nameplates:
   it ships with the operating system, needs no model of its own, and replacing it (a second runtime, hand-written
@@ -57,11 +57,11 @@ question.
 - Photographing a **nameplate** reads its model and part numbers (ratings, dates and protection classes are left out) and
   searches the documents for them, so "how do I descale it?" with a photo of the unit finds the right manual.
 - A photo **alone** is answered with the library photos that look like it, each with its document and page, and the
-  passages from those pages. Nothing is generated.
+  chunks from those pages. Nothing is generated.
 - An answer shows the photos on the pages it cites, and tapping one opens that page.
 
 **Ask with words.** A typed question also searches the photos by meaning, so "where is the drain plug?" finds a photo of
-the drain plug that nobody captioned, and the answer shows it beside the text, with the passages of its page. Matching
+the drain plug that nobody captioned, and the answer shows it beside the text, with the chunks of its page. Matching
 photos only add to the answer: a photo whose look merely resembles the words never makes a question answerable on its own.
 
 Photos are analyzed on the iPad and are never given to the language model: answers still come only from document text.
@@ -84,7 +84,7 @@ X-ray lists every import, question, source opening, re-index and deletion as a g
 (for photos: each photo read, the batch of photos stored as blobs beside their JSON, and the image search over the second
 vector index):
 the SQL++ as executed with its parameters, the time, the index the query plan uses (the raw plan is one tap away), how
-many rows the index returned, how many were visible and how many were used, and the stored JSON of any passage or
+many rows the index returned, how many were visible and how many were used, and the stored JSON of any chunk or
 document ID you tap. "Why it matters" adds one sentence per step. "Slow reveal" shows a burst of steps one at a time,
 the text buttons enlarge the panel for a projector, and "Reset demo" (after confirming) clears the library and chats
 and imports six sample documents (the four text ones, a service manual PDF whose figure is a photo of a nameplate, and a
@@ -101,38 +101,38 @@ Lite database; Done returns to exactly where you were. Collections are grouped a
 document count (read when it opens, and again with Refresh). Pick a collection to page through its document IDs (filter by
 ID), then a document to see it as stored: vectors shortened with "Show in full", image and text blobs with a preview, and
 fields that name another document (`docId`, `chatId`, `imageId`) are links, with Back returning to where you came from.
-A document record also lists its passages and images. Indexes shows each index's kind and settings. **Query** is a SQL++
-console: pick a starter (keyword search, the passages of one document, ingest jobs by state) or type a SELECT, see up to
+A document record also lists its chunks and images. Indexes shows each index's kind and settings. **Query** is a SQL++
+console: pick a starter (keyword search, the chunks of one document, ingest jobs by state) or type a SELECT, see up to
 200 rows with the time, and open the query plan. Parameters (`$name`, including `$vector`) are not supported. Tapping a
 document ID in X-ray opens the explorer at that document. It never writes, and it adds nothing to the X-ray log.
 
 ### Talk track
 
 1. **Import.** Tap Reset demo, then watch the Import groups: the file is stored as a blob next to its JSON record, the
-   passages and their vectors are written in one transaction, and the passage set is made searchable in a second one. The
+   chunks and their vectors are written in one transaction, and the chunk set is made searchable in a second one. The
    indexing job is saved in a collection that never replicates.
 2. **Ask.** "How do I reset the X200?" Open the vector search: one SQL++ query over the same database that holds the
-   documents, the index it used, and the stored passage with its 256-number vector as an ordinary JSON field.
+   documents, the index it used, and the stored chunk with its 256-number vector as an ordinary JSON field.
 3. **Exact codes.** "What does error E-042 mean?" Open the keyword search and the merge: a full-text query in the same
    engine, and the two result lists merged by rank. This is why a code and a description both land on the right page.
 4. **Follow-up.** Ask "And the X100?" and show the rewritten standalone query, then an off-topic question and the
    relevance check that stops the model being called.
 5. **Photo.** Tap the sample-photo button (or the camera, with a real nameplate) and send the photo alone: the app reads
-   "MODEL X200-B" off the plate, finds the manual page whose figure looks like it, and lists that page's passages. In
+   "MODEL X200-B" off the plate, finds the manual page whose figure looks like it, and lists that page's chunks. In
    X-ray, open the photo analysis, then the image search: a second vector index (`images_vec`) in the same database,
    queried with the same SQL++, and the merge now has a third list. Add "how do I descale it?" to get a cited answer.
    Then type "where is the nameplate?" with no photo: the question's own vector searches the same photo index (Words → photos
    search), and a fourth column appears in the merge.
-6. **Look inside.** Tap Database after an import: the passages each point back to their document, ingest jobs and the
+6. **Look inside.** Tap Database after an import: the chunks each point back to their document, ingest jobs and the
    vector-index settings sit in collections that never replicate, and the keyword starter runs the same full-text query
    in the console, with a plan that names `chunks_fts`.
 7. **Offline.** Turn on airplane mode: the network indicator flips and everything above still works and is still traced.
 
 ### If asked: "so filtered vector search is slow?"
 
-At 20,000 passages, adding the visibility filter to the vector query cost about 160-330 ms, against a few milliseconds
+At 20,000 chunks, adding the visibility filter to the vector query cost about 160-330 ms, against a few milliseconds
 without it. So the index is queried unfiltered and visibility (the active generation of a ready document) is decided from
-the passage ID, which encodes document, generation and position. The row funnel in X-ray shows this: rows the index
+the chunk ID, which encodes document, generation and position. The row funnel in X-ray shows this: rows the index
 returned, rows that were visible, rows used. It also keeps a re-index in progress invisible to search until it is switched
 in. These figures were measured earlier in this project and are recorded in the comment above the search code
 (`CouchbaseChunkSearch.swift`); re-measure with `RUN_BENCHMARKS=1` before quoting them, and do not generalise them to other products.
@@ -161,14 +161,14 @@ repository or into `LocalModels/`, which git ignores):
 | `GENERATOR_MODEL_PATH` | `gemma-4-E2B-it.litertlm` | generator, full-pipeline tests, answer evaluation |
 | `ANSWER_EVAL_BASELINE_MODEL_PATH` | `gemma-4-E4B-it.litertlm` | with the two above, runs a baseline model first and prints whether the candidate meets the pass criteria |
 | `ANSWER_EVAL_REPORT`, `ANSWER_EVAL_MODEL` | a Markdown file, a name | save the answer evaluation's report and name the model in it |
-| `RUN_BENCHMARKS=1` | | 20,000-passage retrieval benchmark and 5,000-photo search benchmark (add `EMBEDDER_MODEL_PATH`) |
+| `RUN_BENCHMARKS=1` | | 20,000-chunk retrieval benchmark and 5,000-photo search benchmark (add `EMBEDDER_MODEL_PATH`) |
 | `RUN_SPIKES=1` | | the EmbeddingGemma 2 spike (output size, input limits, templates, latency) |
 | `IMAGE_EVAL_DIR` | a folder of photos (below) | photo and words-to-photo search evaluation on those photos |
 
 For the iOS simulator, prefix the variables with `TEST_RUNNER_`.
 
 ```sh
-# Retrieval quality (recall, relevance threshold, passage sizes), in Packages/Adapters:
+# Retrieval quality (recall, relevance threshold, chunk sizes), in Packages/Adapters:
 EMBEDDER_MODEL_PATH=…/embeddinggemma-2-text-vision-440m.litertlm swift test --filter RealEvalTests
 # Answer quality of a language model (31 questions and 6 follow-up pairs), comparing a candidate with the current one:
 EMBEDDER_MODEL_PATH=… GENERATOR_MODEL_PATH=…/gemma-4-E2B-it.litertlm ANSWER_EVAL_BASELINE_MODEL_PATH=…/gemma-4-E4B-it.litertlm \

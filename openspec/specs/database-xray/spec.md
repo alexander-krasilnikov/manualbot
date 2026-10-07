@@ -14,14 +14,14 @@ The app SHALL always show the Source / X-ray switch in the detail column and the
 
 #### Scenario: Same answers with tracing on or off
 - **WHEN** the same question is asked over the same library with tracing disabled and with it enabled
-- **THEN** the retrieved passages, answer and citations are the same
+- **THEN** the retrieved chunks, answer and citations are the same
 
 ### Requirement: Detail column switch
 The detail column SHALL switch between the source viewer and the X-ray panel. Tapping a citation or a library document MUST switch the column to Source and open it as before. Switching to X-ray MUST NOT close the open source.
 
 #### Scenario: Citation tap while X-ray is showing
 - **WHEN** X-ray is showing and the presenter taps a citation
-- **THEN** the column switches to Source and shows the cited passage highlighted
+- **THEN** the column switches to Source and shows the cited chunk highlighted
 
 #### Scenario: Return to X-ray
 - **WHEN** the presenter switches from Source to X-ray and back
@@ -43,19 +43,19 @@ The X-ray panel SHALL show events as they happen, grouped by the user operation 
 - **THEN** the panel is empty and new operations start appearing again
 
 ### Requirement: Import events
-Importing a document SHALL produce, in order: the document record saved to the documents collection; the original file stored as a blob, with its size and content type; each ingestion job state change, marked as stored in a device-local collection that is never replicated; for each image kept, an image analysis event with the length of its recognized text, its caption source (nearby text, alt text, or none) and its feature vector dimension; each batch of images written in one transaction, with the number of images and the blob size; each batch of passages written in one transaction, with the number of passages, vector dimensions and duration; and the activation step that makes the new passages and images searchable and removes the superseded ones in one transaction, with the number of passages and images removed.
+Importing a document SHALL produce, in order: the document record saved to the documents collection; the original file stored as a blob, with its size and content type; each ingestion job state change, marked as stored in a device-local collection that is never replicated; for each image kept, an image analysis event with the length of its recognized text, its caption source (nearby text, alt text, or none) and its feature vector dimension; each batch of images written in one transaction, with the number of images and the blob size; each batch of chunks written in one transaction, with the number of chunks, vector dimensions and duration; and the activation step that makes the new chunks and images searchable and removes the superseded ones in one transaction, with the number of chunks and images removed.
 
 #### Scenario: First import
 - **WHEN** the presenter imports a text document
-- **THEN** the import group shows the document save, the blob with its size, the job states through ready, at least one passage batch, and an activation step that removes zero old passages
+- **THEN** the import group shows the document save, the blob with its size, the job states through ready, at least one chunk batch, and an activation step that removes zero old chunks
 
 #### Scenario: Photo import
 - **WHEN** the presenter imports a photo
-- **THEN** the import group shows the image analysis, an image batch with its blob size, one passage batch, and the activation step
+- **THEN** the import group shows the image analysis, an image batch with its blob size, one chunk batch, and the activation step
 
 #### Scenario: Re-index
 - **WHEN** the presenter re-indexes a ready document
-- **THEN** the group shows a new generation number being written, and an activation step that removes the previous generation's passages and images in the same transaction
+- **THEN** the group shows a new generation number being written, and an activation step that removes the previous generation's chunks and images in the same transaction
 
 ### Requirement: Question events
 Asking a question SHALL produce events for: the photo analysis when a photo is attached (recognized text and feature vector dimension); the standalone query when a follow-up was rewritten (showing original and rewritten text); embedding the query (duration and vector dimensions); the vector search query; the keyword search query, or a note that the question had no keywords; the image search query when a photo is attached; rank fusion; the relevance decision; the language model's time to first token and total time, or a note that the model was not called; and the reply message saved to the messages collection.
@@ -77,11 +77,11 @@ Asking a question SHALL produce events for: the photo analysis when a photo is a
 - **THEN** the group shows the photo analysis with the recognized text, the text searches, the image search query over the image index with its row funnel, and fusion with three lists
 
 ### Requirement: Query details
-Every SQL++ query event SHALL show the query text exactly as executed, its bound parameters, and its execution time. A vector parameter MUST be shown shortened (a few leading values and its length). The event MUST name the index the query plan uses, or state that it uses none, and the raw query plan MUST be available on request. Search queries MUST show a row funnel: rows returned by the index, rows that were visible (the active generation of a ready document within the chat's scope), and passages used after fusion. When the search had to widen its candidate window, each attempt MUST be shown.
+Every SQL++ query event SHALL show the query text exactly as executed, its bound parameters, and its execution time. A vector parameter MUST be shown shortened (a few leading values and its length). The event MUST name the index the query plan uses, or state that it uses none, and the raw query plan MUST be available on request. Search queries MUST show a row funnel: rows returned by the index, rows that were visible (the active generation of a ready document within the chat's scope), and chunks used after fusion. When the search had to widen its candidate window, each attempt MUST be shown.
 
 #### Scenario: Vector search details
 - **WHEN** the presenter opens a vector search event
-- **THEN** it shows the SQL++ with the distance function, the shortened 768-value vector, the execution time, the vector index name, and the row funnel
+- **THEN** it shows the SQL++ with the distance function, the shortened query vector with its length, the execution time, the vector index name, and the row funnel
 
 #### Scenario: Raw plan
 - **WHEN** the presenter asks for the plan of a query event
@@ -92,14 +92,14 @@ Every SQL++ query event SHALL show the query text exactly as executed, its bound
 - **THEN** the funnel shows fewer visible rows than returned rows
 
 ### Requirement: Fusion and relevance details
-The fusion event SHALL list each fused passage with its document title, its position in the vector results, in the keyword results and in the image-matched results (or absent), its distance, and its fused score, and MUST name the fusion method and its constant. The relevance event MUST show the best distance, the threshold, the best image distance and image threshold when a photo was attached, and whether the result passed on distance, on an identifier from the question found verbatim in a top passage, on an image match, or not at all.
+The fusion event SHALL list each fused chunk with its document title, its position in the vector results, in the keyword results and in the image-matched results (or absent), its distance, and its fused score, and MUST name the fusion method and its constant. The relevance event MUST show the best distance, the threshold, the best image distance and image threshold when a photo was attached, and whether the result passed on distance, on an identifier from the question found verbatim in a top chunk, on an image match, or not at all.
 
-#### Scenario: Passage found by both searches
-- **WHEN** a passage appears in both the vector and keyword results
+#### Scenario: Chunk found by both searches
+- **WHEN** a chunk appears in both the vector and keyword results
 - **THEN** the fusion event shows both of its positions
 
 #### Scenario: Passed on identifier
-- **WHEN** a question containing an error code passes relevance only because the code appears in a top passage
+- **WHEN** a question containing an error code passes relevance only because the code appears in a top chunk
 - **THEN** the relevance event says it passed on the identifier, naming it
 
 #### Scenario: Passed on image
@@ -107,14 +107,14 @@ The fusion event SHALL list each fused passage with its document title, its posi
 - **THEN** the relevance event shows the image distance and threshold and says it passed on the image match
 
 ### Requirement: Document inspection
-Tapping a passage or document ID in an event SHALL open the database explorer at that stored document, showing its field names and values as stored. Vector fields MUST be shortened as for parameters; blob fields MUST show their content type, size and digest, not their content. If the document no longer exists, the explorer MUST say so. Closing the explorer MUST return to the X-ray panel with the log as it was.
+Tapping a chunk or document ID in an event SHALL open the database explorer at that stored document, showing its field names and values as stored. Vector fields MUST be shortened as for parameters; blob fields MUST show their content type, size and digest, not their content. If the document no longer exists, the explorer MUST say so. Closing the explorer MUST return to the X-ray panel with the log as it was.
 
-#### Scenario: Inspect a passage
-- **WHEN** the presenter taps a passage ID in a fusion event
-- **THEN** the explorer opens at that passage's stored document, including its text, page, generation, embedding model and a shortened embedding
+#### Scenario: Inspect a chunk
+- **WHEN** the presenter taps a chunk ID in a fusion event
+- **THEN** the explorer opens at that chunk's stored document, including its text, page, generation, embedding model and a shortened embedding
 
 #### Scenario: Deleted since
-- **WHEN** the presenter taps the ID of a passage whose document was deleted
+- **WHEN** the presenter taps the ID of a chunk whose document was deleted
 - **THEN** the explorer says the document no longer exists
 
 #### Scenario: Back to X-ray
@@ -122,7 +122,7 @@ Tapping a passage or document ID in an event SHALL open the database explorer at
 - **THEN** the X-ray panel is showing, with the same groups expanded as before
 
 ### Requirement: Why it matters captions
-The panel SHALL offer a captions toggle. With it on, each event kind MUST show one plain-language sentence stating the benefit it demonstrates (for example, vector and keyword search in one embedded engine, files stored with the data, atomic batches, local-only collections, offline operation). The vector search caption MUST explain that the index is queried unfiltered for speed and visibility is decided from the passage ID, presented as a design choice.
+The panel SHALL offer a captions toggle. With it on, each event kind MUST show one plain-language sentence stating the benefit it demonstrates (for example, vector and keyword search in one embedded engine, files stored with the data, atomic batches, local-only collections, offline operation). The vector search caption MUST explain that the index is queried unfiltered for speed and visibility is decided from the chunk ID, presented as a design choice.
 
 #### Scenario: Captions on
 - **WHEN** the presenter turns captions on

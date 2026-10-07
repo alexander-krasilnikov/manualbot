@@ -210,7 +210,7 @@ final class ChatViewModel {
         return data
     }
 
-    /// The photo behind a cited image passage, or every photo stored on the cited page or section.
+    /// The photo behind a cited image chunk, or every photo stored on the cited page or section.
     private func photos(for citation: Citation) async -> [PhotoRef] {
         var records: [ImageRecord] = []
         if let imageId = citation.imageId, let data = try? await documentRepository.imageData(id: imageId) {

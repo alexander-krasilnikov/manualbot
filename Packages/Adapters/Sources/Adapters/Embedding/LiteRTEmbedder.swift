@@ -21,7 +21,7 @@ public enum LiteRTEmbedderError: Error, LocalizedError, Equatable {
     }
 }
 
-/// EmbeddingGemma 2 Text Vision 440M through LiteRT-LM: one model, one vector space for passages, questions and photos.
+/// EmbeddingGemma 2 Text Vision 440M through LiteRT-LM: one model, one vector space for chunks, questions and photos.
 ///
 /// The same type is the `Embedder` and the `ImageFeaturing`, with one identity, so the model-tag checks that keep
 /// vectors from different models apart cannot let text and photo vectors drift. Settled by the spike
@@ -33,9 +33,9 @@ public enum LiteRTEmbedderError: Error, LocalizedError, Equatable {
 public actor LiteRTEmbedder: Embedder, ImageFeaturing {
     public static let modelIdentity = EmbeddingModelIdentity(id: "embeddinggemma-2-text-vision-440m", version: "1", dimensions: 256)
 
-    /// Passages per native call. A batch is not interruptible, so this bounds how long a cancel can wait.
+    /// Chunks per native call. A batch is not interruptible, so this bounds how long a cancel can wait.
     static let batchSize = 8
-    /// The engine's text input limit in tokens. Passages are chunked to fit (`ChunkerConfiguration.embeddingGemma2`).
+    /// The engine's text input limit in tokens. Documents are split into chunks that fit (`ChunkerConfiguration.embeddingGemma2`).
     static let maxInputLength = 512
     private static let titleLimit = 60
     /// Photos larger than this (longest side, in pixels) are scaled down before encoding. The model resizes them itself.
@@ -85,14 +85,14 @@ public actor LiteRTEmbedder: Embedder, ImageFeaturing {
         return try checked(response.embedding)
     }
 
-    // MARK: Prompt templates (documented by the model, with the passage title as the spike found useful)
+    // MARK: Prompt templates (documented by the model, with the chunk title as the spike found useful)
 
     static func prompt(for text: String, kind: EmbeddingKind) -> String {
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         switch kind {
         case .query:
             return "task: search query | text: \(body)"
-        case .passage(let title):
+        case .chunk(let title):
             let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
             let head = clean.isEmpty ? "task: search result" : "task: search result | title: \(clean.prefix(titleLimit))"
             return "\(head) | text: \(body)"
@@ -125,7 +125,7 @@ public actor LiteRTEmbedder: Embedder, ImageFeaturing {
             guard responses.count == prompts.count else { throw LiteRTEmbedderError.wrongDimensions(expected: prompts.count, got: responses.count) }
             return try responses.map { try checked($0.embedding) }
         } catch where Self.isTooLong(error) {
-            // One passage in the batch is longer than the input limit, which the engine reports instead of
+            // One chunk in the batch is longer than the input limit, which the engine reports instead of
             // truncating. Embed each on its own, shrinking only the ones that do not fit.
             var result: [[Float]] = []
             for prompt in prompts {
@@ -137,7 +137,7 @@ public actor LiteRTEmbedder: Embedder, ImageFeaturing {
     }
 
     /// Embeds `prompt`, cutting its words down by a fifth each time the engine says it is too long. Identifier-heavy
-    /// text can use several times as many tokens as its length suggests, so no estimate is safe for every passage.
+    /// text can use several times as many tokens as its length suggests, so no estimate is safe for every chunk.
     private func embedShrinking(_ prompt: String, on engine: EmbeddingEngine) async throws -> [Float] {
         var text = prompt
         while true {

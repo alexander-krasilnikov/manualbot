@@ -6,14 +6,14 @@ import PortsTesting
 import Testing
 @testable import Adapters
 
-/// Tracing must only observe. The same questions over the same documents give the same passages, answers and
+/// Tracing must only observe. The same questions over the same documents give the same chunks, answers and
 /// citations with it on or off, on the real database with fake models.
 @Suite(.serialized) struct TracingParityTests {
     private let fx = Fixtures()
     private static let documents = ["x200-manual.md", "warranty.txt", "bike-repair.md"]
 
     struct Outcome: Equatable {
-        var passages: [String]
+        var chunks: [String]
         var relevant: Bool
         var bestDistance: Double?
         var reply: String
@@ -85,7 +85,7 @@ import Testing
             }
             let message = try #require(reply)
             outcomes.append(Outcome(
-                passages: retrieval.passages.map { "\($0.documentTitle)#\($0.chunk.ordinal): \($0.chunk.text)" },
+                chunks: retrieval.chunks.map { "\($0.documentTitle)#\($0.chunk.ordinal): \($0.chunk.text)" },
                 relevant: retrieval.relevant, bestDistance: retrieval.bestDistance, reply: message.text,
                 citations: message.citations.map { "\($0.n) \($0.docTitle) p\($0.page ?? 0) \($0.snippet)" },
                 notFound: message.notFound, images: retrieval.images.map { "\($0.documentTitle) p\($0.image.page ?? 0) \($0.distance)" },
@@ -117,7 +117,7 @@ import Testing
         #expect(imports.count == Self.documents.count + 2)    // the text documents, the service manual and the photo
     }
 
-    @Test func deletingADocumentIsItsOwnOperationWithTheRemovedPassageCount() async throws {
+    @Test func deletingADocumentIsItsOwnOperationWithTheRemovedChunkCount() async throws {
         let tracer = RecordingTracer()
         let f = try RepoFixture(tracer: tracer); defer { Task { await f.cleanUp() } }
         let ingestion = IngestionService(
@@ -134,7 +134,7 @@ import Testing
         let deletion = try #require(after.first { if case .documentDeleted = $0.kind { true } else { false } })
         #expect(deletion.operation?.id == "delete-\(id)")
         #expect(deletion.operation?.kind == .delete)
-        #expect(deletion.kind == .documentDeleted(docId: id, passagesRemoved: 1))
+        #expect(deletion.kind == .documentDeleted(docId: id, chunksRemoved: 1))
     }
 
     /// Holds the first batch until released, so a delete can arrive while the document is being indexed.

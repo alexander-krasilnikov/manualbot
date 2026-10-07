@@ -17,16 +17,16 @@ struct LiteRTEmbedderHelperTests {
         #expect(LiteRTEmbedder.modelIdentity.tag == "embeddinggemma-2-text-vision-440m@1/256")
     }
 
-    @Test func queriesAndPassagesUseTheDocumentedTemplates() {
+    @Test func queriesAndChunksUseTheDocumentedTemplates() {
         #expect(LiteRTEmbedder.prompt(for: "  how do I reset it \n", kind: .query) == "task: search query | text: how do I reset it")
-        #expect(LiteRTEmbedder.prompt(for: "Hold the button.", kind: .passage(title: " X200 Manual "))
+        #expect(LiteRTEmbedder.prompt(for: "Hold the button.", kind: .chunk(title: " X200 Manual "))
             == "task: search result | title: X200 Manual | text: Hold the button.")
-        #expect(LiteRTEmbedder.prompt(for: "Hold the button.", kind: .passage(title: "  "))
+        #expect(LiteRTEmbedder.prompt(for: "Hold the button.", kind: .chunk(title: "  "))
             == "task: search result | text: Hold the button.")
     }
 
     @Test func aLongTitleIsCut() {
-        let prompt = LiteRTEmbedder.prompt(for: "x", kind: .passage(title: String(repeating: "T", count: 200)))
+        let prompt = LiteRTEmbedder.prompt(for: "x", kind: .chunk(title: String(repeating: "T", count: 200)))
         #expect(prompt == "task: search result | title: \(String(repeating: "T", count: 60)) | text: x")
     }
 
@@ -104,36 +104,36 @@ struct LiteRTEmbedderTests {
     }
 
     @Test func isDeterministic() async throws {
-        let a = try await Self.embedder.embed(["same text"], kind: .passage(title: "Manual"))
-        let b = try await Self.embedder.embed(["same text"], kind: .passage(title: "Manual"))
+        let a = try await Self.embedder.embed(["same text"], kind: .chunk(title: "Manual"))
+        let b = try await Self.embedder.embed(["same text"], kind: .chunk(title: "Manual"))
         #expect(a == b)
     }
 
     @Test func paraphrasesAreNearerThanUnrelatedText() async throws {
         let query = try await Self.embedder.embed(["how do I reset the unit to factory settings"], kind: .query)[0]
-        let passages = try await Self.embedder.embed([
+        let chunks = try await Self.embedder.embed([
             "To restore factory defaults, hold the power button for ten seconds until the light blinks.",
             "Replace the air filter every six months to keep airflow strong.",
             "The warranty covers manufacturing defects for two years from the purchase date.",
-        ], kind: .passage(title: "X200 Manual"))
-        let scores = passages.map { dot(query, $0) }
+        ], kind: .chunk(title: "X200 Manual"))
+        let scores = chunks.map { dot(query, $0) }
         #expect(scores[0] > scores[1] && scores[0] > scores[2], "scores: \(scores)")
         #expect(scores[0] - max(scores[1], scores[2]) > 0.1, "should be clearly separated: \(scores)")
     }
 
     @Test func aBatchGivesTheSameVectorsAsOneAtATime() async throws {
-        let texts = (0..<11).map { "Passage number \($0) about valve \($0 * 3) and the pressure gauge." }
-        let batch = try await Self.embedder.embed(texts, kind: .passage(title: "Manual"))
+        let texts = (0..<11).map { "Chunk number \($0) about valve \($0 * 3) and the pressure gauge." }
+        let batch = try await Self.embedder.embed(texts, kind: .chunk(title: "Manual"))
         #expect(batch.count == 11, "more than one native batch")
         for i in [0, 8, 10] {
-            let single = try await Self.embedder.embed([texts[i]], kind: .passage(title: "Manual"))[0]
+            let single = try await Self.embedder.embed([texts[i]], kind: .chunk(title: "Manual"))[0]
             #expect(dot(batch[i], single) > 0.999, "text \(i) differs between batch and single")
         }
     }
 
     @Test func aPhotoIsNearerToItsOwnDescriptionThanToAnUnrelatedOne() async throws {
         let redCircle = try await Self.embedder.features(of: Self.scene(red: 0.9, green: 0.1, blue: 0.1, shape: "circle"))
-        let descriptions = try await Self.embedder.embed(["a red circle", "a blue square"], kind: .passage(title: ""))
+        let descriptions = try await Self.embedder.embed(["a red circle", "a blue square"], kind: .chunk(title: ""))
         #expect(redCircle.count == 256 && abs(dot(redCircle, redCircle) - 1) < 1e-3)
         #expect(dot(redCircle, descriptions[0]) > dot(redCircle, descriptions[1]) + 0.05,
                 "own \(dot(redCircle, descriptions[0])) vs other \(dot(redCircle, descriptions[1]))")
@@ -149,20 +149,20 @@ struct LiteRTEmbedderTests {
         #expect(dot(a, again) > 0.999)
     }
 
-    @Test func aPassageLongerThanTheInputLimitIsEmbeddedFromItsStartNotRejected() async throws {
+    @Test func aChunkLongerThanTheInputLimitIsEmbeddedFromItsStartNotRejected() async throws {
         // About 4 tokens per word: far more than 512 tokens, which the engine would reject outright.
         let codes = (0..<400).map { "PN-\($0 * 7919 % 9973)/X\($0)" }.joined(separator: " ")
-        let long = try await Self.embedder.embed([codes], kind: .passage(title: "Parts list"))[0]
+        let long = try await Self.embedder.embed([codes], kind: .chunk(title: "Parts list"))[0]
         #expect(long.count == 256)
-        // It still works next to ordinary passages in the same batch.
-        let mixed = try await Self.embedder.embed(["short passage", codes, "another short passage"], kind: .passage(title: "Parts list"))
+        // It still works next to ordinary chunks in the same batch.
+        let mixed = try await Self.embedder.embed(["short chunk", codes, "another short chunk"], kind: .chunk(title: "Parts list"))
         #expect(mixed.count == 3 && mixed.allSatisfy { $0.count == 256 })
         #expect(dot(mixed[0], mixed[2]) < 0.9999)
     }
 
-    /// The engine rejects input beyond its limit instead of truncating, so embedding every passage of the evaluation
+    /// The engine rejects input beyond its limit instead of truncating, so embedding every chunk of the evaluation
     /// documents straight through the engine (no shrink-and-retry) proves none is cut, including the longest.
-    @Test func noPassageOfTheEvaluationDocumentsExceedsTheInputLimit() async throws {
+    @Test func noChunkOfTheEvaluationDocumentsExceedsTheInputLimit() async throws {
         let suite = try EvalCorpus.suite()
         let fx = Fixtures()   // removes its files when released, so keep it for the whole test
         let urls = try EvalCorpus.build(in: fx, suite: suite)
@@ -172,7 +172,7 @@ struct LiteRTEmbedderTests {
         for url in urls {
             let document = try await extractor.extract(from: url) { _ in }
             let title = url.deletingPathExtension().lastPathComponent
-            prompts += chunker.chunk(document.blocks).map { LiteRTEmbedder.prompt(for: $0.text, kind: .passage(title: title)) }
+            prompts += chunker.chunk(document.blocks).map { LiteRTEmbedder.prompt(for: $0.text, kind: .chunk(title: title)) }
         }
         #expect(prompts.count >= 6)
         let engine = EmbeddingEngine(config: EmbeddingEngineConfig(

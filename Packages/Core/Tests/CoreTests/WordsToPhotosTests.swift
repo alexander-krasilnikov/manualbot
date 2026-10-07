@@ -48,14 +48,14 @@ private struct JointModel: Embedder, ImageFeaturing {
 
     private func scored(_ chunk: Chunk, _ distance: Double) -> ScoredChunk { ScoredChunk(chunk: chunk, score: distance) }
 
-    @Test("Passage reached through words that describe a photo")
-    func aPassageIsReachedThroughWordsThatDescribeAPhoto() async throws {
+    @Test("Chunk reached through words that describe a photo")
+    func aChunkIsReachedThroughWordsThatDescribeAPhoto() async throws {
         let (repo, plug) = try await library()
         let images = FakeImageSearch(hits: [ScoredImage(image: plug, score: 0.18)])
         let result = try await retriever(repo, images: images).retrieve("where is the drain plug")
 
-        #expect(Set(result.passages.map(\.id)) == ["m:1:1", "m:1:2"], "the passages of page 9: \(result.passages.map(\.id))")
-        #expect(result.passages.allSatisfy { $0.wordsRank != nil && $0.imageRank == nil && $0.distance == nil })
+        #expect(Set(result.chunks.map(\.id)) == ["m:1:1", "m:1:2"], "the chunks of page 9: \(result.chunks.map(\.id))")
+        #expect(result.chunks.allSatisfy { $0.wordsRank != nil && $0.imageRank == nil && $0.distance == nil })
         #expect(result.images.map(\.id) == [plug.id])
         #expect(result.images.first?.viaWords == true && result.images.first?.distance == 0.18)
         #expect(result.images.first?.documentTitle == "Pump manual")
@@ -81,14 +81,14 @@ private struct JointModel: Embedder, ImageFeaturing {
 
         #expect(!result.relevant, "a match between words and a photo must not pass the gate")
         #expect(tracer.kinds.contains(.relevance(bestDistance: 0.9, threshold: 0.76, outcome: .failed)))
-        #expect(!result.closest().isEmpty, "the closest passages are still offered")
+        #expect(!result.closest().isEmpty, "the closest chunks are still offered")
     }
 
     @Test func aPhotoBeyondTheThresholdIsNotAMatch() async throws {
         let (repo, plug) = try await library()
         let images = FakeImageSearch(hits: [ScoredImage(image: plug, score: 0.4)])
         let result = try await retriever(repo, images: images).retrieve("where is the drain plug")
-        #expect(result.images.isEmpty && result.passages.isEmpty)
+        #expect(result.images.isEmpty && result.chunks.isEmpty)
     }
 
     @Test func theThresholdIsConfigurable() async throws {
@@ -99,7 +99,7 @@ private struct JointModel: Embedder, ImageFeaturing {
         #expect(strict.images.isEmpty && loose.images.count == 1)
     }
 
-    @Test func aPassageFoundByTextAndThroughAPhotoRanksAboveOneFoundByText() async throws {
+    @Test func aChunkFoundByTextAndThroughAPhotoRanksAboveOneFoundByText() async throws {
         let (repo, plug) = try await library()
         let text = FakeChunkSearch(vectorHits: [
             scored(chunk("m", 0, page: 3, "Switch the pump off before servicing."), 0.5),
@@ -107,10 +107,10 @@ private struct JointModel: Embedder, ImageFeaturing {
         ])
         let images = FakeImageSearch(hits: [ScoredImage(image: plug, score: 0.18)])
         let result = try await retriever(repo, text: text, images: images).retrieve("where is the drain plug")
-        #expect(result.passages.first?.id == "m:1:1", "\(result.passages.map(\.id))")
-        let first = try #require(result.passages.first)
+        #expect(result.chunks.first?.id == "m:1:1", "\(result.chunks.map(\.id))")
+        let first = try #require(result.chunks.first)
         #expect(first.distance == 0.55 && first.wordsRank != nil)
-        #expect(Set(result.passages.map(\.id)).count == result.passages.count)
+        #expect(Set(result.chunks.map(\.id)).count == result.chunks.count)
     }
 
     @Test func aPhotoInTheQuestionKeepsItsOwnListAndTheWordsListIsAddedAfterIt() async throws {
@@ -123,7 +123,7 @@ private struct JointModel: Embedder, ImageFeaturing {
         let result = try await retriever(repo, images: images, tracer: tracer).retrieve("drain plug", photo: photo)
 
         #expect(images.vectors.count == 2, "one search by the photo and one by the words")
-        #expect(result.passages.allSatisfy { $0.imageRank != nil && $0.wordsRank != nil })
+        #expect(result.chunks.allSatisfy { $0.imageRank != nil && $0.wordsRank != nil })
         #expect(result.images.map(\.id) == [plug.id], "the same photo is listed once")
         #expect(result.images.first?.viaWords == false, "listed as the photo's match, which comes first")
         let fusion = try #require(tracer.kinds.compactMap { kind -> [FusionEntry]? in

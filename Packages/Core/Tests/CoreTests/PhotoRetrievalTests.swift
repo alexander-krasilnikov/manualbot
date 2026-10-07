@@ -28,7 +28,7 @@ import Testing
                     features: [Float](repeating: 0, count: features.identity.dimensions), featureModel: features.identity.tag)
     }
 
-    /// Manual A (PDF): page 14 has a photo, its own passage and two text passages; page 15 has text only.
+    /// Manual A (PDF): page 14 has a photo, its own chunk and two text chunks; page 15 has text only.
     /// Manual B (Word): one photo under the heading "Installation". Poster C: an imported photo with no page.
     private struct World {
         var repo = InMemoryDocumentRepository()
@@ -70,7 +70,7 @@ import Testing
 
     // MARK: Fusion
 
-    @Test func aPassageReachedThroughThePhotoAndFoundByTextAppearsOnceAndRanksFirst() async throws {
+    @Test func aChunkReachedThroughThePhotoAndFoundByTextAppearsOnceAndRanksFirst() async throws {
         let w = try await world()
         let text = FakeChunkSearch(vectorHits: [
             scored(chunk("a", 3, page: 15, "Replace the filter yearly."), 0.5),
@@ -79,31 +79,31 @@ import Testing
         let images = FakeImageSearch(hits: [ScoredImage(image: w.photoOnPage14, score: 0.2)])
         let result = try await retriever(w, text: text, images: images).retrieve("how do I descale it", photo: photo())
 
-        let ids = result.passages.map(\.id)
-        #expect(Set(ids).count == ids.count, "no passage twice")
+        let ids = result.chunks.map(\.id)
+        #expect(Set(ids).count == ids.count, "no chunk twice")
         #expect(ids.first == "a:1:0", "found by the text search and through the photo, so it leads: \(ids)")
-        let first = try #require(result.passages.first)
+        let first = try #require(result.chunks.first)
         #expect(first.distance == 0.55 && first.imageRank != nil && first.keywordRank == nil)
-        // The rest of page 14 is reached too, in the order: the image's own passage, then the text beside it.
+        // The rest of page 14 is reached too, in the order: the image's own chunk, then the text beside it.
         #expect(ids.contains("a:1:2") && ids.contains("a:1:1"))
         #expect(!ids.contains("b:1:0"))
         #expect(result.images.map(\.id) == [w.photoOnPage14.id])
         #expect(result.images.first?.documentTitle == "Manual A" && result.images.first?.distance == 0.2)
     }
 
-    @Test func aWordImageReachesThePassagesUnderItsHeading() async throws {
+    @Test func aWordImageReachesTheChunksUnderItsHeading() async throws {
         let w = try await world()
         let images = FakeImageSearch(hits: [ScoredImage(image: w.photoInWord, score: 0.2)])
         let result = try await retriever(w, images: images).retrieve("", photo: photo())
-        let ids = Set(result.passages.map(\.id))
-        #expect(ids == ["b:1:0", "b:1:1"], "the passages under 'Installation' and not those under 'Service': \(ids)")
+        let ids = Set(result.chunks.map(\.id))
+        #expect(ids == ["b:1:0", "b:1:1"], "the chunks under 'Installation' and not those under 'Service': \(ids)")
     }
 
-    @Test func anImportedPhotoReachesItsOwnPassage() async throws {
+    @Test func anImportedPhotoReachesItsOwnChunk() async throws {
         let w = try await world()
         let images = FakeImageSearch(hits: [ScoredImage(image: w.importedPhoto, score: 0.1)])
         let result = try await retriever(w, images: images).retrieve("", photo: photo())
-        #expect(result.passages.map(\.id) == ["c:1:0"] && result.relevant)
+        #expect(result.chunks.map(\.id) == ["c:1:0"] && result.relevant)
     }
 
     // MARK: Relevance
@@ -125,7 +125,7 @@ import Testing
         let images = FakeImageSearch(hits: [ScoredImage(image: w.photoOnPage14, score: 0.4)])
         let result = try await retriever(w, text: text, images: images).retrieve("what is this", photo: photo())
         #expect(!result.relevant && result.images.isEmpty)
-        #expect(result.passages.map(\.id) == ["a:1:3"], "nothing reached through the photo")
+        #expect(result.chunks.map(\.id) == ["a:1:3"], "nothing reached through the photo")
     }
 
     @Test func distanceStillWinsOverTheImageMatch() async throws {
@@ -150,7 +150,7 @@ import Testing
 
         #expect(text.keywordTerms == [["descale", "X200-B"]])
         #expect(result.photo?.identifiers == ["X200-B"])
-        #expect(result.relevant, "the model number appears verbatim in a top passage")
+        #expect(result.relevant, "the model number appears verbatim in a top chunk")
         #expect(recognizer.calls == [false])
     }
 
@@ -170,7 +170,7 @@ import Testing
 
         #expect(text.filters.isEmpty && text.keywordTerms.isEmpty, "no text to search with")
         #expect(!tracer.kinds.contains { if case .queryEmbedded = $0 { true } else { false } })
-        #expect(result.images.count == 1 && result.relevant && result.passages.allSatisfy { $0.chunk.docId == "a" })
+        #expect(result.images.count == 1 && result.relevant && result.chunks.allSatisfy { $0.chunk.docId == "a" })
         #expect(result.bestDistance == nil)
     }
 

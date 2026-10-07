@@ -19,7 +19,7 @@ import Testing
             #expect(c.contains?.isEmpty == false, "answerable cases need expected text: \(c.question)")
         }
         #expect(Set(suite.cases.map(\.question)).count == suite.cases.count, "duplicate questions")
-        // Follow-up pairs: a question and one that needs it, each with an expected passage. The first question may repeat one
+        // Follow-up pairs: a question and one that needs it, each with an expected chunk. The first question may repeat one
         // of the plain questions (it is asked again at the start of its own chat); the follow-up is its own.
         let pairs = suite.followUps ?? []
         #expect(pairs.count >= 6, "needs at least six follow-up pairs")
@@ -122,9 +122,9 @@ struct RealEvalTests {
         #expect(report.refusalRate >= 0.9, "too many off-topic questions would be answered at \(chosen): \(report.refusalRate)")
     }
 
-    /// How the passage size changes retrieval: recall, and the gap between the worst answerable question and the nearest
+    /// How the chunk size changes retrieval: recall, and the gap between the worst answerable question and the nearest
     /// off-topic one (the room a threshold has).
-    @Test func comparesPassageSizes() async throws {
+    @Test func comparesChunkSizes() async throws {
         let sizes: [(String, ChunkerConfiguration)] = [
             ("target 80 / max 120", ChunkerConfiguration(targetTokens: 80, maxTokens: 120, overlapTokens: 15, minTailTokens: 25)),
             ("target 100 / max 150", ChunkerConfiguration(targetTokens: 100, maxTokens: 150, overlapTokens: 20, minTailTokens: 30)),
@@ -188,11 +188,11 @@ struct LargeDocumentTests {
             if job.state == .ready { break }
         }
         let chunks = try await repo.activeChunks(docId: id)
-        print("LARGE 300 pages -> \(chunks.count) passages in \(elapsed); \(embeddingProgress.count) embedding progress updates; peak memory \(Int(peakMemoryMB())) MB")
+        print("LARGE 300 pages -> \(chunks.count) chunks in \(elapsed); \(embeddingProgress.count) embedding progress updates; peak memory \(Int(peakMemoryMB())) MB")
 
         #expect(try await repo.job(docId: id)?.state == .ready)
         #expect(try await repo.document(id: id)?.pageCount == 300)
-        #expect(Set(chunks.compactMap(\.page)).count == 300, "every page should yield passages")
+        #expect(Set(chunks.compactMap(\.page)).count == 300, "every page should yield chunks")
         #expect(embeddingProgress.count >= 10, "progress must be visible while indexing, got \(embeddingProgress.count) updates")
         #expect(embeddingProgress == embeddingProgress.sorted())
         #expect(states.isSuperset(of: [.extracting, .embedding, .ready]))

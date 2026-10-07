@@ -35,7 +35,7 @@ final class DetailColumnUITests: UITestCase {
         XCTAssertFalse(element(app, "sourceTitle").exists, "the source is hidden while X-ray shows")
         citation.tap()
 
-        waitFor(element(app, "highlightedPassage"))
+        waitFor(element(app, "highlightedChunk"))
         XCTAssertEqual(element(app, "sourceTitle").label, "X200 Manual")
     }
 
@@ -110,7 +110,7 @@ final class XrayPanelUITests: UITestCase {
         XCTAssertTrue(plan.label.contains("chunks_vec"), plan.label)
     }
 
-    func testAPassageIdOpensTheStoredDocumentWithAShortenedVector() {
+    func testAChunkIdOpensTheStoredDocumentWithAShortenedVector() {
         let app = askedApp()
         open(app, "fusion")
         waitFor(element(app, "xrayFusionTable"))
