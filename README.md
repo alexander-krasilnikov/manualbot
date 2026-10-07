@@ -141,9 +141,15 @@ in. These figures were measured earlier in this project and are recorded in the 
 
 ```sh
 for p in Ports Core Adapters; do (cd Packages/$p && swift test); done      # packages, on the Mac
-xcodebuild test -project ManualBot.xcodeproj -scheme ManualBot \
-  -destination 'platform=iOS Simulator,name=iPad Pro 13-inch (M5)'         # app unit and UI tests
+DEST='platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
+xcodebuild test -project ManualBot.xcodeproj -scheme ManualBot -destination "$DEST" \
+  -only-testing:ManualBotTests                                                # app unit tests
+xcodebuild test-without-building -project ManualBot.xcodeproj -scheme ManualBot -destination "$DEST" \
+  -only-testing:ManualBotUITests -parallel-testing-enabled YES -parallel-testing-worker-count 2   # UI tests, ~12 min
 ```
+
+The UI tests run on two simulator clones at once (about 12 minutes instead of 20). Three clones are not faster: they slow
+each other down enough that timing-sensitive tests fail. The unit tests run on their own first for the same reason.
 
 Tests against the real models are skipped unless you point them at the files (the app downloads its models; to run these
 tests fetch them yourself from the `url` entries in `App/Resources/ModelManifest.json`, into a folder outside the

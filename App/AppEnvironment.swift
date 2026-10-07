@@ -18,7 +18,6 @@ enum AppEnvironmentError: LocalizedError {
 enum AppEnvironment {
     static func makeAppModel() throws -> AppModel {
         let arguments = ProcessInfo.processInfo.arguments
-        let isStub = arguments.contains("-uiTestModelStub")
         let demo = DemoSession()
         if let flag = arguments.firstIndex(of: "-uiTestModelStub") {
             let scenario = arguments.indices.contains(flag + 1) ? arguments[flag + 1] : "happy"
