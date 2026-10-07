@@ -11,10 +11,6 @@ class UITestCase: XCTestCase {
     func launch(_ scenario: String = "happy", extra: [String] = []) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-uiTestModelStub", scenario] + extra
-        // `TEST_RUNNER_UITEST_DEMO_MODE=1 xcodebuild test …` runs the whole suite with demo mode on.
-        if ProcessInfo.processInfo.environment["UITEST_DEMO_MODE"] != nil, !extra.contains("-demoMode") {
-            app.launchArguments.append("-demoMode")
-        }
         app.launch()
         return app
     }
@@ -55,7 +51,7 @@ final class ModelSetupUITests: UITestCase {
     func testDownloadCompletesAndEnablesChat() {
         let app = launch(extra: ["-uiTestSeed"])
         app.buttons["startDownload"].tap()
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         waitEnabled(element(app, "chatInput"))
         XCTAssertFalse(element(app, "languageModelBanner").exists)
     }
@@ -65,7 +61,7 @@ final class ModelSetupUITests: UITestCase {
         app.buttons["startDownload"].tap()
 
         // Import is available (library shown) while chat waits for the language model.
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         XCTAssertFalse(element(app, "chatInput").isEnabled)
         waitFor(element(app, "chatDisabledReason"))
 
@@ -83,14 +79,14 @@ final class ModelSetupUITests: UITestCase {
         XCTAssertFalse(app.navigationBars["Library"].exists, "no import before the embedding model is installed")
 
         app.buttons["startDownload"].tap()
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         waitEnabled(element(app, "chatInput"))
     }
 
     func testAboutCarriesTheGemmaNotice() {
         let app = launch(extra: ["-uiTestSeed"])
         app.buttons["startDownload"].tap()
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         element(app, "aboutButton").tap()
         waitFor(app.staticTexts["EmbeddingGemma 2"])
         // Each model is named with its licence (both are Apache 2.0, so no Gemma terms apply), and the tokenizer library
@@ -124,7 +120,7 @@ final class WorkspaceUITests: UITestCase {
     private func readyApp(_ extra: [String] = []) -> XCUIApplication {
         let app = launch(extra: ["-uiTestSeed"] + extra)
         app.buttons["startDownload"].tap()
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         waitFor(app.buttons["doc-X200 Manual"])
         return app
     }

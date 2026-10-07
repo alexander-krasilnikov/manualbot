@@ -5,6 +5,7 @@ import Ports
 public enum CouchbaseStoreError: Error, Equatable {
     case documentNotFound(String)
     case malformedDocument(String)
+    case unknownCollection(String)
 }
 
 /// Couchbase Lite implementation of `DocumentRepository`, plus the chat and job records.

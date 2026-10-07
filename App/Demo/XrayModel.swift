@@ -158,11 +158,8 @@ final class XrayModel {
         }
     }
 
-    /// The stored JSON for a document, or `nil` when it no longer exists.
-    func storedDocument(collection: String, id: String) async -> String? {
-        guard let inspector else { return nil }
-        return try? await inspector.storedDocument(collection: collection, id: id)
-    }
+    /// Opens the database explorer at a stored document. Set by the demo session.
+    var openInExplorer: (@MainActor (_ collection: String, _ id: String) -> Void)?
 
     /// "uses chunks_vec · vector index", from the index names the app declares.
     static func indexLabel(inPlan plan: String) -> String {

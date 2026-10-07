@@ -15,7 +15,6 @@ struct RootView: View {
                 ModelSetupView(model: app.models)
             }
         }
-        .environment(app.demo.settings)
         .task { await app.run() }
         .onOpenURL { url in Task { await app.open([url]) } }
     }

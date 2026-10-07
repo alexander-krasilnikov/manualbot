@@ -4,7 +4,7 @@ import SwiftUI
 struct ChatView: View {
     let chat: ChatViewModel
     let models: ModelSetupViewModel
-    /// In demo mode, a photo to ask with when there is no nameplate at hand.
+    /// A photo to ask with when there is no nameplate at hand.
     var samplePhoto: Data?
     let onOpenCitation: (Citation) -> Void
 

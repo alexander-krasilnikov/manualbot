@@ -75,11 +75,10 @@ in `RetrievalConfiguration`. Both are **provisional**: tuned on 14 Wikimedia Com
 a *different* photo of the same kind of thing, not photos taken in the field. Re-tune them with real photos before relying on
 them (see Tests, `IMAGE_EVAL_DIR`).
 
-## Demo mode (X-ray)
+## X-ray and the database explorer
 
-For showing what the app and Couchbase Lite do behind each action. Turn it on in About (the switch is remembered) or
-launch with `-demoMode`. The right-hand column then has a `Source | X-ray` switch; tapping a citation or a document
-returns to Source. With demo mode off the app is unchanged.
+For showing what the app and Couchbase Lite do behind each action. There is nothing to switch on: the right-hand column
+has a `Source | X-ray` switch, and tapping a citation or a document returns to Source.
 
 X-ray lists every import, question, source opening, re-index and deletion as a group, with each database step inside
 (for photos: each photo read, the batch of photos stored as blobs beside their JSON, and the image search over the second
@@ -91,9 +90,21 @@ the text buttons enlarge the panel for a projector, and "Reset demo" (after conf
 and imports six sample documents (the four text ones, a service manual PDF whose figure is a photo of a nameplate, and a
 photo of another unit's nameplate; the photos are drawn in code, so they carry no licence of their own).
 
-Run it on the real database without the real models: `-uiTestModelStub happy -uiTestSeed -demoMode`. The panel then shows a
+Run it on the real database without the real models: `-uiTestModelStub happy -uiTestSeed`. The panel then shows a
 "stub models" notice, because the distances come from a stand-in embedder and mean nothing; use the real models when you
 want to talk about relevance.
+
+### Database explorer
+
+The Library toolbar has a **Database** button that opens a full-screen, read-only view of the local Couchbase
+Lite database; Done returns to exactly where you were. Collections are grouped as sync-ready and local only, each with its
+document count (read when it opens, and again with Refresh). Pick a collection to page through its document IDs (filter by
+ID), then a document to see it as stored: vectors shortened with "Show in full", image and text blobs with a preview, and
+fields that name another document (`docId`, `chatId`, `imageId`) are links, with Back returning to where you came from.
+A document record also lists its passages and images. Indexes shows each index's kind and settings. **Query** is a SQL++
+console: pick a starter (keyword search, the passages of one document, ingest jobs by state) or type a SELECT, see up to
+200 rows with the time, and open the query plan. Parameters (`$name`, including `$vector`) are not supported. Tapping a
+document ID in X-ray opens the explorer at that document. It never writes, and it adds nothing to the X-ray log.
 
 ### Talk track
 
@@ -112,7 +123,10 @@ want to talk about relevance.
    queried with the same SQL++, and the merge now has a third list. Add "how do I descale it?" to get a cited answer.
    Then type "where is the nameplate?" with no photo: the question's own vector searches the same photo index (Words → photos
    search), and a fourth column appears in the merge.
-6. **Offline.** Turn on airplane mode: the network indicator flips and everything above still works and is still traced.
+6. **Look inside.** Tap Database after an import: the passages each point back to their document, ingest jobs and the
+   vector-index settings sit in collections that never replicate, and the keyword starter runs the same full-text query
+   in the console, with a plan that names `chunks_fts`.
+7. **Offline.** Turn on airplane mode: the network indicator flips and everything above still works and is still traced.
 
 ### If asked: "so filtered vector search is slow?"
 

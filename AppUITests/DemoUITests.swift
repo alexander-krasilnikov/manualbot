@@ -1,10 +1,10 @@
 import XCTest
 
-final class DemoModeUITests: UITestCase {
-    private func readyApp(demo: Bool) -> XCUIApplication {
-        let app = launch(extra: ["-uiTestSeed"] + (demo ? ["-demoMode"] : []))
+final class DetailColumnUITests: UITestCase {
+    private func readyApp() -> XCUIApplication {
+        let app = launch(extra: ["-uiTestSeed"])
         app.buttons["startDownload"].tap()
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         waitFor(app.buttons["doc-X200 Manual"])
         return app
     }
@@ -16,32 +16,16 @@ final class DemoModeUITests: UITestCase {
         waitFor(element(app, "xrayPanel"))
     }
 
-    /// The suite can be run with demo mode forced on for every launch (see `UITestCase.launch`).
-    private func requireDemoOffAtLaunch() throws {
-        try XCTSkipIf(ProcessInfo.processInfo.environment["UITEST_DEMO_MODE"] != nil, "starts with demo mode off")
-    }
-
-    func testNoSwitchAppearsWithDemoModeOff() throws {
-        try requireDemoOffAtLaunch()
-        let app = readyApp(demo: false)
-        XCTAssertFalse(element(app, "detailTabPicker").exists)
-        XCTAssertFalse(element(app, "xrayPanel").exists)
-    }
-
-    func testDemoModeCanBeTurnedOnFromAbout() throws {
-        try requireDemoOffAtLaunch()
-        let app = readyApp(demo: false)
-        element(app, "aboutButton").tap()
-        let toggle = app.switches["demoModeToggle"]
-        waitFor(toggle)
-        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.95, dy: 0.5)).tap()
-        XCTAssertEqual(toggle.value as? String, "1", "the switch did not turn on")
-        app.buttons["Done"].tap()
+    func testAFreshLaunchShowsTheXraySwitchAndTheDatabaseButton() {
+        let app = readyApp()
         waitFor(element(app, "detailTabPicker"))
+        waitFor(element(app, "explorerButton"))
+        showXray(app)
+        waitFor(element(app, "xrayGroup-Import “X200 Manual”"))
     }
 
     func testACitationTapWhileXrayIsShowingSwitchesToTheSource() {
-        let app = readyApp(demo: true)
+        let app = readyApp()
         ask(app, "How do I reset the X200?")
         waitFor(element(app, "assistantMessage"), timeout: 15)
         let citation = element(app, "citation-1")
@@ -56,7 +40,7 @@ final class DemoModeUITests: UITestCase {
     }
 
     func testTheOpenSourceIsStillThereAfterLookingAtXray() {
-        let app = readyApp(demo: true)
+        let app = readyApp()
         app.buttons["doc-X200 Manual"].tap()
         waitFor(element(app, "sourceTitle"))
         showXray(app)
@@ -70,9 +54,9 @@ final class XrayPanelUITests: UITestCase {
     private let question = "How do I reset the X200?"
 
     private func askedApp() -> XCUIApplication {
-        let app = launch(extra: ["-uiTestSeed", "-demoMode"])
+        let app = launch(extra: ["-uiTestSeed"])
         app.buttons["startDownload"].tap()
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         waitFor(app.buttons["doc-X200 Manual"])
         ask(app, question)
         waitFor(element(app, "assistantMessage"), timeout: 15)
@@ -140,9 +124,9 @@ final class XrayPanelUITests: UITestCase {
     }
 
     func testTheIdOfADeletedDocumentSaysItNoLongerExists() {
-        let app = launch(extra: ["-uiTestSeed", "-demoMode"])
+        let app = launch(extra: ["-uiTestSeed"])
         app.buttons["startDownload"].tap()
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         waitFor(app.buttons["doc-X200 Manual"])
 
         app.buttons["doc-X200 Manual"].press(forDuration: 1)
@@ -212,9 +196,9 @@ final class XrayPanelUITests: UITestCase {
 
 final class ResetDemoUITests: UITestCase {
     private func demoApp() -> XCUIApplication {
-        let app = launch(extra: ["-uiTestSeed", "-demoMode"])
+        let app = launch(extra: ["-uiTestSeed"])
         app.buttons["startDownload"].tap()
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         waitFor(app.buttons["doc-X200 Manual"])
         return app
     }
@@ -276,9 +260,9 @@ final class ResetDemoUITests: UITestCase {
 
 final class PhotoDemoUITests: UITestCase {
     private func demoApp() -> XCUIApplication {
-        let app = launch(extra: ["-uiTestSeed", "-demoMode"])
+        let app = launch(extra: ["-uiTestSeed"])
         app.buttons["startDownload"].tap()
-        waitFor(app.navigationBars["Library"])
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
         waitFor(app.buttons["doc-X200 Manual"])
         return app
     }

@@ -41,6 +41,40 @@ public enum CouchbaseSchema {
         let localMeta: Collection
     }
 
+    /// One index: where it lives, which fields or expression it covers, and the settings the explorer shows.
+    struct IndexDefinition {
+        let name: String
+        let collection: String
+        let fields: [String]
+        let settings: IndexSummary.Settings
+    }
+
+    /// Every index the app creates. `prepare` creates them from this table and the database explorer describes them
+    /// from it, so what is shown is what was built.
+    static func indexDefinitions(embeddingDimensions: Int, imageDimensions: Int) -> [IndexDefinition] {
+        func vector(_ name: String, _ collection: String, field: String, dimensions: Int, centroids: UInt32) -> IndexDefinition {
+            IndexDefinition(
+                name: name, collection: collection, fields: [field],
+                settings: .init(
+                    kind: .vector, expression: field, dimensions: dimensions, metric: "cosine", centroids: Int(centroids),
+                    encoding: "SQ8"))
+        }
+        func values(_ name: String, _ collection: String, _ fields: [String]) -> IndexDefinition {
+            IndexDefinition(
+                name: name, collection: collection, fields: fields,
+                settings: .init(kind: .value, expression: fields.joined(separator: ", ")))
+        }
+        return [
+            vector(vectorIndex, chunks, field: "embedding", dimensions: embeddingDimensions, centroids: centroids),
+            IndexDefinition(
+                name: ftsIndex, collection: chunks, fields: ["text"], settings: .init(kind: .fullText, expression: "text")),
+            values("chunks_doc_gen", chunks, ["docId", "generation"]),
+            vector(imageVectorIndex, images, field: "features", dimensions: imageDimensions, centroids: imageCentroids),
+            values(imageDocGenIndex, images, ["docId", "generation"]),
+            values("messages_chat", messages, ["chatId", "createdAt"]),
+        ]
+    }
+
     /// Creates the collections and indexes if they do not exist yet. Safe to call on every launch.
     static func prepare(
         _ database: Database, embedding: EmbeddingModelIdentity, imageFeatures: EmbeddingModelIdentity = defaultImageFeatures
@@ -55,26 +89,28 @@ public enum CouchbaseSchema {
             messages: try collection(messages),
             ingestJobs: try collection(ingestJobs), images: try collection(images), localMeta: try collection(localMeta))
 
-        var vector = VectorIndexConfiguration(
-            expression: "embedding", dimensions: UInt32(embedding.dimensions), centroids: centroids)
-        vector.metric = .cosine
-        vector.encoding = .scalarQuantizer(type: .SQ8)
-        try ensureVectorIndex(vectorIndex, on: collections.chunks, config: vector, dimensions: embedding.dimensions, meta: collections.localMeta)
-
-        try collections.chunks.createIndex(
-            withName: ftsIndex, config: FullTextIndexConfiguration(["text"], ignoreAccents: true, language: "en"))
-        try collections.chunks.createIndex(
-            withName: "chunks_doc_gen", config: ValueIndexConfiguration(["docId", "generation"]))
-        var imageVector = VectorIndexConfiguration(
-            expression: "features", dimensions: UInt32(imageFeatures.dimensions), centroids: imageCentroids)
-        imageVector.metric = .cosine
-        imageVector.encoding = .scalarQuantizer(type: .SQ8)
-        try ensureVectorIndex(
-            imageVectorIndex, on: collections.images, config: imageVector, dimensions: imageFeatures.dimensions, meta: collections.localMeta)
-        try collections.images.createIndex(
-            withName: imageDocGenIndex, config: ValueIndexConfiguration(["docId", "generation"]))
-        try collections.messages.createIndex(
-            withName: "messages_chat", config: ValueIndexConfiguration(["chatId", "createdAt"]))
+        let byName: [String: Collection] = [
+            documents: collections.documents, chunks: collections.chunks, chats: collections.chats,
+            messages: collections.messages, images: collections.images, ingestJobs: collections.ingestJobs,
+            localMeta: collections.localMeta,
+        ]
+        for index in indexDefinitions(embeddingDimensions: embedding.dimensions, imageDimensions: imageFeatures.dimensions) {
+            guard let target = byName[index.collection] else { continue }
+            switch index.settings.kind {
+            case .vector:
+                let dimensions = index.settings.dimensions ?? 0
+                var config = VectorIndexConfiguration(
+                    expression: index.fields[0], dimensions: UInt32(dimensions), centroids: UInt32(index.settings.centroids ?? 0))
+                config.metric = .cosine
+                config.encoding = .scalarQuantizer(type: .SQ8)
+                try ensureVectorIndex(index.name, on: target, config: config, dimensions: dimensions, meta: collections.localMeta)
+            case .fullText:
+                try target.createIndex(
+                    withName: index.name, config: FullTextIndexConfiguration(index.fields, ignoreAccents: true, language: "en"))
+            case .value:
+                try target.createIndex(withName: index.name, config: ValueIndexConfiguration(index.fields))
+            }
+        }
         return collections
     }
 

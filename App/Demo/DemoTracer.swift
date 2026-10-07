@@ -1,7 +1,7 @@
 import Foundation
 import Ports
 
-/// Collects trace events while demo mode is on and hands them to the X-ray model. Does nothing while off.
+/// Collects trace events while enabled and hands them to the X-ray model. Does nothing while off (tests and `NoTracer`).
 final class DemoTracer: Tracer, @unchecked Sendable {
     private let lock = NSLock()
     private var enabled = false

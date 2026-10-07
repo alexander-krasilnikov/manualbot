@@ -11,10 +11,13 @@ struct WorkspaceView: View {
     var body: some View {
         if let library = app.library, let chat = app.chat, let source = app.source {
             NavigationSplitView(columnVisibility: $visibility, preferredCompactColumn: $compactColumn) {
-                LibraryView(library: library) { id in show { await source.openDocument(id) } }
+                LibraryView(
+                    library: library,
+                    onOpenExplorer: { app.demo.explorer.present() }
+                ) { id in show { await source.openDocument(id) } }
                     .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 400)
             } content: {
-                ChatView(chat: chat, models: app.models, samplePhoto: app.demo.settings.isOn ? SampleDocuments.x200Nameplate : nil) { citation in
+                ChatView(chat: chat, models: app.models, samplePhoto: SampleDocuments.x200Nameplate) { citation in
                     show { await source.open(citation) }
                 }
                     .navigationSplitViewColumnWidth(min: 380, ideal: 520)
@@ -22,6 +25,9 @@ struct WorkspaceView: View {
                 DetailColumn(source: source, demo: app.demo, tab: $detailTab)
             }
             .task { await library.observe() }
+            .fullScreenCover(item: Bindable(app.demo.explorer).presented) { target in
+                ExplorerView(explorer: app.demo.explorer, xray: app.demo.xray, target: target)
+            }
             .onChange(of: library.items) { _, items in chat.updateDocuments(items) }
             .task { chat.updateDocuments(library.items) }
         } else {

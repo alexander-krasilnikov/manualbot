@@ -270,55 +270,17 @@ private struct FusionDetail: View {
     }
 }
 
-/// An ID that opens the stored JSON document behind it.
+/// An ID that opens the stored JSON document behind it in the database explorer.
 struct StoredDocumentLink: View {
     let collection: String
     let id: String
     let xray: XrayModel
-    @State private var showing = false
 
     var body: some View {
-        Button { showing = true } label: {
+        Button { xray.openInExplorer?(collection, id) } label: {
             Text("\(collection)/\(id)").font(.system(.caption2, design: .monospaced)).lineLimit(1).truncationMode(.middle)
         }
         .buttonStyle(.borderless)
         .accessibilityIdentifier("xrayDocLink-\(id)")
-        .sheet(isPresented: $showing) { StoredDocumentSheet(collection: collection, id: id, xray: xray) }
-    }
-}
-
-private struct StoredDocumentSheet: View {
-    let collection: String
-    let id: String
-    let xray: XrayModel
-    @State private var json: String??
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                switch json {
-                case .none: ProgressView()
-                case .some(.none):
-                    ContentUnavailableView(
-                        "This document no longer exists", systemImage: "trash",
-                        description: Text("\(collection)/\(id) has been deleted."))
-                        .accessibilityIdentifier("xrayDocumentGone")
-                case .some(.some(let text)):
-                    ScrollView {
-                        Text(text)
-                            .font(.system(.callout, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding()
-                            .accessibilityIdentifier("xrayStoredDocument")
-                    }
-                }
-            }
-            .navigationTitle("\(collection)/\(id)")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { Button("Done") { dismiss() } }
-        }
-        .task { json = .some(await xray.storedDocument(collection: collection, id: id)) }
     }
 }

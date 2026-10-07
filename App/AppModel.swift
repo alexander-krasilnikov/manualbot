@@ -67,6 +67,7 @@ final class AppModel {
                 // A new embedding model re-indexes the library by itself; the library view runs the queued work.
                 _ = try? await core.ingestion.reindexOutdated(for: core.embedding)
                 demo.xray.inspector = core.repository
+                demo.explorer.inspector = core.repository
                 let retriever = core.retriever
                 library = LibraryViewModel(documents: core.repository, jobs: core.repository, ingestion: core.ingestion) {
                     _ = try? await retriever.retrieve("index warm-up")

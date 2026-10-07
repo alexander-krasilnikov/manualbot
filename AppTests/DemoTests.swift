@@ -86,43 +86,11 @@ private func event(_ op: TraceOperation?, dimensions: Int = 1) -> TraceEvent {
     }
 }
 
-// MARK: - 4.2 demo mode setting
+// MARK: - 4.2 the session
 
-@MainActor @Suite struct DemoSettingsTests {
-    private func defaults() -> UserDefaults {
-        let suite = "demo-tests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
-        defaults.removePersistentDomain(forName: suite)
-        return defaults
-    }
-
-    @Test func offByDefaultAndTheTracerFollows() {
-        let tracer = DemoTracer()
-        let settings = DemoSettings(tracer: tracer, defaults: defaults(), arguments: [])
-        #expect(!settings.isOn)
-        #expect(!tracer.isEnabled)
-        settings.isOn = true
-        #expect(tracer.isEnabled)
-        settings.isOn = false
-        #expect(!tracer.isEnabled)
-    }
-
-    @Test func theChoiceSurvivesARelaunch() {
-        let store = defaults()
-        let first = DemoSettings(tracer: DemoTracer(), defaults: store, arguments: [])
-        first.isOn = true
-        let tracer = DemoTracer()
-        let second = DemoSettings(tracer: tracer, defaults: store, arguments: [])
-        #expect(second.isOn)
-        #expect(tracer.isEnabled)
-    }
-
-    @Test func theLaunchArgumentTurnsItOnForThatLaunchOnly() {
-        let store = defaults()
-        let forced = DemoSettings(tracer: DemoTracer(), defaults: store, arguments: ["-demoMode"])
-        #expect(forced.isOn)
-        let next = DemoSettings(tracer: DemoTracer(), defaults: store, arguments: [])
-        #expect(!next.isOn, "the argument must not be remembered")
+@MainActor @Suite struct DemoSessionTests {
+    @Test func tracingIsOnFromTheStart() {
+        #expect(DemoSession().tracer.isEnabled)
     }
 }
 
@@ -194,7 +162,17 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
     private var plans = 0
     var planCalls: Int { lock.withLock { plans } }
     func plan(sql: String) async throws -> String { lock.withLock { plans += 1 }; return "SEARCH chunks USING INDEX chunks_vec" }
-    func storedDocument(collection: String, id: String) async throws -> String? { id == "gone" ? nil : "{ \"id\" : \"\(id)\" }" }
+    func storedDocument(collection: String, id: String, fullVectors: Bool) async throws -> String? {
+        id == "gone" ? nil : "{ \"id\" : \"\(id)\" }"
+    }
+    func collectionSummaries() async throws -> [CollectionSummary] { [] }
+    func documentIDs(collection: String, after: String?, containing: String?, limit: Int) async throws -> [String] { [] }
+    func blob(collection: String, id: String, key: String) async throws -> BlobContent? { nil }
+    func children(documentID: String) async throws -> DocumentChildren { DocumentChildren() }
+    func indexes() async throws -> [IndexSummary] { [] }
+    func query(sql: String, limit: Int) async throws -> QueryRows {
+        QueryRows(columns: [], rows: [], truncated: false, duration: .zero)
+    }
 }
 
 @MainActor @Suite struct XrayModelTests {
@@ -311,11 +289,11 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
         #expect(model.plans["SELECT 1"] == .ready("SEARCH chunks USING INDEX chunks_vec"))
     }
 
-    @Test func storedDocumentsComeBackOrAreReportedGone() async {
-        let model = XrayModel(tracer: DemoTracer())
-        model.inspector = CountingInspector()
-        #expect(await model.storedDocument(collection: "chunks", id: "a") == "{ \"id\" : \"a\" }")
-        #expect(await model.storedDocument(collection: "chunks", id: "gone") == nil)
+    @Test func aDocumentLinkOpensTheExplorerAtThatDocument() {
+        let session = DemoSession()
+        session.xray.openInExplorer?("chunks", "chunk-1")
+        #expect(session.explorer.presented?.collection == "chunks")
+        #expect(session.explorer.presented?.documentID == "chunk-1")
     }
 }
 

@@ -191,13 +191,32 @@ public struct NoTracer: Tracer {
     public func record(_ event: TraceEvent) {}
 }
 
-/// Reads back what is stored, for the X-ray panel. Everything returned is already shortened for display.
+/// Reads back what is stored, for the X-ray panel and the database explorer. Everything returned is already
+/// shortened for display, and none of it is recorded in the trace.
 public protocol TraceInspector: Sendable {
     /// The query plan for `sql`, as the database reports it.
     func plan(sql: String) async throws -> String
-    /// The document as stored, pretty-printed JSON; vectors shortened, blobs reduced to type, length and
-    /// digest. `nil` when it does not exist.
-    func storedDocument(collection: String, id: String) async throws -> String?
+    /// The document as stored, pretty-printed JSON; blobs reduced to type, length and digest, and vectors shortened
+    /// unless `fullVectors`. `nil` when it does not exist.
+    func storedDocument(collection: String, id: String, fullVectors: Bool) async throws -> String?
+
+    /// Every collection in the app's scope with its document count.
+    func collectionSummaries() async throws -> [CollectionSummary]
+    /// Up to `limit` document IDs of `collection` in ascending order, after `after` and containing `containing`.
+    func documentIDs(collection: String, after: String?, containing: String?, limit: Int) async throws -> [String]
+    /// The blob stored under `key` of a document, or `nil` when there is none.
+    func blob(collection: String, id: String, key: String) async throws -> BlobContent?
+    /// The passages and images of a document record.
+    func children(documentID: String) async throws -> DocumentChildren
+    func indexes() async throws -> [IndexSummary]
+    /// Runs a read-only SQL++ query and returns at most `limit` rows.
+    func query(sql: String, limit: Int) async throws -> QueryRows
+}
+
+extension TraceInspector {
+    public func storedDocument(collection: String, id: String) async throws -> String? {
+        try await storedDocument(collection: collection, id: id, fullVectors: false)
+    }
 }
 
 /// Shortening of large values for display.

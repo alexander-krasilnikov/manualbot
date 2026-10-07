@@ -27,6 +27,8 @@ enum SupportedTypes {
 
 struct LibraryView: View {
     let library: LibraryViewModel
+    /// Opens the database explorer.
+    var onOpenExplorer: (() -> Void)?
     let onOpen: (String) -> Void
 
     @State private var importing = false
@@ -77,6 +79,10 @@ struct LibraryView: View {
         .navigationTitle("Library")
         .toolbar {
             ToolbarItemGroup {
+                if let onOpenExplorer {
+                    Button("Database", systemImage: "cylinder.split.1x2", action: onOpenExplorer)
+                        .accessibilityIdentifier("explorerButton")
+                }
                 Button("About", systemImage: "info.circle") { showAbout = true }.accessibilityIdentifier("aboutButton")
                 Button("Import", systemImage: "plus") { importing = true }.accessibilityIdentifier("importButton")
             }

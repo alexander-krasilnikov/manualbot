@@ -19,9 +19,7 @@ enum AppEnvironment {
     static func makeAppModel() throws -> AppModel {
         let arguments = ProcessInfo.processInfo.arguments
         let isStub = arguments.contains("-uiTestModelStub")
-        // UI tests must not inherit (or leave behind) the remembered demo-mode choice of earlier launches.
-        let demo = DemoSession(
-            defaults: isStub ? (UserDefaults(suiteName: "uitest-\(UUID().uuidString)") ?? .standard) : .standard)
+        let demo = DemoSession()
         if let flag = arguments.firstIndex(of: "-uiTestModelStub") {
             let scenario = arguments.indices.contains(flag + 1) ? arguments[flag + 1] : "happy"
             let models = ModelSetupViewModel(store: stubStore(scenario: scenario))
