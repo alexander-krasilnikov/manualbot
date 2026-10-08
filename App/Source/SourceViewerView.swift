@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SourceViewerView: View {
     let source: SourceViewerModel
+    var actions = PreviewActions()
 
     var body: some View {
         Group {
@@ -13,13 +14,18 @@ struct SourceViewerView: View {
                                        description: Text("Tap a source under an answer, or a document in the library, to read it here."))
                     .accessibilityIdentifier("sourceEmpty")
             case .pdf(let url, let page, let chunk, let title):
-                PDFSource(url: url, page: page, chunk: chunk, title: title, openCount: source.openCount)
+                PDFSource(url: url, page: page, chunk: chunk, title: title, openCount: source.openCount, onOpenInDatabase: openInDatabase)
             case .text(let title, let paragraphs, let highlighted):
-                TextSource(title: title, paragraphs: paragraphs, highlighted: highlighted, openCount: source.openCount)
+                TextSource(title: title, paragraphs: paragraphs, highlighted: highlighted, openCount: source.openCount,
+                           onOpenInDatabase: openInDatabase)
             case .image(let url, let title):
-                ImageSource(url: url, title: title)
+                ImageSource(url: url, title: title, onOpenInDatabase: openInDatabase)
             case .deleted(let citation):
                 DeletedSource(citation: citation)
+            case .chunkPreview(let preview):
+                ChunkPreviewCard(preview: preview, actions: actions, record: source.databaseRecord)
+            case .imagePreview(let preview):
+                ImagePreviewCard(preview: preview, actions: actions, record: source.databaseRecord)
             case .unavailable(let title, let reason):
                 ContentUnavailableView(title, systemImage: "exclamationmark.triangle", description: Text(reason))
             }
@@ -27,6 +33,10 @@ struct SourceViewerView: View {
         .overlay { if source.isLoading { ProgressView().padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10)) } }
         .navigationTitle("Source")
         .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var openInDatabase: (() -> Void)? {
+        source.databaseRecord.map { record in { actions.openInDatabase(record) } }
     }
 }
 
@@ -38,6 +48,7 @@ private struct PDFSource: View {
     let chunk: String
     let title: String
     let openCount: Int
+    var onOpenInDatabase: (() -> Void)?
     @State private var highlighted = false
     @State private var pageCount = 0
 
@@ -52,6 +63,7 @@ private struct PDFSource: View {
                 }
                 Text("Page \(page)\(pageCount > 0 ? " of \(pageCount)" : "")").font(.subheadline.monospacedDigit())
                     .accessibilityIdentifier("sourcePage")
+                if let onOpenInDatabase { OpenInDatabaseButton(action: onOpenInDatabase) }
             }
             .padding(.horizontal).padding(.vertical, 8)
             Divider()
@@ -119,12 +131,17 @@ private struct TextSource: View {
     let paragraphs: [SourceViewerModel.Paragraph]
     let highlighted: Set<Int>
     let openCount: Int
+    var onOpenInDatabase: (() -> Void)?
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
-                    Text(title).font(.title2.bold()).accessibilityIdentifier("sourceTitle")
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(title).font(.title2.bold()).accessibilityIdentifier("sourceTitle")
+                        Spacer()
+                        if let onOpenInDatabase { OpenInDatabaseButton(action: onOpenInDatabase) }
+                    }
                     ForEach(paragraphs) { paragraph in
                         Text(paragraph.text)
                             .font(paragraph.isHeading ? .headline : .body)

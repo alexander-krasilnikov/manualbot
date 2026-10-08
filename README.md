@@ -106,6 +106,19 @@ console: pick a starter (keyword search, the chunks of one document, ingest jobs
 200 rows with the time, and open the query plan. Parameters (`$name`, including `$vector`) are not supported. Tapping a
 document ID in X-ray opens the explorer at that document. It never writes, and it adds nothing to the X-ray log.
 
+### Document contents
+
+To see how a document was split, tap the **›** at the right of a ready document in the Library (photos have nothing to
+open). The sidebar then lists the document's chunks or its images (the switch at the top), grouped under page headers for
+a PDF and under headings for other files. A chunk that stands for a photo carries a photo mark. Tap one and the right-hand
+column shows it: for a chunk, its number out of the total, page and heading, length, embedding model and number of
+dimensions, and its full text, with the sentences it repeats from the previous chunk and the next chunk tinted
+(Previous and Next step through the list); for an image, the stored picture (pinch to zoom), its size, caption and where
+the caption came from, and the text read off it. **Show in document** opens the original at that spot with the chunk
+highlighted, and **Show chunk** on an image jumps to the chunk that makes it searchable. The list is read when it opens and
+again when a re-index finishes; X-ray shows that read as one "Contents of …" step. Nothing is written, and previews run
+no queries, so stepping through chunks adds nothing to the X-ray log.
+
 ### Talk track
 
 1. **Import.** Tap Reset demo, then watch the Import groups: the file is stored as a blob next to its JSON record, the
@@ -126,7 +139,11 @@ document ID in X-ray opens the explorer at that document. It never writes, and i
 6. **Look inside.** Tap Database after an import: the chunks each point back to their document, ingest jobs and the
    vector-index settings sit in collections that never replicate, and the keyword starter runs the same full-text query
    in the console, with a plan that names `chunks_fts`.
-7. **Offline.** Turn on airplane mode: the network indicator flips and everything above still works and is still traced.
+7. **Chunks.** Tap › next to the service manual and open its image, then Show chunk to land on the text that makes the
+   figure searchable. To show the overlap, open a longer document (the sample PDFs are about one chunk a page, so there
+   is nothing to tint): step through two chunks and point out the sentences the next chunk repeats, which is why a
+   question that lands on a chunk's edge still finds its answer.
+8. **Offline.** Turn on airplane mode: the network indicator flips and everything above still works and is still traced.
 
 ### If asked: "so filtered vector search is slow?"
 

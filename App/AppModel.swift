@@ -90,6 +90,12 @@ final class AppModel {
         }
     }
 
+    /// The model for browsing one document's chunks and images, or `nil` before the services are up.
+    func makeContents(for item: LibraryViewModel.Item) -> DocumentContentsModel? {
+        guard let core else { return nil }
+        return DocumentContentsModel(docId: item.id, title: item.title, type: item.type, documents: core.repository, tracer: demo.tracer)
+    }
+
     private func watchMemory() async {
         for await _ in NotificationCenter.default.notifications(named: UIApplication.didReceiveMemoryWarningNotification) {
             await factory.unloadModels()

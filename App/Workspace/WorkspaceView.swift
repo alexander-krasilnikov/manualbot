@@ -7,13 +7,20 @@ struct WorkspaceView: View {
     @State private var visibility = NavigationSplitViewVisibility.all
     @State private var compactColumn = NavigationSplitViewColumn.content
     @State private var detailTab = DetailTab.source
+    /// The contents list whose chunk or image is being previewed; the preview's Previous, Next and Show chunk act on it.
+    @State private var activeContents: DocumentContentsModel?
 
     var body: some View {
         if let library = app.library, let chat = app.chat, let source = app.source {
             NavigationSplitView(columnVisibility: $visibility, preferredCompactColumn: $compactColumn) {
                 LibraryView(
                     library: library,
-                    onOpenExplorer: { app.demo.explorer.present() }
+                    onOpenExplorer: { app.demo.explorer.present() },
+                    makeContents: { item in contents(for: item) },
+                    onContentsDeleted: { model in
+                        if source.previewedDocument == model.docId { source.showDeleted(title: model.title) }
+                        if activeContents === model { activeContents = nil }
+                    }
                 ) { id in show { await source.openDocument(id) } }
                     .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 400)
             } content: {
@@ -22,7 +29,7 @@ struct WorkspaceView: View {
                 }
                     .navigationSplitViewColumnWidth(min: 380, ideal: 520)
             } detail: {
-                DetailColumn(source: source, demo: app.demo, tab: $detailTab)
+                DetailColumn(source: source, demo: app.demo, tab: $detailTab, previewActions: previewActions)
             }
             .task { await library.observe() }
             .fullScreenCover(item: Bindable(app.demo.explorer).presented) { target in
@@ -33,6 +40,32 @@ struct WorkspaceView: View {
         } else {
             PreparingView(preparation: app.preparation)
         }
+    }
+
+    private func contents(for item: LibraryViewModel.Item) -> DocumentContentsModel? {
+        guard let source = app.source, let model = app.makeContents(for: item) else { return nil }
+        model.onSelect = { model in
+            activeContents = model
+            show { await source.preview(model) }
+        }
+        // A reload keeps the user where they are: only the preview's content is brought up to date.
+        model.onRefresh = { model in Task { await source.preview(model) } }
+        return model
+    }
+
+    private var previewActions: PreviewActions {
+        PreviewActions(
+            step: { activeContents?.step(by: $0) },
+            showChunk: {
+                if let contents = activeContents, let image = contents.selectedImage { contents.showChunk(of: image) }
+            },
+            showInDocument: { citation in
+                guard let source = app.source else { return }
+                show { await source.open(citation) }
+            },
+            openInDatabase: { record in
+                app.demo.explorer.present(ExplorerTarget(collection: record.collection, documentID: record.id))
+            })
     }
 
     private func show(_ open: @escaping () async -> Void) {

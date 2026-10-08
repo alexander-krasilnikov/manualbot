@@ -5,6 +5,7 @@ import UIKit
 struct ImageSource: View {
     let url: URL
     let title: String
+    var onOpenInDatabase: (() -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -12,6 +13,7 @@ struct ImageSource: View {
                 Text(title).font(.headline).lineLimit(1).accessibilityIdentifier("sourceTitle")
                 Spacer()
                 Label("Photo", systemImage: "photo").font(.caption).foregroundStyle(.secondary)
+                if let onOpenInDatabase { OpenInDatabaseButton(action: onOpenInDatabase) }
             }
             .padding(.horizontal).padding(.vertical, 8)
             Divider()
@@ -24,7 +26,7 @@ struct ImageSource: View {
     }
 }
 
-private struct ZoomableImage: UIViewRepresentable {
+struct ZoomableImage: UIViewRepresentable {
     let image: UIImage
 
     func makeUIView(context: Context) -> UIScrollView {

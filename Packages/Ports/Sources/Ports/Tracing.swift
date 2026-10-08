@@ -3,7 +3,7 @@ import Foundation
 /// A user-visible action that causes database and pipeline activity (the X-ray panel groups events by it).
 public struct TraceOperation: Sendable, Equatable, Hashable, Identifiable {
     public enum Kind: String, Sendable {
-        case importDocument, ask, openSource, reindex, delete, reset
+        case importDocument, ask, openSource, browseContents, reindex, delete, reset
     }
 
     public var id: String

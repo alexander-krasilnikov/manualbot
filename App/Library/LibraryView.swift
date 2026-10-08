@@ -29,6 +29,10 @@ struct LibraryView: View {
     let library: LibraryViewModel
     /// Opens the database explorer.
     var onOpenExplorer: (() -> Void)?
+    /// Builds the contents model for a document, or `nil` if contents cannot be shown yet.
+    var makeContents: ((LibraryViewModel.Item) -> DocumentContentsModel?)?
+    /// Called when the document whose contents were open is deleted.
+    var onContentsDeleted: ((DocumentContentsModel) -> Void)?
     let onOpen: (String) -> Void
 
     @State private var importing = false
@@ -37,8 +41,26 @@ struct LibraryView: View {
     @State private var deleting: LibraryViewModel.Item?
     @State private var isDropTargeted = false
     @State private var showAbout = false
+    @State private var path: [DocumentContentsModel] = []
 
     var body: some View {
+        NavigationStack(path: $path) {
+            libraryList
+                .navigationDestination(for: DocumentContentsModel.self) { model in
+                    DocumentContentsView(model: model, item: library.items.first { $0.id == model.docId })
+                }
+        }
+        .onChange(of: library.items) { _, items in
+            guard let model = path.last, !items.contains(where: { $0.id == model.docId }) else { return }
+            path.removeAll()
+            onContentsDeleted?(model)
+        }
+    }
+
+    /// Only a document that has been indexed has contents, and a photo document has just the one image.
+    private func hasContents(_ item: LibraryViewModel.Item) -> Bool { item.status.isReady && item.type != .image }
+
+    private var libraryList: some View {
         List {
             if !library.rejections.isEmpty {
                 Section {
@@ -48,11 +70,23 @@ struct LibraryView: View {
                 .accessibilityIdentifier("importRejections")
             }
             ForEach(library.items) { item in
-                Button { onOpen(item.id) } label: {
-                    LibraryRow(item: item, loadThumbnail: { await library.thumbnail(for: item.id) }) { Task { await library.retry(item.id) } }
-                }
+                HStack(spacing: 4) {
+                    Button { onOpen(item.id) } label: {
+                        LibraryRow(item: item, loadThumbnail: { await library.thumbnail(for: item.id) }) { Task { await library.retry(item.id) } }
+                    }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("doc-\(item.title)")
+                    if hasContents(item), let makeContents {
+                        Button {
+                            if let model = makeContents(item) { path.append(model) }
+                        } label: {
+                            Image(systemName: "chevron.right").font(.body.weight(.semibold)).frame(width: 44, height: 44).contentShape(Rectangle())
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Contents of \(item.title)")
+                        .accessibilityIdentifier("contents-\(item.title)")
+                    }
+                }
                     .contextMenu {
                         Button("Rename", systemImage: "pencil") { newName = item.title; renaming = item }
                         Button("Re-index", systemImage: "arrow.triangle.2.circlepath") { Task { await library.reindex(item.id) } }

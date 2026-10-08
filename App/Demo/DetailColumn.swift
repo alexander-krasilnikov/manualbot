@@ -10,10 +10,11 @@ struct DetailColumn: View {
     let source: SourceViewerModel
     let demo: DemoSession
     @Binding var tab: DetailTab
+    var previewActions = PreviewActions()
 
     var body: some View {
         ZStack {
-            SourceViewerView(source: source)
+            SourceViewerView(source: source, actions: previewActions)
                 .opacity(tab == .source ? 1 : 0)
                 .allowsHitTesting(tab == .source)
                 .accessibilityHidden(tab != .source)

@@ -53,8 +53,9 @@ struct DocumentField: Identifiable, Equatable {
     }
 }
 
-/// A stored document, field by field: references open the document they name, shortened vectors can be shown in full,
-/// image and text blobs can be previewed, and a document record lists its chunks and images.
+/// A stored document as highlighted JSON: references open the document they name, shortened vectors can be shown in
+/// full, image and text blobs can be previewed next to their attributes, and a document record lists its chunks and
+/// images.
 struct DocumentView: View {
     let explorer: ExplorerModel
     let collection: String
@@ -62,7 +63,7 @@ struct DocumentView: View {
 
     @State private var state: DocumentState?
     @State private var children: DocumentChildren?
-    @State private var fullVectors: [String: String] = [:]
+    @State private var fullVectors: [String: [Any]] = [:]
     @State private var previews: [String: BlobContent] = [:]
 
     var body: some View {
@@ -80,7 +81,7 @@ struct DocumentView: View {
             case .found(let json):
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
-                        ForEach(DocumentField.fields(from: json)) { field in fieldView(field) }
+                        jsonView(json)
                         if let children, !(children.chunks.isEmpty && children.images.isEmpty) { childrenView(children) }
                     }
                     .padding()
@@ -99,49 +100,95 @@ struct DocumentView: View {
         }
     }
 
-    // MARK: Fields
+    // MARK: JSON
 
-    @ViewBuilder private func fieldView(_ field: DocumentField) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(field.key).font(.caption).foregroundStyle(.secondary)
-            switch field.value {
-            case .text(let text):
-                monospaced(text)
-            case .json(let text):
-                monospaced(text)
-            case .reference(let target, let targetID):
-                Button { explorer.follow(collection: target, id: targetID) } label: {
-                    Label("\(target)/\(targetID)", systemImage: "arrow.turn.down.right")
-                        .font(.system(.callout, design: .monospaced))
+    @ViewBuilder private func jsonView(_ json: String) -> some View {
+        if let object = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any] {
+            let fields = DocumentField.fields(from: json)
+            VStack(alignment: .leading, spacing: 2) {
+                code(JSONHighlighter.punctuation("{"))
+                ForEach(Array(fields.enumerated()), id: \.element.id) { index, field in
+                    fieldRow(field, raw: object[field.key] ?? NSNull(), last: index == fields.count - 1)
                 }
-                .accessibilityIdentifier("explorerRef-\(field.key)")
-            case .shortVector(let text):
-                if let full = fullVectors[field.key] {
-                    monospaced(full)
-                    Button("Show shortened") { fullVectors[field.key] = nil }
-                } else {
-                    monospaced(text)
-                    Button("Show in full") { Task { await loadFull(field.key) } }
-                        .accessibilityIdentifier("explorerShowFull-\(field.key)")
-                }
-            case .blob(let type, let length, let digest):
-                monospaced("\(type) · \(ByteCountFormatter.string(fromByteCount: Int64(length), countStyle: .file))\n\(digest)")
-                if let preview = previews[field.key] {
-                    blobPreview(preview)
-                } else if type.hasPrefix("image/") || type.hasPrefix("text/") {
-                    Button("Preview") { Task { await loadPreview(field.key) } }
-                        .accessibilityIdentifier("explorerPreview-\(field.key)")
-                }
+                code(JSONHighlighter.punctuation("}"))
             }
+            .contextMenu {
+                Button("Copy JSON", systemImage: "doc.on.doc") { UIPasteboard.general.string = json }
+            }
+            // Its own element, or the identifier would replace those of the buttons inside.
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("explorerJSON")
+        } else {
+            code(AttributedString(json))
         }
     }
 
-    private func monospaced(_ text: String) -> some View {
+    /// One top-level member: `"key": value,` with the value's own controls on the same line.
+    @ViewBuilder private func fieldRow(_ field: DocumentField, raw: Any, last: Bool) -> some View {
+        let lead = AttributedString(JSONHighlighter.padding(1)) + JSONHighlighter.key(field.key)
+        let comma = JSONHighlighter.punctuation(last ? "" : ",")
+        switch field.value {
+        case .reference(let target, let targetID):
+            // The key keeps its own width so the link follows it; the link's tap area runs to the end of the line.
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(lead).font(.system(.callout, design: .monospaced)).fixedSize()
+                Button { explorer.follow(collection: target, id: targetID) } label: {
+                    (Text(JSONHighlighter.string(targetID)).underline() + Text(comma))
+                        .font(.system(.callout, design: .monospaced)).multilineTextAlignment(.leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(target)/\(targetID)")
+                .accessibilityIdentifier("explorerRef-\(field.key)")
+            }
+        case .shortVector(let text):
+            if let full = fullVectors[field.key] {
+                row(lead + JSONHighlighter.highlight(full, indent: 1) + comma) {
+                    Button("Show shortened") { fullVectors[field.key] = nil }
+                }
+            } else {
+                row(lead + JSONHighlighter.number(text) + comma) {
+                    Button("Show all") { Task { await loadFull(field.key) } }
+                        .accessibilityIdentifier("explorerShowFull-\(field.key)")
+                }
+            }
+        case .blob(let type, _, _):
+            VStack(alignment: .leading, spacing: 6) {
+                row(lead + JSONHighlighter.highlight(raw, indent: 1) + comma) {
+                    if previews[field.key] != nil {
+                        Button("Hide preview", systemImage: "eye.slash") { previews[field.key] = nil }
+                            .accessibilityIdentifier("explorerHidePreview-\(field.key)")
+                    } else if type.hasPrefix("image/") || type.hasPrefix("text/") {
+                        Button("Preview", systemImage: type.hasPrefix("image/") ? "photo" : "doc.text") {
+                            Task { await loadPreview(field.key) }
+                        }
+                        .accessibilityIdentifier("explorerPreview-\(field.key)")
+                    }
+                }
+                if let preview = previews[field.key] { blobPreview(preview).padding(.leading, 24) }
+            }
+        case .text, .json:
+            code(lead + JSONHighlighter.highlight(raw, indent: 1) + comma)
+        }
+    }
+
+    private func row(_ text: AttributedString, @ViewBuilder control: () -> some View) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            code(text)
+            control().buttonStyle(.bordered).controlSize(.small).font(.caption)
+        }
+    }
+
+    /// Not selectable: selectable text takes touches a little outside its own lines, which made the link on the line
+    /// above dead wherever the text below it reached. The whole document is copied from the context menu instead.
+    private func code(_ text: AttributedString) -> some View {
         Text(text)
             .font(.system(.callout, design: .monospaced))
-            .textSelection(.enabled)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
+
+    private func monospaced(_ text: String) -> some View { code(AttributedString(text)) }
 
     @ViewBuilder private func blobPreview(_ blob: BlobContent) -> some View {
         if blob.contentType.hasPrefix("image/"), let image = UIImage(data: blob.data) {
@@ -183,9 +230,9 @@ struct DocumentView: View {
 
     private func loadFull(_ key: String) async {
         guard case .found(let json) = await explorer.document(collection: collection, id: id, fullVectors: true),
-            let object = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any], let value = object[key]
+            let object = try? JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any], let value = object[key] as? [Any]
         else { return }
-        fullVectors[key] = DocumentField.fragment(value, pretty: false)
+        fullVectors[key] = value
     }
 
     private func loadPreview(_ key: String) async {
