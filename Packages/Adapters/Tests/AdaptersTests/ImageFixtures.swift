@@ -167,3 +167,75 @@ extension Fixtures {
         return context.makeImage()!
     }
 }
+
+extension Fixtures {
+    /// JPEG bytes of a solid CMYK picture, as print brochures embed their photos. ImageIO writes CMYK JPEGs with an
+    /// Adobe marker, the same kind Photoshop produces.
+    static func cmykJPEG(cyan: CGFloat, magenta: CGFloat, yellow: CGFloat, black: CGFloat, side: Int = 64) -> Data {
+        let context = CGContext(
+            data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceCMYK(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+        context.setFillColor(CGColor(colorSpace: CGColorSpaceCreateDeviceCMYK(), components: [cyan, magenta, yellow, black, 1])!)
+        context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+        let data = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+        CGImageDestinationFinalize(destination)
+        return data as Data
+    }
+
+    /// A one-page PDF written by hand around a JPEG stream, so the image dictionary is exactly what is asked for
+    /// (Core Graphics' own PDF writer chooses the colour space and decode array itself).
+    func pdf(embeddingJPEG jpeg: Data, side: Int, colorSpace: String = "/DeviceCMYK", decode: String? = nil,
+             filter: String? = "/DCTDecode", decodeParms: String? = nil,
+             rect: CGRect = CGRect(x: 100, y: 420, width: 300, height: 250), name: String = "cmyk.pdf") -> URL {
+        var pdf = Data("%PDF-1.4\n".utf8)
+        var offsets: [Int] = []
+        func object(_ body: Data) {
+            offsets.append(pdf.count)
+            pdf += Data("\(offsets.count) 0 obj\n".utf8) + body + Data("\nendobj\n".utf8)
+        }
+        // A line of text too: a PDF with no text is rejected before its pictures are read.
+        let content = "BT /F1 14 Tf 54 720 Td (Remove the housing before cleaning.) Tj ET "
+            + "q \(Int(rect.width)) 0 0 \(Int(rect.height)) \(Int(rect.minX)) \(Int(rect.minY)) cm /Im0 Do Q"
+        object(Data("<< /Type /Catalog /Pages 2 0 R >>".utf8))
+        object(Data("<< /Type /Pages /Kids [3 0 R] /Count 1 >>".utf8))
+        object(Data("<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /XObject << /Im0 4 0 R >> /Font << /F1 6 0 R >> >> /Contents 5 0 R >>".utf8))
+        let extra = (decode.map { " /Decode \($0)" } ?? "") + (filter.map { " /Filter \($0)" } ?? "")
+            + (decodeParms.map { " /DecodeParms \($0)" } ?? "")
+        object(Data(("<< /Type /XObject /Subtype /Image /Width \(side) /Height \(side) /ColorSpace \(colorSpace) "
+            + "/BitsPerComponent 8\(extra) /Length \(jpeg.count) >>\nstream\n").utf8) + jpeg + Data("\nendstream".utf8))
+        object(Data("<< /Length \(content.utf8.count) >>\nstream\n\(content)\nendstream".utf8))
+        object(Data("<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".utf8))
+        let xref = pdf.count
+        pdf += Data("xref\n0 \(offsets.count + 1)\n0000000000 65535 f \n".utf8)
+        for offset in offsets { pdf += Data(String(format: "%010d 00000 n \n", offset).utf8) }
+        pdf += Data("trailer\n<< /Size \(offsets.count + 1) /Root 1 0 R >>\nstartxref\n\(xref)\n%%EOF\n".utf8)
+        return write(pdf, as: name)
+    }
+
+    /// JPEG bytes of a solid gray picture (one component).
+    static func grayJPEG(level: CGFloat, side: Int) -> Data {
+        let context = CGContext(
+            data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGImageAlphaInfo.none.rawValue)!
+        context.setFillColor(gray: level, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+        let data = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil)!
+        CGImageDestinationAddImage(destination, context.makeImage()!, nil)
+        CGImageDestinationFinalize(destination)
+        return data as Data
+    }
+
+    /// The average colour of a picture as red, green and blue from 0 to 1.
+    static func averageRGB(_ image: CGImage) -> (red: Double, green: Double, blue: Double) {
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = CGContext(
+            data: &pixel, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+        context.interpolationQuality = .medium
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return (Double(pixel[0]) / 255, Double(pixel[1]) / 255, Double(pixel[2]) / 255)
+    }
+}

@@ -1,4 +1,5 @@
 import Foundation
+import ImageIO
 import Ports
 import Testing
 @testable import Adapters
@@ -9,6 +10,32 @@ import Testing
 
     private func extract(_ url: URL) async throws -> ExtractedDocument {
         try await DocxExtractor().extract(from: url) { _ in }
+    }
+
+    /// A CMYK JPEG on its own is shown the way ImageIO reads it, Adobe inversion included; the extracted picture
+    /// must have those colours as plain pixels, so text recognition and features cannot read it differently.
+    @Test func aCMYKPhotoInAWordFileHasPlainPixelsWithItsOwnColours() async throws {
+        let jpeg = Fixtures.cmykJPEG(cyan: 0.9, magenta: 0.2, yellow: 0.1, black: 0, side: 320)
+        let source = try #require(CGImageSourceCreateWithData(jpeg as CFData, nil))
+        let reference = Fixtures.averageRGB(try #require(CGImageSourceCreateImageAtIndex(source, 0, nil)))
+        let url = fx.docx(body: Fixtures.drawing("rId5"), media: ["media/image1.jpg": jpeg], relationships: ["rId5": "media/image1.jpg"])
+        let image = try #require(try await extract(url).images.first).image
+        let colour = Fixtures.averageRGB(image)
+        #expect(image.decode == nil)
+        #expect(abs(colour.red - reference.red) < 0.1 && abs(colour.green - reference.green) < 0.1 && abs(colour.blue - reference.blue) < 0.1,
+                "extracted \(colour), file shows \(reference)")
+    }
+
+    @Test func aCMYKPhotoFileHasPlainPixelsWithItsOwnColours() async throws {
+        let jpeg = Fixtures.cmykJPEG(cyan: 0.9, magenta: 0.2, yellow: 0.1, black: 0, side: 320)
+        let source = try #require(CGImageSourceCreateWithData(jpeg as CFData, nil))
+        let reference = Fixtures.averageRGB(try #require(CGImageSourceCreateImageAtIndex(source, 0, nil)))
+        let url = fx.write(jpeg, as: "plate.jpg")
+        let image = try #require(try await ImageExtractor().extract(from: url) { _ in }.images.first).image
+        let colour = Fixtures.averageRGB(image)
+        #expect(image.decode == nil)
+        #expect(abs(colour.red - reference.red) < 0.1 && abs(colour.green - reference.green) < 0.1 && abs(colour.blue - reference.blue) < 0.1,
+                "extracted \(colour), file shows \(reference)")
     }
 
     @Test func aPictureKeepsItsHeadingAndAltText() async throws {

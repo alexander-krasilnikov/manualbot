@@ -169,12 +169,15 @@ final class PDFImageScanner {
     }
 
     /// The picture as stored: JPEG and JPEG 2000 streams are decoded by ImageIO, and raw RGB or gray samples
-    /// are wrapped directly.
+    /// are wrapped directly. A picture never leaves here depending on a decode array, so text recognition, image
+    /// features and the stored copy all see the same pixels.
     static func decode(_ stream: CGPDFStreamRef) -> Decoded {
         var format = CGPDFDataFormat.raw
         guard let data = CGPDFStreamCopyData(stream, &format) else { return .damaged }
         switch format {
         case .jpegEncoded, .JPEG2000:
+            // ImageIO knows nothing of spot, indexed or Lab colour: it would read the components as gray, RGB or CMYK.
+            guard hasPlainColorSpace(stream) else { return .unsupported }
             // The picture stays compressed until it is analyzed, so a manual with hundreds of photos does not hold
             // hundreds of decoded bitmaps. A tiny decode up front is enough to tell that the stream is readable.
             guard let source = CGImageSourceCreateWithData(data, nil), CGImageSourceGetCount(source) > 0,
@@ -182,14 +185,57 @@ final class PDFImageScanner {
                     kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 32] as CFDictionary) != nil,
                 let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
             else { return .damaged }
-            return .image(image)
+            guard image.decode != nil || pdfDecode(stream) != nil else { return .image(image) }
+            // ImageIO inverts CMYK JPEGs that carry an Adobe marker (it gives the image a decode array), but inside a
+            // PDF only the image dictionary's /Decode says how samples become colour. Without this, print brochures'
+            // CMYK photos come out as negatives. (JPEG 2000 cannot be re-wrapped that way: draw it from the page.)
+            guard format == .jpegEncoded else { return .unsupported }
+            let components = image.colorSpace?.numberOfComponents ?? 0
+            let decode = pdfDecode(stream, components: components) ?? Array(repeating: [CGFloat(0), 1], count: components).flatMap { $0 }
+            guard let provider = CGDataProvider(data: data),
+                let corrected = CGImage(jpegDataProviderSource: provider, decode: decode, shouldInterpolate: true, intent: .defaultIntent),
+                let flat = PlainPixels.flattened(corrected)
+            else { return .damaged }
+            return .image(flat)
         case .raw:
             guard let layout = rawLayout(stream) else { return .unsupported }
-            guard let image = rawImage(layout, data: data) else { return .damaged }
-            return .image(image)
+            let decode = pdfDecode(stream, components: layout.components)
+            guard let image = rawImage(layout, data: data, decode: decode) else { return .damaged }
+            guard decode != nil else { return .image(image) }
+            return PlainPixels.flattened(image).map(Decoded.image) ?? .damaged
         @unknown default:
             return .unsupported
         }
+    }
+
+    /// Colour spaces whose components ImageIO reads correctly on its own: device, calibrated and ICC-based ones.
+    /// A JPEG 2000 stream may leave the colour space to the codestream.
+    private static func hasPlainColorSpace(_ stream: CGPDFStreamRef) -> Bool {
+        guard let dictionary = CGPDFStreamGetDictionary(stream) else { return false }
+        let plain: Set<String> = ["DeviceGray", "DeviceRGB", "DeviceCMYK", "CalGray", "CalRGB", "ICCBased"]
+        var name: UnsafePointer<CChar>?
+        var array: CGPDFArrayRef?
+        if CGPDFDictionaryGetName(dictionary, "ColorSpace", &name), let name { return plain.contains(String(cString: name)) }
+        if CGPDFDictionaryGetArray(dictionary, "ColorSpace", &array), let array {
+            var kind: UnsafePointer<CChar>?
+            return CGPDFArrayGetName(array, 0, &kind) && kind.map { plain.contains(String(cString: $0)) } == true
+        }
+        var object: CGPDFObjectRef?
+        return !CGPDFDictionaryGetObject(dictionary, "ColorSpace", &object)
+    }
+
+    /// The image's /Decode array, if it has one with two numbers per colour component.
+    private static func pdfDecode(_ stream: CGPDFStreamRef, components: Int? = nil) -> [CGFloat]? {
+        var array: CGPDFArrayRef?
+        guard let dictionary = CGPDFStreamGetDictionary(stream), CGPDFDictionaryGetArray(dictionary, "Decode", &array), let array
+        else { return nil }
+        let values: [CGFloat] = (0..<CGPDFArrayGetCount(array)).compactMap { index in
+            var number: CGPDFReal = 0
+            return CGPDFArrayGetNumber(array, index, &number) ? CGFloat(number) : nil
+        }
+        guard values.count == CGPDFArrayGetCount(array), values.count.isMultiple(of: 2), !values.isEmpty else { return nil }
+        if let components, values.count != 2 * components { return nil }
+        return values
     }
 
     private static func rawLayout(_ stream: CGPDFStreamRef) -> (components: Int, width: Int, height: Int)? {
@@ -222,14 +268,14 @@ final class PDFImageScanner {
         return (components, width, height)
     }
 
-    private static func rawImage(_ layout: (components: Int, width: Int, height: Int), data: CFData) -> CGImage? {
+    private static func rawImage(_ layout: (components: Int, width: Int, height: Int), data: CFData, decode: [CGFloat]? = nil) -> CGImage? {
         guard CFDataGetLength(data) >= layout.width * layout.height * layout.components, let provider = CGDataProvider(data: data)
         else { return nil }
         return CGImage(
             width: layout.width, height: layout.height, bitsPerComponent: 8, bitsPerPixel: 8 * layout.components,
             bytesPerRow: layout.width * layout.components,
             space: layout.components == 3 ? CGColorSpaceCreateDeviceRGB() : CGColorSpaceCreateDeviceGray(),
-            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue), provider: provider, decode: nil,
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue), provider: provider, decode: decode,
             shouldInterpolate: true, intent: .defaultIntent)
     }
 

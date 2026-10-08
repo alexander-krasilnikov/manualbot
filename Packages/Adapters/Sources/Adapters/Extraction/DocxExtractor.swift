@@ -86,8 +86,9 @@ public struct DocxExtractor: DocumentExtractor {
             CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceThumbnailMaxPixelSize: 32] as CFDictionary) != nil
         else { return nil }
-        // Left compressed until it is analyzed, so a document with many pictures does not hold them all decoded.
-        return CGImageSourceCreateImageAtIndex(source, 0, nil)
+        // Left compressed until it is analyzed, so a document with many pictures does not hold them all decoded
+        // (unless it needs a decode array, as CMYK JPEGs do: see PlainPixels).
+        return CGImageSourceCreateImageAtIndex(source, 0, nil).flatMap { PlainPixels.ensure($0) }
     }
 
     /// The alt text when the author wrote one, else the caption paragraph that followed the picture.

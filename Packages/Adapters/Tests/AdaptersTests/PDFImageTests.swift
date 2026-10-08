@@ -1,5 +1,7 @@
 import CoreGraphics
 import Foundation
+import ImageIO
+import PDFKit
 import Ports
 import Testing
 @testable import Adapters
@@ -15,6 +17,57 @@ import Testing
 
     private var bodyText: (text: String, rect: CGRect, size: CGFloat) {
         ("Remove the housing before cleaning.", CGRect(x: 54, y: 700, width: 504, height: 50), 14)
+    }
+
+    // MARK: CMYK photos
+
+    /// The picture as extracted must have the colours the page shows. Print PDFs embed CMYK JPEGs with an Adobe marker;
+    /// ImageIO inverts those by itself, but inside a PDF only the image's /Decode array may invert them.
+    @Test(arguments: [nil, "[1 0 1 0 1 0 1 0]"])
+    func aCMYKPhotoKeepsTheColoursThePageShows(decode: String?) async throws {
+        let jpeg = Fixtures.cmykJPEG(cyan: 1, magenta: 0.1, yellow: 0, black: 0, side: 320)
+        let source = try #require(CGImageSourceCreateWithData(jpeg as CFData, nil))
+        let decoded = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        #expect(decoded.decode != nil, "the fixture should carry ImageIO's Adobe inversion, as the brochures' photos do")
+        let rect = CGRect(x: 100, y: 420, width: 300, height: 250)
+        let url = fx.pdf(embeddingJPEG: jpeg, side: 320, decode: decode, rect: rect)
+        try await expectExtractedMatchesPage(url, rect: rect)
+    }
+
+    /// Extracts the only picture of `url` and checks it has the colour the page shows under `rect`.
+    private func expectExtractedMatchesPage(_ url: URL, rect: CGRect, sourceLocation: SourceLocation = #_sourceLocation) async throws {
+        let image = try #require(try await extract(url).images.first, sourceLocation: sourceLocation)
+        // Every consumer (text recognition, features, the stored copy) must see the same pixels: no decode array left.
+        #expect(image.image.decode == nil, "the extracted picture must not depend on a decode array", sourceLocation: sourceLocation)
+        let extracted = Fixtures.averageRGB(image.image)
+        let page = try #require(PDFDocument(url: url)?.page(at: 0), sourceLocation: sourceLocation)
+        let drawn = try #require(PDFImageScanner.render(rect.insetBy(dx: 20, dy: 20), of: page), sourceLocation: sourceLocation)
+        let shown = Fixtures.averageRGB(drawn)
+        #expect(abs(extracted.red - shown.red) < 0.12 && abs(extracted.green - shown.green) < 0.12 && abs(extracted.blue - shown.blue) < 0.12,
+                "extracted \(extracted), page shows \(shown)", sourceLocation: sourceLocation)
+    }
+
+    @Test func rawGraySamplesWithAnInvertingDecodeArrayKeepThePagesColours() async throws {
+        let rect = CGRect(x: 100, y: 420, width: 300, height: 250)
+        let samples = Data(repeating: 40, count: 320 * 320)   // dark samples, shown light by /Decode [1 0]
+        let url = fx.pdf(embeddingJPEG: samples, side: 320, colorSpace: "/DeviceGray", decode: "[1 0]", filter: nil, rect: rect)
+        try await expectExtractedMatchesPage(url, rect: rect)
+    }
+
+    @Test func aJPEGInASpotColourIsDrawnFromThePage() async throws {
+        let rect = CGRect(x: 100, y: 420, width: 300, height: 250)
+        // A gray JPEG whose single component is a magenta spot ink: ImageIO alone would show it gray.
+        let spot = "[/Separation /Magenta /DeviceCMYK << /FunctionType 2 /Domain [0 1] /C0 [0 0 0 0] /C1 [0 1 0 0] /N 1 >>]"
+        let url = fx.pdf(embeddingJPEG: Fixtures.grayJPEG(level: 0.3, side: 320), side: 320, colorSpace: spot, rect: rect)
+        try await expectExtractedMatchesPage(url, rect: rect)
+    }
+
+    @Test(arguments: [0, 1])
+    func aJPEGWhoseColorTransformParameterOverridesItsMarkerIsDrawnFromThePage(transform: Int) async throws {
+        let rect = CGRect(x: 100, y: 420, width: 300, height: 250)
+        let jpeg = Fixtures.cmykJPEG(cyan: 0.9, magenta: 0.2, yellow: 0.1, black: 0, side: 320)
+        let url = fx.pdf(embeddingJPEG: jpeg, side: 320, decodeParms: "<< /ColorTransform \(transform) >>", rect: rect)
+        try await expectExtractedMatchesPage(url, rect: rect)
     }
 
     // MARK: 4.4 placement, forms, captions, damage
