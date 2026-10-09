@@ -6,6 +6,14 @@ import Testing
 /// Runs against a real Gemma 4 file. Set GENERATOR_MODEL_PATH to `gemma-4-E2B-it.litertlm` (the app's model; E4B works too).
 private let modelPath = ProcessInfo.processInfo.environment["GENERATOR_MODEL_PATH"]
 
+/// No model needed.
+struct LiteRTGeneratorWarmUpTests {
+    @Test func aMissingModelFileIsReportedAtWarmUp() async {
+        let generator = LiteRTGenerator(modelPath: "/nonexistent/model.litertlm")
+        await #expect(throws: GeneratorError.modelMissing("/nonexistent/model.litertlm")) { try await generator.warmUp() }
+    }
+}
+
 @Suite(.serialized, .enabled(if: modelPath != nil))
 struct LiteRTGeneratorTests {
     private static let generator = LiteRTGenerator(modelPath: modelPath ?? "")
@@ -18,6 +26,14 @@ struct LiteRTGeneratorTests {
         var text = ""
         for try await piece in stream { text += piece }
         return text
+    }
+
+    @Test func warmUpLoadsTheModelSoTheFirstQuestionIsNotTheOneThatLoadsIt() async throws {
+        let generator = LiteRTGenerator(modelPath: modelPath ?? "")
+        try await generator.warmUp()
+        let text = try await collect(generator.generate(request("Say the word ready.", max: 8)))
+        #expect(!text.isEmpty)
+        await generator.unload()
     }
 
     @Test func streamsAnAnswerInPieces() async throws {

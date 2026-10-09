@@ -4,6 +4,8 @@ import Foundation
 public struct TraceOperation: Sendable, Equatable, Hashable, Identifiable {
     public enum Kind: String, Sendable {
         case importDocument, ask, openSource, browseContents, reindex, delete, reset
+        /// The Models page searched a model repository, or downloaded a model from one: the only network use after setup.
+        case modelSearch, modelDownload
     }
 
     public var id: String
@@ -23,6 +25,11 @@ public enum TraceContext {
     @TaskLocal public static var operation: TraceOperation?
     /// Set while the image index is searched with the vector of typed words, so that query is labelled as such.
     @TaskLocal public static var imageQueryIsWords = false
+}
+
+/// Why the Models page made a request to a model repository.
+public enum ModelRequestPurpose: String, Sendable {
+    case search, download
 }
 
 public enum QueryPurpose: String, Sendable {
@@ -142,6 +149,9 @@ public enum TraceKind: Sendable, Equatable {
     case wordsMatchedPhotos(matches: Int, bestDistance: Double?, threshold: Double)
     /// `firstToken` is `nil` when the model was not called.
     case generation(firstToken: TimeInterval?, skipped: Bool)
+    /// The Models page asked a model repository for something: the only network use after setup, and only when the user
+    /// asks. `subject` is the search text or the model's name. No document, question or answer is ever sent.
+    case modelRequest(ModelRequestPurpose, host: String, subject: String)
 }
 
 public struct TraceEvent: Sendable, Equatable, Identifiable {

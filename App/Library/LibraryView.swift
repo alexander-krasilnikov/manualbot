@@ -29,6 +29,10 @@ struct LibraryView: View {
     let library: LibraryViewModel
     /// Opens the database explorer.
     var onOpenExplorer: (() -> Void)?
+    /// Opens the Models page.
+    var onOpenSettings: (() -> Void)?
+    /// Where About reads the installed models from.
+    var settings: ModelSettingsViewModel?
     /// Builds the contents model for a document, or `nil` if contents cannot be shown yet.
     var makeContents: ((LibraryViewModel.Item) -> DocumentContentsModel?)?
     /// Called when the document whose contents were open is deleted.
@@ -117,11 +121,14 @@ struct LibraryView: View {
                     Button("Database", systemImage: "cylinder.split.1x2", action: onOpenExplorer)
                         .accessibilityIdentifier("explorerButton")
                 }
+                if let onOpenSettings {
+                    Button("Models", systemImage: "gearshape", action: onOpenSettings).accessibilityIdentifier("settingsButton")
+                }
                 Button("About", systemImage: "info.circle") { showAbout = true }.accessibilityIdentifier("aboutButton")
                 Button("Import", systemImage: "plus") { importing = true }.accessibilityIdentifier("importButton")
             }
         }
-        .sheet(isPresented: $showAbout) { AboutView() }
+        .sheet(isPresented: $showAbout) { AboutView(settings: settings) }
         .fileImporter(isPresented: $importing, allowedContentTypes: SupportedTypes.picker, allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { Task { await library.importFiles(urls) } }
         }

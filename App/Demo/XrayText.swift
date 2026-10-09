@@ -8,6 +8,7 @@ enum XrayEventTag: CaseIterable {
     case queryRewritten, queryEmbedded, fusion, relevance, generation
     case imageAnalyzed, imagesWritten, photoAnalyzed, imageQuery
     case imageByWordsQuery, wordsMatchedPhotos
+    case modelRequest
 }
 
 extension TraceKind {
@@ -39,6 +40,7 @@ extension TraceKind {
         case .imagesWritten: .imagesWritten
         case .photoAnalyzed: .photoAnalyzed
         case .wordsMatchedPhotos: .wordsMatchedPhotos
+        case .modelRequest: .modelRequest
         }
     }
 }
@@ -94,6 +96,8 @@ enum XrayText {
             "Words and photos share one vector space, so the question's own vector searches the photo index with the same SQL++ and finds a photo that nobody captioned."
         case .wordsMatchedPhotos:
             "Whether typed words match a photo is decided by a distance threshold of its own, and a match only adds the photo and the text beside it, so it never makes a question answerable on its own."
+        case .modelRequest:
+            "The only network use after setup is a model search or download that you ask for on the Models page, and documents, questions and answers never leave the device."
         }
     }
 
@@ -126,6 +130,7 @@ enum XrayText {
         case .photoAnalyzed: "Read the photo you sent"
         case .wordsMatchedPhotos(let matches, _, _):
             matches == 0 ? "No photo matches the words" : "\(matches) photo\(matches == 1 ? "" : "s") match\(matches == 1 ? "es" : "") the words"
+        case .modelRequest(let purpose, _, _): purpose == .search ? "Searched the model repository" : "Downloaded a model"
         }
     }
 
@@ -166,6 +171,7 @@ enum XrayText {
             "\(length) characters of text" + (identifiers.isEmpty ? "" : " · identifiers: \(identifiers.joined(separator: ", "))")
                 + " · \(dimensions)-dimension vector"
         case .wordsMatchedPhotos(let matches, let best, let threshold): wordsMatch(matches: matches, best: best, threshold: threshold)
+        case .modelRequest(_, let host, let subject): "\(subject) · \(host)"
         }
     }
 
@@ -256,6 +262,7 @@ enum XrayText {
         case .photoAnalyzed: "camera.viewfinder"
         case .imageQuery: "photo.on.rectangle"
         case .imageByWordsQuery, .wordsMatchedPhotos: "text.below.photo"
+        case .modelRequest: "network"
         }
     }
 }

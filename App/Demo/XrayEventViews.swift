@@ -121,6 +121,10 @@ struct XrayEventDetail: View {
                 LabeledText("Text read from the photo", length == 0 ? "none" : "\(length) characters")
                 LabeledText("Identifiers kept for the search", identifiers.isEmpty ? "none" : identifiers.joined(separator: ", "))
                 LabeledText("Look", "\(dimensions) numbers")
+            case .modelRequest(let purpose, let host, let subject):
+                LabeledText(purpose == .search ? "Searched for" : "Downloaded", subject)
+                LabeledText("From", host)
+                Text("Nothing about your documents, questions or answers is sent.").font(.callout)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

@@ -56,6 +56,16 @@ private func file(_ name: String, _ text: String) throws -> URL {
         #expect(LibraryViewModel.Status.updating(0.5).isReady && LibraryViewModel.Status.updating(0.5).isWorking)
     }
 
+    @Test func theListShowsTheResultWhenItsOwnObservingRunDoesAllTheIndexing() async throws {
+        // After a switch of embedding model the queued re-index is run by the list's own `observe()`, which returns from
+        // `run()` only when everything is done: the list must still end up showing the finished documents.
+        let (library, _, ingestion) = make()
+        let id = try await ingestion.enqueue(fileURL: try file("own-run.txt", "Hold the button for ten seconds to reset."))
+        let observer = Task { await library.observe() }
+        defer { observer.cancel() }
+        #expect(await eventually { library.items.first { $0.id == id }?.status == .ready })
+    }
+
     @Test func aReindexShowsUpdatingIndexWithProgressAndReturnsToReady() async throws {
         let (library, repo, ingestion) = make()
         await library.importFiles([try file("manual.txt", "Hold the power button for ten seconds. Release it and wait. The light blinks twice when done.")])
@@ -352,14 +362,14 @@ private struct ChatHarness {
     @Test func servicesAreBuiltInStagesAsModelsBecomeReady() async throws {
         let hash = String(repeating: "a", count: 64)
         let manifest = ModelManifest(models: [
-            ModelSpec(id: "emb", version: "1", role: .embedder, url: URL(string: "https://x.invalid/e")!, bytes: 300, sha256: hash, fileName: "e"),
+            StubServiceFactory.catalog.embedders[0].spec,
             ModelSpec(id: "llm", version: "1", role: .generator, url: URL(string: "https://x.invalid/l")!, bytes: 3000, sha256: hash, fileName: "l"),
         ])
         let backend = FakeModelBackend()
         backend.setBehavior(.failOnce("offline"), for: "llm")
         let store = ModelStore(manifest: manifest, downloader: backend, files: backend, safetyMargin: 0)
         let models = ModelSetupViewModel(store: store)
-        let app = AppModel(models: models, factory: StubServiceFactory(options: .init()))
+        let app = AppModel(models: models, factory: StubServiceFactory(options: .init()), catalog: StubServiceFactory.catalog)
         let run = Task { await app.run() }
         defer { run.cancel() }
 

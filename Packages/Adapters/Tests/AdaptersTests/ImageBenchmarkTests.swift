@@ -1,3 +1,4 @@
+import Core
 import Foundation
 import Ports
 import Testing
@@ -18,7 +19,7 @@ import Testing
 struct ImageBenchmarkTests {
     @Test func photoSearchP95StaysUnderThreeHundredMillisecondsAt5kImages() async throws {
         let imageCount = 5_000, documents = 50
-        let printer = LiteRTEmbedder(modelPath: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] ?? "")
+        let printer = LiteRTEmbedder(profile: .embeddingGemma2, modelPath: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] ?? "")
         _ = try await printer.embed(["warm up"], kind: .query)   // loading the model is not part of a search
         let f = try RepoFixture(imageFeatures: printer.identity); defer { Task { await f.cleanUp() } }
         var rng = RetrievalBenchmarkTests.SplitMix(state: 7)

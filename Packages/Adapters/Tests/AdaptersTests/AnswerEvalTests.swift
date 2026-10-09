@@ -65,7 +65,7 @@ struct AnswerEvalTests {
 
     @Test func theChosenLanguageModelAnswersTheEvaluationQuestions() async throws {
         let env = ProcessInfo.processInfo.environment
-        let embedder = LiteRTEmbedder(modelPath: try #require(embedderPath))
+        let embedder = LiteRTEmbedder(profile: .embeddingGemma2, modelPath: try #require(embedderPath))
         let library = try await makeLibrary(embedder: embedder)
         defer { try? FileManager.default.removeItem(at: library.root) }
 

@@ -10,6 +10,13 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
     struct Options: Sendable {
         var seedDocuments = false
         var slowAnswers = false
+        /// Models (by id) that cannot be loaded: choosing one fails, as a file the runtime cannot run would.
+        var failingModels: Set<String> = []
+    }
+
+    struct CannotLoad: LocalizedError {
+        let title: String
+        var errorDescription: String? { "The model “\(title)” could not be loaded." }
     }
 
     /// The stand-in's distances (hashed words, colour cells) are on their own scale, far above the real model's.
@@ -21,6 +28,9 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
     let options: Options
     private let tracer: any Tracer
     private let root = FileManager.default.temporaryDirectory.appendingPathComponent("uitest-\(UUID().uuidString)")
+    private let lock = NSLock()
+    /// The sample documents are added once, not again when the services are rebuilt after a switch of models.
+    private var seeded = false
 
     init(options: Options, tracer: any Tracer = NoTracer()) {
         self.options = options
@@ -32,10 +42,44 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
     /// The stand-in's words-to-photo distances are on their own scale: an anchored question is the photo's own vector.
     static let textToImageMaxDistance = 0.15
 
-    func makeCore(onProgress: @escaping @Sendable (String) -> Void) async throws -> CoreServices {
+    /// The stand-in embedding model's profile. Its distances are the stand-in's own scale; chunks use the default sizes.
+    static let profile = EmbedderProfile(
+        identity: EmbeddingModelIdentity(id: "fake-joint", version: "1", dimensions: 768),
+        prompts: EmbeddingPrompts(query: "", passageWithTitle: "", passage: "", titleLimit: 60),
+        maxInputLength: 512, outputSize: 768, chunker: ChunkerConfiguration(),
+        thresholds: RelevanceThresholds(text: maxDistance, image: imageMaxDistance, textToImage: textToImageMaxDistance),
+        supportsImages: true)
+
+    /// A second stand-in embedder, without photos, for trying a switch of embedding model.
+    static let textOnlyProfile = EmbedderProfile(
+        identity: EmbeddingModelIdentity(id: "fake-text", version: "1", dimensions: 768),
+        prompts: EmbeddingPrompts(query: "", passageWithTitle: "", passage: "", titleLimit: 60),
+        maxInputLength: 512, outputSize: 768, chunker: ChunkerConfiguration(),
+        thresholds: RelevanceThresholds(text: maxDistance, image: imageMaxDistance, textToImage: textToImageMaxDistance),
+        supportsImages: false)
+
+    /// The embedders the stub offers: the one the stub model manifest names (`AppEnvironment`), and a text-only one.
+    static let catalog = EmbedderCatalog(embedders: [
+        EmbedderCatalogEntry(
+            spec: ModelSpec(
+                id: "embeddinggemma-2-text-vision-440m", version: "1", role: .embedder, url: URL(string: "https://example.invalid/embed")!,
+                bytes: 388_000_000, sha256: String(repeating: "a", count: 64), fileName: "embed.bin", displayName: "EmbeddingGemma 2",
+                licence: "Apache License 2.0"),
+            profile: profile),
+        EmbedderCatalogEntry(
+            spec: ModelSpec(
+                id: "stub-text-embedder", version: "1", role: .embedder, url: URL(string: "https://example.invalid/text-embed")!,
+                bytes: 150_000_000, sha256: String(repeating: "b", count: 64), fileName: "text-embed.bin", displayName: "Stub Text Embedder",
+                licence: "MIT License"),
+            profile: textOnlyProfile),
+    ])
+
+    func makeCore(embedder selection: EmbedderSelection, onProgress: @escaping @Sendable (String) -> Void) async throws -> CoreServices {
         // One stand-in model for words and photos, like the real one. Which pictures words find is scripted.
+        let profile = selection.profile
+        if options.failingModels.contains(selection.spec.id) { throw CannotLoad(title: selection.spec.title) }
         let nameplate = PhotoData.image(from: SampleDocuments.nameplatePhoto(model: "X100-A", serial: "2208-91", style: .label))
-        let model = FakeJointEmbedder(anchors: nameplate.map { [(Self.nameplatePhrase, $0)] } ?? [])
+        let model = FakeJointEmbedder(identity: profile.identity, anchors: nameplate.map { [(Self.nameplatePhrase, $0)] } ?? [])
         let identity = model.identity
         // Text on photos is read by the operating system, so that is real here.
         let recognizer = VisionTextRecognizer()
@@ -45,21 +89,27 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
         let extractor = FileDocumentExtractor()
         let ingestion = IngestionService(
             extractor: extractor, embedder: model, repository: repository, jobs: repository,
-            chunker: Chunker(), supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer,
-            imageFeatures: model, recognizer: recognizer)
+            chunker: Chunker(configuration: profile.chunker), supportedType: FileDocumentExtractor.documentType(for:), tracer: tracer,
+            imageFeatures: profile.supportsImages ? model : nil, recognizer: recognizer)
         let retriever = Retriever(
             embedder: model, search: repository, repository: repository,
-            configuration: RetrievalConfiguration(
-                maxDistance: Self.maxDistance, imageMaxDistance: Self.imageMaxDistance, textToImageMaxDistance: Self.textToImageMaxDistance),
-            tracer: tracer, photoSearch: PhotoSearch(features: model, search: repository, recognizer: recognizer))
-        let core = CoreServices(repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor, embedding: identity)
-        if options.seedDocuments { try await seed(core) }
+            configuration: profile.retrievalConfiguration(), tracer: tracer,
+            photoSearch: profile.supportsImages ? PhotoSearch(features: model, search: repository, recognizer: recognizer) : nil)
+        let core = CoreServices(
+            repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor, embedding: identity,
+            supportsPhotos: profile.supportsImages, photosExplanation: selection.photosExplanation)
+        let firstTime = lock.withLock { () -> Bool in defer { seeded = true }; return !seeded }
+        if options.seedDocuments, firstTime { try await seed(core) }
         return core
     }
 
-    func makeChat(core: CoreServices) async throws -> ChatService {
+    func makeChat(core: CoreServices, generator: ModelSpec) async throws -> ChatService {
         ChatService(
             chats: core.repository, retriever: core.retriever, generator: StubGenerator(slow: options.slowAnswers), tracer: tracer)
+    }
+
+    func verifyChat(generator: ModelSpec) async throws {
+        if options.failingModels.contains(generator.id) { throw CannotLoad(title: generator.title) }
     }
 
     func unloadModels() async {}

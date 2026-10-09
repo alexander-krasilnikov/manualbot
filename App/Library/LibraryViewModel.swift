@@ -43,6 +43,8 @@ final class LibraryViewModel {
     private(set) var items: [Item] = []
     /// Files that could not be imported, each with the reason.
     private(set) var rejections: [String] = []
+    /// Why photos cannot be imported, naming the embedding model in use. `nil` when they can.
+    var photosExplanation: String?
 
     private let documents: any DocumentRepository
     private let jobs: any IngestJobStore
@@ -66,10 +68,14 @@ final class LibraryViewModel {
 
     /// Refreshes on every ingestion change for as long as the caller keeps this task alive.
     func observe() async {
+        // Subscribe before running, so the changes the run itself makes are not missed: this call may be the one that
+        // does all the work (after a switch of embedding model, say), and nothing else would tell the list it finished.
+        let updates = await ingestion.updates()
         await refresh()
         await ingestion.run()  // picks up work left over from a previous launch
+        await refresh()
         var warming: Task<Void, Never>?
-        for await job in await ingestion.updates() {
+        for await job in updates {
             await refresh()
             if job.state == .ready, let onDocumentReady {
                 // The first vector query after new data trains the index; do it now rather than on a user's question.
@@ -114,6 +120,8 @@ final class LibraryViewModel {
             defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
                 try await ingestion.enqueue(fileURL: url)
+            } catch IngestionError.photosUnavailable {
+                rejections.append("\(url.lastPathComponent): \(photosExplanation ?? IngestionError.photosUnavailable.localizedDescription)")
             } catch {
                 rejections.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }

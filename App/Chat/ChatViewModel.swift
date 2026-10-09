@@ -28,8 +28,10 @@ final class ChatViewModel {
     private(set) var attachedPhoto: Data?
     /// UI tests have no photo picker to drive: when set, the attach button attaches this instead of opening it.
     var stubPhoto: Data?
-    /// Whether this device can analyze photos; the photo controls are hidden when it cannot.
+    /// Whether the embedding model in use can analyze photos; the photo controls give way to an explanation when it cannot.
     var photosAvailable = true
+    /// Why photos cannot be analyzed, naming the embedding model in use. Shown in place of the photo controls.
+    var photosExplanation: String?
 
     private let chatRepository: any ChatRepository
     private let documentRepository: any DocumentRepository

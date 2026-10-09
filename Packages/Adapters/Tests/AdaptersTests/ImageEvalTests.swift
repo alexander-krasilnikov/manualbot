@@ -210,7 +210,7 @@ private let embedderPath = ProcessInfo.processInfo.environment["EMBEDDER_MODEL_P
     }
 
     func evaluate(_ set: ImageEvalSet) async throws -> Report {
-        let model = LiteRTEmbedder(modelPath: embedderPath ?? "")
+        let model = LiteRTEmbedder(profile: EvalProfile.current, modelPath: embedderPath ?? "")
         let f = try RepoFixture(imageFeatures: model.identity); defer { Task { await f.cleanUp() } }
         try await f.repo.upsert(DocumentRecord(id: "lib", title: "Library", type: .pdf))
         var writes: [ImageWrite] = []
@@ -288,7 +288,7 @@ private let embedderPath = ProcessInfo.processInfo.environment["EMBEDDER_MODEL_P
     @Test func generatedPhotosAndDrawnShapesAreFoundAndUnrelatedOnesAreRejected() async throws {
         let report = try await evaluate(ImageEvalCorpus.generated())
         describe("generated", report)
-        let thresholds = RetrievalConfiguration()
+        let thresholds = EvalProfile.current.retrievalConfiguration()
         #expect(report.photoTop3Recall >= 0.8, "photo recall in the top three")
         #expect(report.recall(atMost: thresholds.imageMaxDistance) >= 0.8, "found AND within the threshold \(thresholds.imageMaxDistance)")
         #expect(report.textTop3Recall >= 0.7, "word recall in the top three")
@@ -302,7 +302,7 @@ private let embedderPath = ProcessInfo.processInfo.environment["EMBEDDER_MODEL_P
         let root = URL(fileURLWithPath: ProcessInfo.processInfo.environment["IMAGE_EVAL_DIR"]!)
         let report = try await evaluate(try ImageEvalCorpus.directory(root))
         describe("real", report)
-        let thresholds = RetrievalConfiguration()
+        let thresholds = EvalProfile.current.retrievalConfiguration()
         #expect(report.photoTop3Recall >= 0.8, "photo recall in the top three")
         // Another photo of the same kind of thing sits farther away than a second shot of the same unit, so a stand-in set
         // keeps less than the 0.8 that field photos should (the stand-in set measured 0.71 kept, 0.83 rejected).

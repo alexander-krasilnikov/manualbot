@@ -39,10 +39,13 @@ public final class LiteRTGenerator: Generator, @unchecked Sendable {
     private let holder = EngineHolder()
     private let queue = AsyncMutex()
 
+    /// The KV-cache size the app asks for. A language model that supports less cannot give full answers and is rejected.
+    public static let defaultContextTokens = 4096
+
     /// - Parameter contextTokens: KV-cache size; must fit the prompt plus the longest answer.
     /// - Parameter seed: Seeds the sampler, so the same prompt gives the same answer. The answer evaluation depends on it.
     public init(
-        modelPath: String, cacheDirectory: String = NSTemporaryDirectory(), contextTokens: Int = 4096,
+        modelPath: String, cacheDirectory: String = NSTemporaryDirectory(), contextTokens: Int = LiteRTGenerator.defaultContextTokens,
         backend: GeneratorBackend = .platformDefault, seed: Int = 0
     ) {
         self.seed = seed
@@ -50,6 +53,14 @@ public final class LiteRTGenerator: Generator, @unchecked Sendable {
         self.modelPath = modelPath
         self.cacheDirectory = cacheDirectory
         self.contextTokens = contextTokens
+    }
+
+    /// Loads the model now instead of at the first question. Switching to another language model uses it, so that a model
+    /// that cannot be loaded is found out at once and the previous one kept.
+    public func warmUp() async throws {
+        try await queue.withLock {
+            _ = try await holder.engine(path: modelPath, cache: cacheDirectory, contextTokens: contextTokens, backend: backend)
+        }
     }
 
     /// Releases the model's memory after any running request finishes; it reloads on the next use.

@@ -80,9 +80,9 @@ struct RealEvalTests {
     private let fx = Fixtures()
 
     private func report(
-        threshold: Double = RetrievalConfiguration().maxDistance, limit: Int = 6, chunking: ChunkerConfiguration = .embeddingGemma2
+        threshold: Double = EvalProfile.current.thresholds.text, limit: Int = 6, chunking: ChunkerConfiguration = EvalProfile.current.chunker
     ) async throws -> EvalReport {
-        let embedder = LiteRTEmbedder(modelPath: try #require(evalModelPath))
+        let embedder = LiteRTEmbedder(profile: EvalProfile.current, modelPath: try #require(evalModelPath))
         let identity = embedder.identity
         let suite = try EvalCorpus.suite()
         let urls = try EvalCorpus.build(in: fx, suite: suite)
@@ -116,7 +116,7 @@ struct RealEvalTests {
         let perfect = report.perfectThresholds(in: range)
         print("EVAL thresholds with 100% answered and 100% refused: \(perfect.first.map { String(format: "%.3f", $0) } ?? "none") to \(perfect.last.map { String(format: "%.3f", $0) } ?? "none")")
 
-        let chosen = RetrievalConfiguration().maxDistance
+        let chosen = EvalProfile.current.thresholds.text
         #expect(report.recall >= 0.85, "recall@6 was \(report.recall)")
         #expect(report.answerRate >= 0.9, "too many answerable questions would be refused at \(chosen): \(report.answerRate)")
         #expect(report.refusalRate >= 0.9, "too many off-topic questions would be answered at \(chosen): \(report.refusalRate)")
@@ -157,7 +157,7 @@ struct LargeDocumentTests {
     }
 
     @Test func aThreeHundredPagePdfIndexesWithVisibleProgress() async throws {
-        let embedder = LiteRTEmbedder(modelPath: try #require(evalModelPath))
+        let embedder = LiteRTEmbedder(profile: EvalProfile.current, modelPath: try #require(evalModelPath))
         let identity = embedder.identity
         _ = try await embedder.embed(["warm up"], kind: .query)   // exclude the one-time model specialization
 

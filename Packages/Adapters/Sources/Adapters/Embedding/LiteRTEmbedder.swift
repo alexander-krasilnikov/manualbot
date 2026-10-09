@@ -2,6 +2,7 @@ import CoreGraphics
 import Foundation
 import ImageIO
 import LiteRTLM
+import Core
 import Ports
 import UniformTypeIdentifiers
 
@@ -21,33 +22,34 @@ public enum LiteRTEmbedderError: Error, LocalizedError, Equatable {
     }
 }
 
-/// EmbeddingGemma 2 Text Vision 440M through LiteRT-LM: one model, one vector space for chunks, questions and photos.
+/// An embedding model through LiteRT-LM: one model, one vector space for chunks, questions and photos. Everything that is
+/// specific to the model (its identity, prompt templates, input limit and output size) comes from its `EmbedderProfile`.
 ///
 /// The same type is the `Embedder` and the `ImageFeaturing`, with one identity, so the model-tag checks that keep
-/// vectors from different models apart cannot let text and photo vectors drift. Settled by the spike
-/// (`EmbeddingGemma2SpikeTests`): 256-dimension unit vectors, documented prompt templates, a photo embedded
+/// vectors from different models apart cannot let text and photo vectors drift. For EmbeddingGemma 2 it was settled by
+/// the spike (`EmbeddingGemma2SpikeTests`): 256-dimension unit vectors, documented prompt templates, a photo embedded
 /// alone, GPU on devices and Mac and CPU in the simulator.
 ///
 /// The engine loads on first use and is released by `unload()`. Calls reach the engine's own actor one at a time,
 /// so a batch never runs concurrently with another and at most one thread is blocked in native code.
 public actor LiteRTEmbedder: Embedder, ImageFeaturing {
-    public static let modelIdentity = EmbeddingModelIdentity(id: "embeddinggemma-2-text-vision-440m", version: "1", dimensions: 256)
-
     /// Chunks per native call. A batch is not interruptible, so this bounds how long a cancel can wait.
     static let batchSize = 8
-    /// The engine's text input limit in tokens. Documents are split into chunks that fit (`ChunkerConfiguration.embeddingGemma2`).
-    static let maxInputLength = 512
-    private static let titleLimit = 60
     /// Photos larger than this (longest side, in pixels) are scaled down before encoding. The model resizes them itself.
     private static let maxImageSide = 1024
 
-    public nonisolated let identity = LiteRTEmbedder.modelIdentity
+    public nonisolated let profile: EmbedderProfile
+    public nonisolated var identity: EmbeddingModelIdentity { profile.identity }
     private let modelPath: String
     private let cacheDirectory: String
     private let backend: GeneratorBackend
     private var engine: EmbeddingEngine?
 
-    public init(modelPath: String, cacheDirectory: String = NSTemporaryDirectory(), backend: GeneratorBackend = .platformDefault) {
+    public init(
+        profile: EmbedderProfile, modelPath: String, cacheDirectory: String = NSTemporaryDirectory(),
+        backend: GeneratorBackend = .platformDefault
+    ) {
+        self.profile = profile
         self.modelPath = modelPath
         self.cacheDirectory = cacheDirectory
         self.backend = backend
@@ -65,7 +67,7 @@ public actor LiteRTEmbedder: Embedder, ImageFeaturing {
     public func embed(_ texts: [String], kind: EmbeddingKind) async throws -> [[Float]] {
         guard !texts.isEmpty else { return [] }
         let engine = try await loadedEngine()
-        let prompts = texts.map { Self.prompt(for: $0, kind: kind) }
+        let prompts = texts.map { profile.prompt(for: $0, kind: kind) }
         var result: [[Float]] = []
         result.reserveCapacity(texts.count)
         for start in stride(from: 0, to: prompts.count, by: Self.batchSize) {
@@ -81,34 +83,22 @@ public actor LiteRTEmbedder: Embedder, ImageFeaturing {
         let data = try Self.encoded(image)
         let engine = try await loadedEngine()
         try Task.checkCancellation()
-        let response = try await engine.computeEmbedding(contents: [.imageData(data)], options: Self.options)
+        let response = try await engine.computeEmbedding(contents: [.imageData(data)], options: options)
         return try checked(response.embedding)
-    }
-
-    // MARK: Prompt templates (documented by the model, with the chunk title as the spike found useful)
-
-    static func prompt(for text: String, kind: EmbeddingKind) -> String {
-        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        switch kind {
-        case .query:
-            return "task: search query | text: \(body)"
-        case .chunk(let title):
-            let clean = title.trimmingCharacters(in: .whitespacesAndNewlines)
-            let head = clean.isEmpty ? "task: search result" : "task: search result | title: \(clean.prefix(titleLimit))"
-            return "\(head) | text: \(body)"
-        }
     }
 
     // MARK: Inference
 
-    private static let options = EmbeddingOptions(normalize: true, outputSize: modelIdentity.dimensions)
+    private var options: EmbeddingOptions { EmbeddingOptions(normalize: true, outputSize: profile.outputSize) }
 
     private func loadedEngine() async throws -> EmbeddingEngine {
         if let engine { return engine }
         guard FileManager.default.fileExists(atPath: modelPath) else { throw LiteRTEmbedderError.modelMissing(modelPath) }
+        let engineBackend: Backend = backend == .gpu ? .gpu : .cpu()
+        // A model without photos has no vision encoder: asking the engine for one makes it fail to load.
         let created = EmbeddingEngine(config: EmbeddingEngineConfig(
-            modelPath: modelPath, backend: backend == .gpu ? .gpu : .cpu(), visionBackend: backend == .gpu ? .gpu : .cpu(),
-            cacheDir: cacheDirectory, maxInputLength: Self.maxInputLength))
+            modelPath: modelPath, backend: engineBackend, visionBackend: profile.supportsImages ? engineBackend : nil,
+            cacheDir: cacheDirectory, maxInputLength: profile.maxInputLength))
         try await created.initialize()
         // Another call may have loaded it while this one was waiting; keep one.
         if let engine {
@@ -121,7 +111,7 @@ public actor LiteRTEmbedder: Embedder, ImageFeaturing {
 
     private func embedBatch(_ prompts: [String], on engine: EmbeddingEngine) async throws -> [[Float]] {
         do {
-            let responses = try await engine.computeEmbeddingBatch(contentsBatch: prompts.map { [.text($0)] }, options: Self.options)
+            let responses = try await engine.computeEmbeddingBatch(contentsBatch: prompts.map { [.text($0)] }, options: options)
             guard responses.count == prompts.count else { throw LiteRTEmbedderError.wrongDimensions(expected: prompts.count, got: responses.count) }
             return try responses.map { try checked($0.embedding) }
         } catch where Self.isTooLong(error) {
@@ -142,7 +132,7 @@ public actor LiteRTEmbedder: Embedder, ImageFeaturing {
         var text = prompt
         while true {
             do {
-                let response = try await engine.computeEmbedding(contents: [.text(text)], options: Self.options)
+                let response = try await engine.computeEmbedding(contents: [.text(text)], options: options)
                 return try checked(response.embedding)
             } catch where Self.isTooLong(error) {
                 guard let shorter = Self.shrunk(text) else { throw LiteRTEmbedderError.emptyInput }

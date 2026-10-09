@@ -13,7 +13,8 @@ the page or section they came from; if the documents don't say, the app says so.
   simulator). The one Apple framework left is Vision's text recognition, which reads scanned pages, photos and nameplates:
   it ships with the operating system, needs no model of its own, and replacing it (a second runtime, hand-written
   pre- and post-processing) was judged not worth it.
-- Offline: after both models are downloaded once, nothing needs the network.
+- Offline: after the models are downloaded, nothing needs the network. The one exception is the Models page, and only when
+  you ask: searching for or downloading another model (see [Models](#models)).
 - Targets: iPadOS 26 on M4/M5 iPads.
 
 ## Set up
@@ -28,12 +29,14 @@ open ManualBot.xcodeproj      # run on an iPad simulator, landscape
 Nothing is built into the app. On first launch it needs a network connection to download two models from Hugging Face,
 each verified by checksum: the embedding model (EmbeddingGemma 2, 388 MB) first, so documents can be imported as soon as it
 arrives, then the language model (Gemma 4 E2B, 2.6 GB). Until the embedding model is installed nothing can be imported. If
-a model file is deleted later, the app returns to the setup screen for it and keeps every document and chat. A language model
-that the app no longer lists (the earlier Gemma 4 E4B, 3.7 GB) is deleted at launch.
+a model file is deleted later, the app returns to the setup screen for it and keeps every document and chat. When an update
+replaces a default model (the earlier Gemma 4 E4B, 3.7 GB, was one), the old file is deleted at launch so it does not leave
+gigabytes behind, unless you chose that model on the [Models page](#models): it then stays until you delete it.
 
 **After an update that changes the embedding model**, every document is re-indexed automatically in the background
 (the library shows "Updating index"), because vectors from different models cannot be compared. Keyword search keeps
 finding the documents meanwhile, and vector and photo search return as each one finishes. Chats and originals are untouched.
+A document that was half indexed by the old model starts over with the new one: one chunk set never mixes vectors of two models.
 
 In the simulator both models run on the CPU (its Metal cannot run them), so indexing and answers are much slower than on an iPad.
 
@@ -41,7 +44,57 @@ In the simulator both models run on the CPU (its Metal cannot run them), so inde
 
 Add launch arguments in the scheme (Run, Arguments): `-uiTestModelStub happy -uiTestSeed`. This uses the real database,
 extraction, ingestion, retrieval and chat logic with stand-in models (text on photos is still read by the operating system; one stand-in model embeds words and photos, and the words "x100 nameplate" are scripted to find the sample nameplate photo), and five sample documents already indexed, including a photo and a manual with a photo in it.
-Other flags: `-uiTestSlow` (slow, stoppable answers). Stub scenarios: `happy`, `llmFailsOnce`, `lowStorage`.
+Other flags: `-uiTestSlow` (slow, stoppable answers), `-uiTestSearch results|offline` (what the Models page finds: a scripted
+set of language models, or a failed search as with no connection). Stub scenarios: `happy`, `llmFailsOnce`, `lowStorage`.
+The stub offers a second, text-only embedding model, to try a switch of embedder.
+
+## Models
+
+The first-run setup installs the default pair. The **Models** page (the gear in the library toolbar) is where you change it.
+It lists what is **in use**, what is **installed** but not in use, the **embedding models** the app offers, and a search for
+**language and embedding models**.
+
+**Finding and downloading.** The app ships a list of embedding models, because each one needs settings (prompt templates,
+chunk sizes, the distances that separate a match from a poor one) that were tested for it. Search finds the public
+`litert-community` models on Hugging Face, language models and embedding models, each marked with its kind. Each result is
+judged before anything is downloaded, from its size and the first 64 KB of the file: *Checked after download* (the file
+does not say which runtime it needs), *Unknown kind of model*, *Not a LiteRT-LM model file*, or *Too large for this iPad*
+(the file is over 45% of the iPad's memory). The last three cannot be downloaded. Once a file is downloaded and its checksum
+verified, the app's own LiteRT-LM runtime reads it and has the last word: the wrong type, a newer runtime than the app's, a
+language model with a context under 4,096 tokens, or an embedding model that reports no vector size removes the file and
+shows why. A downloaded model is installed but not in use.
+
+**Untested embedding models.** An embedding model found by search that is not in the list is marked *Untested*. It is used
+with generic settings: no prompt templates, the vector size and an input length the file reports, and the distances the app
+ships with, so how well search works with it is unknown. The confirmation says so, and you can switch back to a tested model
+at any time (everything is then indexed again). A search result that is the very file of a list entry installs as that tested entry.
+
+**Using a model.** *Use* asks first and names the cost. For an embedding model: how many documents will be re-indexed,
+that each is found by keywords only until its re-index is done, and that photo search is unavailable until it finishes
+(or, for a model that cannot analyze photos, for as long as it is in use). For a language model: that an answer being
+written will stop. After you confirm, the switch happens at once: an answer being written is kept as a stopped answer, indexing
+stops where it is, the services are built again from the new model and indexing carries on. If the new model cannot be loaded,
+the previous one is back in use and the page says why. Chats, documents and their originals are never touched.
+
+**Photos.** A model without photos in its vector space (the stub's text-only embedder, say) turns photo import and photo
+questions off, with an explanation that names it; PDF and Word files still import and search by text. Photo documents already in
+the library keep the vectors they had: search skips them (they belong to another model) and they are valid again when a
+model with photos is back in use.
+
+**Deleting.** Any installed model that is not in use can be deleted; the one in use cannot.
+
+**Network.** Searching and downloading on this page are the only network use after setup, and only when you ask. Nothing
+about your documents, questions or answers is sent. The X-ray panel shows each request as a *Model search* or
+*Model download* operation, and importing documents and asking questions record none. **About** lists every installed model with its licence as its
+publisher states it, and links to the full terms.
+
+The list offers EmbeddingGemma 2 Text Vision 440M (the default, 388 MB), Text 270M (165 MB, no photos) and 740M (485 MB; its audio and
+video are not used). All three are one model with different encoders loaded and gave identical results in the evaluations
+(`openspec/changes/add-model-settings/evaluations/embedder-candidates.md`).
+
+To add an embedding model to the list (and so make it tested), give it an entry in `App/Resources/EmbedderCatalog.json` with a profile, and settle
+the profile with the retrieval and photo evaluations first (`EvalTests`, `ImageEvalTests`): the model has to meet the recall baselines
+in the `hybrid-retrieval` and `image-search` specs.
 
 ## Photos
 
@@ -174,12 +227,13 @@ repository or into `LocalModels/`, which git ignores):
 
 | Variable | Points at | Enables |
 |---|---|---|
-| `EMBEDDER_MODEL_PATH` | `embeddinggemma-2-text-vision-440m.litertlm` | embedder, retrieval and photo evaluations, large-document tests |
-| `GENERATOR_MODEL_PATH` | `gemma-4-E2B-it.litertlm` | generator, full-pipeline tests, answer evaluation |
+| `EMBEDDER_MODEL_PATH` | `embeddinggemma-2-text-vision-440m.litertlm` | embedder, retrieval and photo evaluations, large-document tests, model validator tests |
+| `GENERATOR_MODEL_PATH` | `gemma-4-E2B-it.litertlm` | generator and its warm-up, full-pipeline tests, answer evaluation, model validator tests |
 | `ANSWER_EVAL_BASELINE_MODEL_PATH` | `gemma-4-E4B-it.litertlm` | with the two above, runs a baseline model first and prints whether the candidate meets the pass criteria |
 | `ANSWER_EVAL_REPORT`, `ANSWER_EVAL_MODEL` | a Markdown file, a name | save the answer evaluation's report and name the model in it |
 | `RUN_BENCHMARKS=1` | | 20,000-chunk retrieval benchmark and 5,000-photo search benchmark (add `EMBEDDER_MODEL_PATH`) |
-| `RUN_SPIKES=1` | | the EmbeddingGemma 2 spike (output size, input limits, templates, latency) |
+| `RUN_SPIKES=1` | | the EmbeddingGemma 2 spike (output size, input limits, templates, latency), and the minimum-runtime-version spike (add both model paths) |
+| `RUN_NETWORK_TESTS=1` | | the model header probe against the real Hugging Face host |
 | `IMAGE_EVAL_DIR` | a folder of photos (below) | photo and words-to-photo search evaluation on those photos |
 
 For the iOS simulator, prefix the variables with `TEST_RUNNER_`.

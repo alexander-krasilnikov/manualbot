@@ -27,12 +27,16 @@ public struct ModelSpec: Sendable, Codable, Hashable, Identifiable {
     /// Name shown to the user; falls back to `id`.
     public var displayName: String?
     public var packaging: ModelPackaging
+    /// Licence as stated by the model's publisher, shown on the About screen.
+    public var licence: String?
+    /// The repository the file came from, for a link on the About screen.
+    public var repository: URL?
 
     public var title: String { displayName ?? id }
 
     public init(
         id: String, version: String, role: ModelRole, url: URL, bytes: Int64, sha256: String, fileName: String,
-        displayName: String? = nil, packaging: ModelPackaging = .file
+        displayName: String? = nil, packaging: ModelPackaging = .file, licence: String? = nil, repository: URL? = nil
     ) {
         self.packaging = packaging
         self.id = id
@@ -43,9 +47,13 @@ public struct ModelSpec: Sendable, Codable, Hashable, Identifiable {
         self.sha256 = sha256
         self.fileName = fileName
         self.displayName = displayName
+        self.licence = licence
+        self.repository = repository
     }
 
-    enum CodingKeys: String, CodingKey { case id, version, role, url, bytes, sha256, fileName, displayName, packaging }
+    enum CodingKeys: String, CodingKey {
+        case id, version, role, url, bytes, sha256, fileName, displayName, packaging, licence, repository
+    }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -58,10 +66,84 @@ public struct ModelSpec: Sendable, Codable, Hashable, Identifiable {
         fileName = try c.decode(String.self, forKey: .fileName)
         displayName = try c.decodeIfPresent(String.self, forKey: .displayName)
         packaging = try c.decodeIfPresent(ModelPackaging.self, forKey: .packaging) ?? .file
+        licence = try c.decodeIfPresent(String.self, forKey: .licence)
+        repository = try c.decodeIfPresent(URL.self, forKey: .repository)
     }
 }
 
-/// The models the app is allowed to download and load. Compiled into the app.
+/// How a model came to be installed.
+public enum ModelSource: String, Sendable, Codable {
+    /// Listed in the built-in manifest: the first-run defaults.
+    case manifest
+    /// Chosen from the embedder catalog that ships with the app.
+    case catalog
+    /// Found by searching the model repositories.
+    case search
+}
+
+/// What the runtime read from an embedding model's file once it was downloaded: all the app knows about a model that is not
+/// in its built-in list, so all it has to build generic settings from.
+public struct EmbeddingDescription: Sendable, Codable, Hashable {
+    /// The vector size the file reports: its largest output.
+    public var dimension: Int
+    /// Whether the model also embeds photos.
+    public var supportsImages: Bool
+    /// The text input length, in tokens, to ask the engine for.
+    public var maxInputLength: Int
+
+    public init(dimension: Int, supportsImages: Bool, maxInputLength: Int) {
+        self.dimension = dimension
+        self.supportsImages = supportsImages
+        self.maxInputLength = maxInputLength
+    }
+
+    /// The longest input length up to 512 tokens that the file supports (longer ones are slower and no use to chunks of a
+    /// few hundred words), else its shortest. 512 when the file does not say.
+    public static func inputLength(from supported: [Int]?) -> Int {
+        guard let supported = supported?.filter({ $0 > 0 }), !supported.isEmpty else { return 512 }
+        return supported.filter { $0 <= 512 }.max() ?? supported.min()!
+    }
+}
+
+/// What the app knows about an installed model, written next to its file as `model.json`.
+public struct ModelRecord: Sendable, Codable, Hashable {
+    public var spec: ModelSpec
+    public var source: ModelSource
+    /// The user installed or activated this model on the Models page. Such a model stays installed until the user
+    /// deletes it, even after an update changes the default for its role.
+    public var chosenByUser: Bool
+    /// For an embedding model: what the runtime read from its file when it was installed.
+    public var embedding: EmbeddingDescription?
+
+    public init(spec: ModelSpec, source: ModelSource, chosenByUser: Bool, embedding: EmbeddingDescription? = nil) {
+        self.spec = spec
+        self.source = source
+        self.chosenByUser = chosenByUser
+        self.embedding = embedding
+    }
+}
+
+/// The model each role uses. `nil` means the built-in default for that role.
+public struct ActiveModels: Sendable, Codable, Equatable {
+    public var embedder: String?
+    public var generator: String?
+
+    public init(embedder: String? = nil, generator: String? = nil) {
+        self.embedder = embedder
+        self.generator = generator
+    }
+
+    public func id(for role: ModelRole) -> String? { role == .embedder ? embedder : generator }
+
+    public mutating func set(_ id: String?, for role: ModelRole) {
+        switch role {
+        case .embedder: embedder = id
+        case .generator: generator = id
+        }
+    }
+}
+
+/// The models the app is allowed to download and load by default. Compiled into the app.
 public struct ModelManifest: Sendable, Codable, Equatable {
     public var models: [ModelSpec]
 

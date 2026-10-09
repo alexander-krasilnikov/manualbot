@@ -21,7 +21,7 @@ public struct ChunkDraft: Sendable, Equatable {
     public var imageId: String?
 }
 
-public struct ChunkerConfiguration: Sendable, Equatable {
+public struct ChunkerConfiguration: Sendable, Equatable, Codable {
     /// Aim for chunks of about this many tokens.
     public var targetTokens: Int
     /// No chunk may exceed this (the embedding model's input limit).
@@ -49,6 +49,18 @@ extension ChunkerConfiguration {
     /// so a 180-token chunk is about 170 real tokens, far inside the 512-token input even with the template and title.
     /// Text full of codes can use more; the embedder then shortens that chunk instead of failing.
     public static let embeddingGemma2 = ChunkerConfiguration(targetTokens: 130, maxTokens: 180, overlapTokens: 22, minTailTokens: 35)
+}
+
+extension ChunkerConfiguration {
+    /// Sizes for an embedding model whose text input is `limit` tokens, used when nothing was tuned for it. The 512-token
+    /// sizes are EmbeddingGemma 2's; shorter inputs get proportionally shorter chunks.
+    public static func sized(forInputLength limit: Int) -> ChunkerConfiguration {
+        switch limit {
+        case 512...: .embeddingGemma2
+        case 256...: ChunkerConfiguration(targetTokens: 80, maxTokens: 120, overlapTokens: 15, minTailTokens: 25)
+        default: ChunkerConfiguration(targetTokens: 40, maxTokens: 60, overlapTokens: 8, minTailTokens: 12)
+        }
+    }
 }
 
 /// Splits extracted blocks into overlapping chunks. Splits on sentence boundaries, never

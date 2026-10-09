@@ -29,7 +29,8 @@ final class ModelSetupViewModel {
     /// False until the first look at what is installed, so the UI does not flash a setup screen for a moment.
     private(set) var isLoaded = false
 
-    private let store: ModelStore
+    /// The store the rows follow. The app model reads the models in use from it when it builds the services.
+    let store: ModelStore
 
     init(store: ModelStore) {
         self.store = store
@@ -76,9 +77,14 @@ final class ModelSetupViewModel {
     }
 
     private func apply(_ snapshot: [String: ModelState]) async {
-        for index in rows.indices {
-            if let state = snapshot[rows[index].id] { rows[index].state = state }
+        // The rows are the models in use: the defaults until the user activates another model on the Models page.
+        var inUse: [ModelSpec] = []
+        for role in ModelRole.allCases {
+            if let spec = await store.activeSpec(for: role) { inUse.append(spec) }
         }
+        rows = inUse
+            .sorted { ($0.role, $0.id) < ($1.role, $1.id) }
+            .map { Row(id: $0.id, title: $0.title, role: $0.role, bytes: $0.bytes, state: snapshot[$0.id] ?? .missing) }
         canImport = await store.canImport
         canChat = await store.canChat
         await refreshStorage()

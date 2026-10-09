@@ -46,6 +46,30 @@ import Testing
         #expect(model.storage?.shortfall == 2_300)
         observer.cancel()
     }
+
+    @Test func aMissingModelInUseGoesBackToSetupAloneWithoutActivatingTheInstalledDefault() async throws {
+        let hash = String(repeating: "a", count: 64)
+        let manifest = ModelManifest(models: [
+            ModelSpec(id: "llm", version: "1", role: .generator, url: URL(string: "https://x.invalid/l")!, bytes: 3_000, sha256: hash, fileName: "l", displayName: "LLM"),
+            ModelSpec(id: "emb", version: "1", role: .embedder, url: URL(string: "https://x.invalid/e")!, bytes: 300, sha256: hash, fileName: "e", displayName: "Embedder"),
+        ])
+        let alternative = ModelSpec(id: "alt", version: "1", role: .generator, url: URL(string: "https://x.invalid/a")!, bytes: 500, sha256: hash, fileName: "a", displayName: "Alternative")
+        let backend = FakeModelBackend()
+        backend.markInstalled("llm")
+        backend.markInstalled("emb")
+        // Activated on an earlier launch, then deleted outside the app: its record and choice remain.
+        try backend.writeRecord(ModelRecord(spec: alternative, source: .search, chosenByUser: true))
+        try backend.saveActive(ActiveModels(generator: "alt"))
+
+        let store = ModelStore(manifest: manifest, downloader: backend, files: backend, safetyMargin: 0)
+        let model = ModelSetupViewModel(store: store)
+        let observer = Task { await model.observe() }
+        for _ in 0..<200 where !model.isLoaded { try? await Task.sleep(for: .milliseconds(5)) }
+        #expect(model.rows.map(\.id) == ["emb", "alt"], "the models in use, not every default")
+        #expect(model.pendingRows.map(\.id) == ["alt"])
+        #expect(model.canChat == false)
+        observer.cancel()
+    }
 }
 
 @Suite struct BundledManifestTests {
@@ -69,6 +93,38 @@ import Testing
         #expect(embedder.identityMatchesTheEmbedder, "the manifest's model is the one `LiteRTEmbedder` makes vectors for")
     }
 
+    @Test func theBundledCatalogDecodesAndItsEmbedderIsTheManifestsDefault() throws {
+        func bundled(_ name: String) throws -> Data {
+            let url = try #require(Bundle(for: BundleToken.self).url(forResource: name, withExtension: "json")
+                ?? Bundle.main.url(forResource: name, withExtension: "json"))
+            return try Data(contentsOf: url)
+        }
+        let manifest = try ModelManifest.decode(from: bundled("ModelManifest"))
+        let catalog = try EmbedderCatalog.decode(from: bundled("EmbedderCatalog"))
+        let embedder = try #require(manifest.models.first { $0.role == .embedder })
+        let entry = try #require(catalog.entry(id: embedder.id), "the default embedder is in the catalog")
+        #expect(entry.spec.version == embedder.version && entry.spec.bytes == embedder.bytes && entry.spec.sha256 == embedder.sha256)
+        #expect(entry.spec.url == embedder.url && entry.spec.fileName == embedder.fileName)
+        #expect(entry.profile == EmbedderProfile.embeddingGemma2, "the catalog and the built-in constants say the same")
+        #expect(entry.profile.supportsImages)
+    }
+
+    @Test func theCatalogOffersTheEvaluatedCandidatesWithTheShippedSettings() throws {
+        let url = try #require(Bundle(for: BundleToken.self).url(forResource: "EmbedderCatalog", withExtension: "json")
+            ?? Bundle.main.url(forResource: "EmbedderCatalog", withExtension: "json"))
+        let catalog = try EmbedderCatalog.decode(from: Data(contentsOf: url))
+        #expect(catalog.embedders.map(\.id) == ["embeddinggemma-2-text-vision-440m", "embeddinggemma-2-text-270m", "embeddinggemma-2-740m"])
+        // The candidates passed the evaluation with the shipped prompts, chunk sizes and distances (design D2).
+        for (id, images) in [("embeddinggemma-2-text-270m", false), ("embeddinggemma-2-740m", true)] {
+            let entry = try #require(catalog.entry(id: id))
+            var expected = EmbedderProfile.embeddingGemma2
+            expected.identity.id = id
+            expected.supportsImages = images
+            #expect(entry.profile == expected, "\(id)")
+            #expect(entry.spec.licence == "Apache License 2.0" && entry.spec.url.absoluteString.contains("/resolve/"), "pinned to a revision: \(id)")
+        }
+    }
+
     @Test func theManifestsEmbedderDownloadsFirstAndImportOpensBeforeTheLanguageModelArrives() async throws {
         let url = try #require(Bundle.main.url(forResource: "ModelManifest", withExtension: "json"))
         let manifest = try ModelManifest.decode(from: Data(contentsOf: url))
@@ -86,7 +142,7 @@ import Testing
 
 private extension ModelSpec {
     /// Whether this entry is the model `LiteRTEmbedder` declares.
-    var identityMatchesTheEmbedder: Bool { id == LiteRTEmbedder.modelIdentity.id && version == LiteRTEmbedder.modelIdentity.version }
+    var identityMatchesTheEmbedder: Bool { id == EmbedderProfile.embeddingGemma2.identity.id && version == EmbedderProfile.embeddingGemma2.identity.version }
 }
 
 private final class BundleToken {}

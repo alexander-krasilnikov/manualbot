@@ -31,7 +31,7 @@ struct RetrievalBenchmarkTests {
 
     @Test func retrievalP95StaysUnderHalfASecondAt20kChunks() async throws {
         let chunkCount = 20_000, documents = 40
-        let real = ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"].map { LiteRTEmbedder(modelPath: $0) }
+        let real = ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"].map { LiteRTEmbedder(profile: .embeddingGemma2, modelPath: $0) }
         let identity = real?.identity ?? RepoFixture.identity
         let f = try RepoFixture(embedding: identity); defer { Task { await f.cleanUp() } }
         let embedder = FakeEmbedder(identity: identity)  // hashed bag-of-words, to seed the library

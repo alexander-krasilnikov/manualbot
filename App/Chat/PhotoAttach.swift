@@ -9,10 +9,23 @@ struct PhotoAttachButtons: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var showCamera = false
     @State private var showCameraDenied = false
+    @State private var showPhotosExplanation = false
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        if chat.photosAvailable { controls }
+        if chat.photosAvailable {
+            controls
+        } else if let reason = chat.photosExplanation {
+            // The embedding model in use cannot analyze photos: say so and name it, in place of controls that would not work.
+            Button("Photos are off", systemImage: "photo.badge.exclamationmark") { showPhotosExplanation = true }
+                .labelStyle(.iconOnly).font(.title2)
+                .accessibilityIdentifier("photosUnavailableButton")
+                .alert("Photos are off", isPresented: $showPhotosExplanation) {
+                    Button("OK", role: .cancel) {}
+                } message: {
+                    Text(reason)
+                }
+        }
     }
 
     private var controls: some View {

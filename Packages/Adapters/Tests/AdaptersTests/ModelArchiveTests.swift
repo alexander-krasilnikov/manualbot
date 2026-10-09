@@ -184,7 +184,7 @@ import Testing
         try put(files, "embeddinggemma-300m", "1")                                                              // the previous embedder
         try FileManager.default.createDirectory(at: files.root.appendingPathComponent(".unpack-running"), withIntermediateDirectories: true)
 
-        let removed = files.removeUnlisted(keeping: manifest)
+        let removed = files.removeAbandoned(keeping: manifest.models)
         #expect(removed == ["embeddinggemma-300m", "gemma-4-e2b", "gemma-4-e4b"])
         func exists(_ path: String) -> Bool { FileManager.default.fileExists(atPath: files.root.appendingPathComponent(path).path) }
         #expect(exists("embeddinggemma-2-text-vision-440m/1/embeddinggemma-2-text-vision-440m.litertlm"), "listed model kept")
@@ -192,10 +192,10 @@ import Testing
         #expect(!exists("gemma-4-e2b/1"), "an older version of a listed model goes")
         #expect(!exists("gemma-4-e4b") && !exists("embeddinggemma-300m"), "unlisted models go")
         #expect(exists(".unpack-running"), "an unpacking in progress is not touched")
-        #expect(files.removeUnlisted(keeping: manifest).isEmpty, "a second pass finds nothing")
+        #expect(files.removeAbandoned(keeping: manifest.models).isEmpty, "a second pass finds nothing")
     }
 
     @Test func aMissingModelsFolderIsNotAnError() {
-        #expect(FileModelFiles(root: fx.url("Never-created")).removeUnlisted(keeping: ModelManifest(models: [])).isEmpty)
+        #expect(FileModelFiles(root: fx.url("Never-created")).removeAbandoned(keeping: []).isEmpty)
     }
 }

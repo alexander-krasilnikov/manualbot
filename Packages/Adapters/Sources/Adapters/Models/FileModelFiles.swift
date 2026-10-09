@@ -123,15 +123,16 @@ public struct FileModelFiles: ModelFiles {
     public func discard(_ file: URL) { try? FileManager.default.removeItem(at: file) }
 
     @discardableResult
-    public func removeUnlisted(keeping manifest: ModelManifest) -> [String] {
+    public func removeAbandoned(keeping specs: [ModelSpec]) -> [String] {
         let fm = FileManager.default
         guard let entries = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey]) else { return [] }
         var removed: [String] = []
         for entry in entries {
             let name = entry.lastPathComponent
-            // Scratch folders of an unpacking in progress (".unpack-…") belong to a running install; leave them.
+            // Hidden entries are not models: scratch folders of an unpacking in progress (".unpack-…") belong to a running
+            // install, and the active selection lives in `.active.json`.
             guard !name.hasPrefix(".") else { continue }
-            let versions = Set(manifest.models.filter { $0.id == name }.map(\.version))
+            let versions = Set(specs.filter { $0.id == name }.map(\.version))
             if versions.isEmpty {
                 if (try? fm.removeItem(at: entry)) != nil { removed.append(name) }
                 continue
@@ -147,7 +148,47 @@ public struct FileModelFiles: ModelFiles {
     }
 
     public func uninstall(_ spec: ModelSpec) {
-        try? FileManager.default.removeItem(at: root.appendingPathComponent(spec.id, isDirectory: true)
-            .appendingPathComponent(spec.version, isDirectory: true))
+        try? FileManager.default.removeItem(at: versionDirectory(for: spec))
+    }
+
+    // MARK: Records and the active selection
+
+    /// `model.json` beside the model file: what the app knows about the installed model.
+    private func recordURL(for spec: ModelSpec) -> URL { versionDirectory(for: spec).appendingPathComponent("model.json") }
+
+    /// Hidden, so that clean-up never takes it for a model.
+    private var activeURL: URL { root.appendingPathComponent(".active.json") }
+
+    public func writeRecord(_ record: ModelRecord) throws {
+        try FileManager.default.createDirectory(at: versionDirectory(for: record.spec), withIntermediateDirectories: true)
+        try JSONEncoder().encode(record).write(to: recordURL(for: record.spec), options: .atomic)
+    }
+
+    public func records() -> [ModelRecord] {
+        let fm = FileManager.default
+        let idDirectories = (try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+        var records: [ModelRecord] = []
+        for idDirectory in idDirectories where !idDirectory.lastPathComponent.hasPrefix(".") {
+            let versionDirectories = (try? fm.contentsOfDirectory(at: idDirectory, includingPropertiesForKeys: nil)) ?? []
+            for versionDirectory in versionDirectories {
+                let url = versionDirectory.appendingPathComponent("model.json")
+                guard let data = try? Data(contentsOf: url),
+                      let record = try? JSONDecoder().decode(ModelRecord.self, from: data) else { continue }
+                records.append(record)
+            }
+        }
+        return records
+    }
+
+    /// Defaults when nothing was activated or the file cannot be read.
+    public func loadActive() -> ActiveModels {
+        guard let data = try? Data(contentsOf: activeURL),
+              let active = try? JSONDecoder().decode(ActiveModels.self, from: data) else { return ActiveModels() }
+        return active
+    }
+
+    public func saveActive(_ active: ActiveModels) throws {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        try JSONEncoder().encode(active).write(to: activeURL, options: .atomic)
     }
 }

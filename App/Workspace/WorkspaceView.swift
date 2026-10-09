@@ -16,6 +16,8 @@ struct WorkspaceView: View {
                 LibraryView(
                     library: library,
                     onOpenExplorer: { app.demo.explorer.present() },
+                    onOpenSettings: { app.showingSettings = true },
+                    settings: app.settings,
                     makeContents: { item in contents(for: item) },
                     onContentsDeleted: { model in
                         if source.previewedDocument == model.docId { source.showDeleted(title: model.title) }

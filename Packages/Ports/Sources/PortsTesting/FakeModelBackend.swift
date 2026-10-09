@@ -20,7 +20,9 @@ public final class FakeModelBackend: ModelDownloading, ModelFiles {
         var discarded: [URL] = []
         var digests: [URL: String] = [:]
         var backupExcluded: Set<String> = []
-        var removedUnlisted: [String] = []
+        var removedAbandoned: [String] = []
+        var records: [String: ModelRecord] = [:]
+        var active = ActiveModels()
     }
     private let state = Mutex(State())
 
@@ -36,7 +38,9 @@ public final class FakeModelBackend: ModelDownloading, ModelFiles {
     public var downloads: [String] { state.withLock { $0.downloads } }
     public var discarded: [URL] { state.withLock { $0.discarded } }
     public var backupExcluded: Set<String> { state.withLock { $0.backupExcluded } }
-    public var removedUnlisted: [String] { state.withLock { $0.removedUnlisted } }
+    public var removedAbandoned: [String] { state.withLock { $0.removedAbandoned } }
+    /// Records as they would be on disk: written by `writeRecord`, dropped with the model.
+    public var storedRecords: [ModelRecord] { state.withLock { Array($0.records.values) } }
     public func isInstalledID(_ id: String) -> Bool { state.withLock { $0.installed.contains(id) } }
 
     // ModelDownloading
@@ -77,14 +81,24 @@ public final class FakeModelBackend: ModelDownloading, ModelFiles {
         }
     }
     public func discard(_ file: URL) { state.withLock { $0.discarded.append(file) } }
-    public func uninstall(_ spec: ModelSpec) { state.withLock { _ = $0.installed.remove(spec.id) } }
+    public func uninstall(_ spec: ModelSpec) {
+        state.withLock { s in
+            s.installed.remove(spec.id)
+            s.records[spec.id] = nil
+        }
+    }
+    public func writeRecord(_ record: ModelRecord) throws { state.withLock { $0.records[record.spec.id] = record } }
+    public func records() -> [ModelRecord] { state.withLock { Array($0.records.values) } }
+    public func loadActive() -> ActiveModels { state.withLock { $0.active } }
+    public func saveActive(_ active: ActiveModels) throws { state.withLock { $0.active = active } }
     @discardableResult
-    public func removeUnlisted(keeping manifest: ModelManifest) -> [String] {
-        let listed = Set(manifest.models.map(\.id))
+    public func removeAbandoned(keeping specs: [ModelSpec]) -> [String] {
+        let kept = Set(specs.map(\.id))
         return state.withLock { s in
-            let stale = s.installed.subtracting(listed).sorted()
+            let stale = s.installed.subtracting(kept).sorted()
             s.installed.subtract(stale)
-            s.removedUnlisted.append(contentsOf: stale)
+            for id in stale { s.records[id] = nil }
+            s.removedAbandoned.append(contentsOf: stale)
             return stale
         }
     }

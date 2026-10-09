@@ -223,6 +223,9 @@ public struct IngestJobRecord: Sendable, Codable, Hashable, Identifiable {
     public var error: String?
     /// Queue order: oldest first.
     public var enqueuedAt: Date
+    /// Tag of the embedding model that made the vectors written so far, once there are any. A job that finds another
+    /// model installed starts a new generation instead of mixing vectors of two models in one.
+    public var embeddingModel: String?
 
     public var id: String { docId }
 
@@ -230,8 +233,9 @@ public struct IngestJobRecord: Sendable, Codable, Hashable, Identifiable {
 
     public init(
         docId: String, targetGeneration: Int, state: IngestState = .queued, progress: Double = 0,
-        nextOrdinal: Int = 0, nextImage: Int = 0, error: String? = nil, enqueuedAt: Date = Date()
+        nextOrdinal: Int = 0, nextImage: Int = 0, error: String? = nil, enqueuedAt: Date = Date(), embeddingModel: String? = nil
     ) {
+        self.embeddingModel = embeddingModel
         self.nextImage = nextImage
         self.enqueuedAt = enqueuedAt
         self.docId = docId
@@ -242,9 +246,10 @@ public struct IngestJobRecord: Sendable, Codable, Hashable, Identifiable {
         self.error = error
     }
 
-    // Jobs saved before images existed have no `nextImage`; they decode as 0.
+    // Jobs saved before images existed have no `nextImage`, and jobs saved before models could change have no
+    // `embeddingModel`; they decode as 0 and nil.
     enum CodingKeys: String, CodingKey {
-        case docId, targetGeneration, state, progress, nextOrdinal, nextImage, error, enqueuedAt
+        case docId, targetGeneration, state, progress, nextOrdinal, nextImage, error, enqueuedAt, embeddingModel
     }
 
     public init(from decoder: Decoder) throws {
@@ -257,5 +262,6 @@ public struct IngestJobRecord: Sendable, Codable, Hashable, Identifiable {
         nextImage = try c.decodeIfPresent(Int.self, forKey: .nextImage) ?? 0
         error = try c.decodeIfPresent(String.self, forKey: .error)
         enqueuedAt = try c.decode(Date.self, forKey: .enqueuedAt)
+        embeddingModel = try c.decodeIfPresent(String.self, forKey: .embeddingModel)
     }
 }

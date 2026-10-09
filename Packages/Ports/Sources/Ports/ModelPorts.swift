@@ -19,11 +19,18 @@ public protocol ModelFiles: Sendable {
     func install(_ file: URL, for spec: ModelSpec) throws
     /// Deletes a temporary or installed file. Missing files are not an error.
     func discard(_ file: URL)
-    /// Deletes the installed model, if any.
+    /// Deletes the installed model, if any, with its record.
     func uninstall(_ spec: ModelSpec)
-    /// Deletes every installed model file that the manifest no longer lists: whole models that were dropped, and older
-    /// versions of models that were kept. A model that was replaced (a new language model, say) must not leave gigabytes
+    /// Writes the record that describes an installed model, next to its file.
+    func writeRecord(_ record: ModelRecord) throws
+    /// Every record written for an installed model. A model installed before records existed has none.
+    func records() -> [ModelRecord]
+    /// The models the user activated, per role. Defaults when nothing was activated.
+    func loadActive() -> ActiveModels
+    func saveActive(_ active: ActiveModels) throws
+    /// Deletes every installed model file that is not in `keeping`: whole models that are no longer kept, and older
+    /// versions of models that are. A model that was replaced (a new language model, say) must not leave gigabytes
     /// behind. Returns the ids of the models it removed anything for.
     @discardableResult
-    func removeUnlisted(keeping manifest: ModelManifest) -> [String]
+    func removeAbandoned(keeping specs: [ModelSpec]) -> [String]
 }

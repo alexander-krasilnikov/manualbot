@@ -169,14 +169,14 @@ private let manualText = ExtractedDocument(
         #expect(image.ocrText.isEmpty && image.caption == "Pump")
     }
 
-    @Test func aPhotoImportedWhereImageAnalysisIsUnavailableFailsWithAClearReason() async throws {
+    @Test func aPhotoImportedWhereImageAnalysisIsUnavailableIsRefusedWithAClearReasonAndLeavesNothingBehind() async throws {
         let repo = InMemoryDocumentRepository()
         let doc = ExtractedDocument(blocks: [], images: [ExtractedImage(image: picture())])
         let service = makeService(repo: repo, extractor: FakeExtractor(results: ["a.jpg": .success(doc)]), features: nil, recognizer: nil)
-        let id = try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/a.jpg"))
-        await service.run()
-        #expect(try await repo.job(docId: id)?.state == .failed)
-        #expect(try await repo.job(docId: id)?.error == "Photos cannot be analyzed on this device.")
+        await #expect(throws: IngestionError.photosUnavailable) { try await service.enqueue(fileURL: URL(fileURLWithPath: "/in/a.jpg")) }
+        #expect(IngestionError.photosUnavailable.errorDescription == "Photos cannot be analyzed with the embedding model in use.")
+        #expect(try await repo.documents().isEmpty, "no document is kept for a photo that cannot be analyzed")
+        #expect(try await repo.jobs().isEmpty)
     }
 
     @Test func withoutImageAnalysisConfiguredImagesAreIgnoredAndTextStillIndexes() async throws {

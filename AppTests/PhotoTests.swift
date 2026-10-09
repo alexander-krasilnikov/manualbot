@@ -339,7 +339,7 @@ private func write(_ data: Data, as name: String) throws -> URL {
     /// `TEST_RUNNER_EMBEDDER_MODEL_PATH`).
     @Test(.enabled(if: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] != nil))
     func theSampleNameplateIsNearestTheManualFigureUnderTheRealModel() async throws {
-        let printer = LiteRTEmbedder(modelPath: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] ?? "")
+        let printer = LiteRTEmbedder(profile: .embeddingGemma2, modelPath: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] ?? "")
         func vector(_ data: Data) async throws -> [Float] { try await printer.features(of: try #require(PhotoData.image(from: data))) }
         let query = try await vector(SampleDocuments.x200Nameplate)
         let toFigure = distance(query, try await printer.features(of: try await figure(cropped: true)))

@@ -13,23 +13,6 @@ private let modelPath = ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH
 
 /// Pure helpers: no model needed.
 struct LiteRTEmbedderHelperTests {
-    @Test func identityNamesTheModelAndTheVectorSize() {
-        #expect(LiteRTEmbedder.modelIdentity.tag == "embeddinggemma-2-text-vision-440m@1/256")
-    }
-
-    @Test func queriesAndChunksUseTheDocumentedTemplates() {
-        #expect(LiteRTEmbedder.prompt(for: "  how do I reset it \n", kind: .query) == "task: search query | text: how do I reset it")
-        #expect(LiteRTEmbedder.prompt(for: "Hold the button.", kind: .chunk(title: " X200 Manual "))
-            == "task: search result | title: X200 Manual | text: Hold the button.")
-        #expect(LiteRTEmbedder.prompt(for: "Hold the button.", kind: .chunk(title: "  "))
-            == "task: search result | text: Hold the button.")
-    }
-
-    @Test func aLongTitleIsCut() {
-        let prompt = LiteRTEmbedder.prompt(for: "x", kind: .chunk(title: String(repeating: "T", count: 200)))
-        #expect(prompt == "task: search result | title: \(String(repeating: "T", count: 60)) | text: x")
-    }
-
     @Test func shrinkingKeepsFourFifthsOfTheWordsAndEventuallyGivesUp() {
         #expect(LiteRTEmbedder.shrunk("a b c d e f g h i j") == "a b c d e f g h")
         #expect(LiteRTEmbedder.shrunk("one two") == "one")
@@ -47,13 +30,13 @@ struct LiteRTEmbedderHelperTests {
     }
 
     @Test func aMissingModelFileIsReported() async {
-        let embedder = LiteRTEmbedder(modelPath: "/nonexistent/model.litertlm")
+        let embedder = LiteRTEmbedder(profile: .embeddingGemma2, modelPath: "/nonexistent/model.litertlm")
         await #expect(throws: LiteRTEmbedderError.modelMissing("/nonexistent/model.litertlm")) { _ = try await embedder.embed(["x"], kind: .query) }
         await #expect(throws: LiteRTEmbedderError.modelMissing("/nonexistent/model.litertlm")) { _ = try await embedder.features(of: Fixtures.picture(width: 8, height: 8)) }
     }
 
     @Test func nothingToEmbedNeedsNoModel() async throws {
-        #expect(try await LiteRTEmbedder(modelPath: "/nonexistent").embed([], kind: .query).isEmpty)
+        #expect(try await LiteRTEmbedder(profile: .embeddingGemma2, modelPath: "/nonexistent").embed([], kind: .query).isEmpty)
     }
 
     @Test func largePhotosAreScaledDownAndSmallOnesKept() throws {
@@ -71,7 +54,7 @@ struct LiteRTEmbedderHelperTests {
 
 @Suite(.serialized, .enabled(if: modelPath != nil))
 struct LiteRTEmbedderTests {
-    private static let embedder = LiteRTEmbedder(modelPath: modelPath ?? "")
+    private static let embedder = LiteRTEmbedder(profile: .embeddingGemma2, modelPath: modelPath ?? "")
 
     private func dot(_ a: [Float], _ b: [Float]) -> Float { zip(a, b).reduce(0) { $0 + $1.0 * $1.1 } }
 
@@ -101,6 +84,27 @@ struct LiteRTEmbedderTests {
             #expect(abs(dot(v, v) - 1) < 1e-3)
         }
         #expect(vectors[0] != vectors[1])
+    }
+
+    /// A text-only model (`embeddinggemma-2-text-270m.litertlm`): it has no vision encoder, so the engine must not be asked for one.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["TEXT_ONLY_EMBEDDER_MODEL_PATH"] != nil))
+    func aTextOnlyModelLoadsAndEmbedsWhenItsProfileHasNoImages() async throws {
+        var profile = EmbedderProfile.embeddingGemma2
+        profile.supportsImages = false
+        let path = try #require(ProcessInfo.processInfo.environment["TEXT_ONLY_EMBEDDER_MODEL_PATH"])
+        let embedder = LiteRTEmbedder(profile: profile, modelPath: path)
+        let vectors = try await embedder.embed(["hold the button", "replace the filter"], kind: .query)
+        #expect(vectors.count == 2 && vectors.allSatisfy { $0.count == 256 })
+        await embedder.unload()
+    }
+
+    @Test func aProfileThatExpectsAnotherDimensionIsReported() async throws {
+        var profile = EmbedderProfile.embeddingGemma2
+        profile.identity.dimensions = 512   // the engine still returns the 256 values the profile asks for
+        let embedder = LiteRTEmbedder(profile: profile, modelPath: modelPath ?? "")
+        await #expect(throws: LiteRTEmbedderError.wrongDimensions(expected: 512, got: 256)) {
+            _ = try await embedder.embed(["hold the button"], kind: .query)
+        }
     }
 
     @Test func isDeterministic() async throws {
@@ -172,11 +176,11 @@ struct LiteRTEmbedderTests {
         for url in urls {
             let document = try await extractor.extract(from: url) { _ in }
             let title = url.deletingPathExtension().lastPathComponent
-            prompts += chunker.chunk(document.blocks).map { LiteRTEmbedder.prompt(for: $0.text, kind: .chunk(title: title)) }
+            prompts += chunker.chunk(document.blocks).map { EmbedderProfile.embeddingGemma2.prompt(for: $0.text, kind: .chunk(title: title)) }
         }
         #expect(prompts.count >= 6)
         let engine = EmbeddingEngine(config: EmbeddingEngineConfig(
-            modelPath: try #require(modelPath), backend: .cpu(), cacheDir: NSTemporaryDirectory(), maxInputLength: LiteRTEmbedder.maxInputLength))
+            modelPath: try #require(modelPath), backend: .cpu(), cacheDir: NSTemporaryDirectory(), maxInputLength: EmbedderProfile.embeddingGemma2.maxInputLength))
         try await engine.initialize()
         for prompt in prompts {
             _ = try await engine.computeEmbedding(contents: [.text(prompt)], options: EmbeddingOptions(normalize: true, outputSize: 256))

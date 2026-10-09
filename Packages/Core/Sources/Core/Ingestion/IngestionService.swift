@@ -16,7 +16,7 @@ public enum IngestionError: Error, Equatable, LocalizedError {
         case .noText: "No text could be found in the document."
         case .embeddingMismatch(let expected, let got): "The embedding model returned \(got) vectors or dimensions where \(expected) were expected."
         case .documentNotFound(let id): "Document \(id) no longer exists."
-        case .photosUnavailable: "Photos cannot be analyzed on this device."
+        case .photosUnavailable: "Photos cannot be analyzed with the embedding model in use."
         }
     }
 }
@@ -39,6 +39,8 @@ public actor IngestionService {
 
     private var observers: [UUID: AsyncStream<IngestJobRecord>.Continuation] = [:]
     private var running = false
+    /// The run loop, in a task of its own so that `stop()` can end it whichever caller asked for the run.
+    private var loopTask: Task<Void, Never>?
     private var wakeRequested = false
     private var paused = false
     private var activeDocID: String?
@@ -98,6 +100,8 @@ public actor IngestionService {
         guard let type = supportedType(fileURL) else {
             throw IngestionError.unsupportedType(fileURL.pathExtension.isEmpty ? "unknown" : fileURL.pathExtension)
         }
+        // Without an image model a photo cannot be analyzed: refuse it now, instead of keeping a document that will fail.
+        if type == .image, imageFeatures == nil { throw IngestionError.photosUnavailable }
         let id = UUID().uuidString
         let name = title ?? fileURL.deletingPathExtension().lastPathComponent
         // Always its own group, even inside a demo reset, so each import reads as a complete story.
@@ -122,6 +126,12 @@ public actor IngestionService {
         wakeRequested = true
     }
 
+    /// The searchable documents whose vectors came from a model other than `identity`. For a model that is not installed
+    /// yet that is every searchable document: how many a switch to it would re-index.
+    public func outdatedDocuments(for identity: EmbeddingModelIdentity) async throws -> [String] {
+        try await repository.documentIDs(notEmbeddedBy: identity.tag, imageModel: (imageFeatures?.identity ?? identity).tag)
+    }
+
     /// Queues a re-index of every searchable document whose vectors came from a model other than `identity` (the
     /// installed embedding model), so a change of model needs no action from the user. Until its new chunks are
     /// switched in, a document stays findable by keyword search, and vector search skips its old vectors. Documents
@@ -129,7 +139,7 @@ public actor IngestionService {
     /// many documents were queued.
     @discardableResult
     public func reindexOutdated(for identity: EmbeddingModelIdentity) async throws -> Int {
-        let stale = try await repository.documentIDs(notEmbeddedBy: identity.tag, imageModel: (imageFeatures?.identity ?? identity).tag)
+        let stale = try await outdatedDocuments(for: identity)
         var queued = 0
         for docId in stale {
             if let job = try await jobs.job(docId: docId), !job.isFinished { continue }
@@ -230,7 +240,29 @@ public actor IngestionService {
         // so a file imported at the last moment is never left waiting.
         guard !running else { wakeRequested = true; return }
         running = true
-        defer { running = false }
+        let task = Task { await self.loop() }
+        loopTask = task
+        // The caller's own cancellation still ends the loop, as before.
+        await withTaskCancellationHandler { await task.value } onCancel: { task.cancel() }
+        if loopTask == task {
+            loopTask = nil
+            running = false
+        }
+    }
+
+    /// Ends the run, whoever started it, and waits until it has ended. The current job keeps its progress and resumes
+    /// on the next run (or starts over, if the embedding model changed in the meantime).
+    public func stop() async {
+        guard let task = loopTask else { return }
+        task.cancel()
+        await task.value
+        if loopTask == task {
+            loopTask = nil
+            running = false
+        }
+    }
+
+    private func loop() async {
         do {
             try await resetInterruptedJobs()
             repeat {
@@ -277,6 +309,16 @@ public actor IngestionService {
             }
             let extracted = try await extract(file, job: &job)
             if document.type == .image, imageFeatures == nil { throw IngestionError.photosUnavailable }
+            // Vectors made so far belong to one model. If another is installed now (the models were switched while this
+            // document was being indexed), they are of no use here: a new generation starts over, and activating it
+            // removes the abandoned one. One generation never holds vectors of two models.
+            if let started = job.embeddingModel, started != embedder.identity.tag {
+                job.targetGeneration += 1
+                job.nextOrdinal = 0
+                job.nextImage = 0
+                job.progress = 0
+            }
+            job.embeddingModel = embedder.identity.tag
             var drafts = chunker.chunk(extracted.blocks)
             let imageDrafts = try await analyzeImages(extracted.images, of: document, firstOrdinal: drafts.count, job: &job)
             drafts += imageDrafts

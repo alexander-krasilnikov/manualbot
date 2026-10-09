@@ -1,4 +1,5 @@
 @preconcurrency import CouchbaseLiteSwift
+import Core
 import Ports
 
 /// Names of the scope, collections, and indexes. Synced collections are separate from local-only ones.
@@ -29,7 +30,7 @@ public enum CouchbaseSchema {
     public static let imageCentroids: UInt32 = 8
 
     /// The feature model assumed when none is given: photos share the embedding model of the chunks.
-    public static let defaultImageFeatures = LiteRTEmbedder.modelIdentity
+    public static let defaultImageFeatures = EmbedderProfile.embeddingGemma2.identity
 
     struct Collections {
         let documents: Collection

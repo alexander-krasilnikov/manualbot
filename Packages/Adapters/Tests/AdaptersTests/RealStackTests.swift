@@ -10,7 +10,7 @@ private let generatorPath = ProcessInfo.processInfo.environment["GENERATOR_MODEL
 
 @Suite(.serialized, .enabled(if: embedderPath != nil && generatorPath != nil))
 struct RealStackTests {
-    static let identity = LiteRTEmbedder.modelIdentity
+    static let identity = EvalProfile.current.identity
 
     private let fx = Fixtures()
 
@@ -24,14 +24,14 @@ struct RealStackTests {
         let root: URL
     }
 
-    private func makeStack(_ config: RetrievalConfiguration = .init()) async throws -> Stack {
-        let embedder = LiteRTEmbedder(modelPath: try #require(embedderPath))
+    private func makeStack(_ config: RetrievalConfiguration = EvalProfile.current.retrievalConfiguration()) async throws -> Stack {
+        let embedder = LiteRTEmbedder(profile: EvalProfile.current, modelPath: try #require(embedderPath))
         let generator = LiteRTGenerator(modelPath: try #require(generatorPath))
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("stack-\(UUID().uuidString)")
         let repo = try CouchbaseDocumentRepository(directory: root.appendingPathComponent("db"), originalsCache: root.appendingPathComponent("o"), embedding: Self.identity)
         let ingestion = IngestionService(
             extractor: FileDocumentExtractor(), embedder: embedder, repository: repo, jobs: repo,
-            chunker: Chunker(configuration: .embeddingGemma2), supportedType: FileDocumentExtractor.documentType(for:))
+            chunker: Chunker(configuration: EvalProfile.current.chunker), supportedType: FileDocumentExtractor.documentType(for:))
         let retriever = Retriever(embedder: embedder, search: repo, repository: repo, configuration: config)
         return Stack(repo: repo, embedder: embedder, generator: generator, ingestion: ingestion, retriever: retriever,
                      chat: ChatService(chats: repo, retriever: retriever, generator: generator), root: root)
