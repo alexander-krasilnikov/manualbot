@@ -1,6 +1,7 @@
 # ManualBot
 
-An iPad app that answers questions about your own documents (PDF, Word, text, photos), entirely on the device.
+An iPad app that answers questions about your own documents (PDF, Word, text, photos), entirely on the device. If you want,
+your iPads can share one library through your own server (see [Sync](#sync)).
 Import documents, and ask in a chat, with words, with a photo, or both. Answers come only from your documents and cite
 the page or section they came from; if the documents don't say, the app says so.
 
@@ -13,8 +14,10 @@ the page or section they came from; if the documents don't say, the app says so.
   simulator). The one Apple framework left is Vision's text recognition, which reads scanned pages, photos and nameplates:
   it ships with the operating system, needs no model of its own, and replacing it (a second runtime, hand-written
   pre- and post-processing) was judged not worth it.
-- Offline: after the models are downloaded, nothing needs the network. The one exception is the Models page, and only when
-  you ask: searching for or downloading another model (see [Models](#models)).
+- Offline: after the models are downloaded, nothing needs the network. There are two exceptions, both under your control: the
+  Models page, when you ask it to search for or download another model (see [Models](#models)), and sync, which is off
+  until you turn it on and then talks only to the server you name (see [Sync](#sync)). Questions, answers and chats never
+  leave the iPad.
 - Targets: iPadOS 26 on M4/M5 iPads.
 
 ## Set up
@@ -45,7 +48,9 @@ In the simulator both models run on the CPU (its Metal cannot run them), so inde
 Add launch arguments in the scheme (Run, Arguments): `-uiTestModelStub happy -uiTestSeed`. This uses the real database,
 extraction, ingestion, retrieval and chat logic with stand-in models (text on photos is still read by the operating system; one stand-in model embeds words and photos, and the words "x100 nameplate" are scripted to find the sample nameplate photo), and five sample documents already indexed, including a photo and a manual with a photo in it.
 Other flags: `-uiTestSlow` (slow, stoppable answers), `-uiTestSearch results|offline` (what the Models page finds: a scripted
-set of language models, or a failed search as with no connection). Stub scenarios: `happy`, `llmFailsOnce`, `lowStorage`.
+set of language models, or a failed search as with no connection), `-uiTestSync off|syncing|upToDate|paused|error` (what sync
+reports, with a stand-in replicator that never reaches a server; any value but `off` also fills in the Sync settings and turns
+sync on). Stub scenarios: `happy`, `llmFailsOnce`, `lowStorage`.
 The stub offers a second, text-only embedding model, to try a switch of embedder.
 
 ## Models
@@ -95,6 +100,35 @@ video are not used). All three are one model with different encoders loaded and 
 To add an embedding model to the list (and so make it tested), give it an entry in `App/Resources/EmbedderCatalog.json` with a profile, and settle
 the profile with the retrieval and photo evaluations first (`EvalTests`, `ImageEvalTests`): the model has to meet the recall baselines
 in the `hybrid-retrieval` and `image-search` specs.
+
+## Sync
+
+Several iPads can share one library. Turn it on under **Settings → Sync** (or tap the cloud in the library toolbar): enter the
+address of your Sync Gateway, the iPad's user name and password (kept in the Keychain), and switch it on. A document imported
+on one iPad then appears on the others, searchable without being indexed again, because the chunks and their vectors travel
+with it. Any iPad can import, rename, re-index and delete; deleting removes a document from every iPad, and the confirmation
+says so.
+
+To try it, [`sync/`](sync/README.md) has a Docker Compose stack that starts Couchbase Server and Sync Gateway, already set up
+for the app, with one command: `cd sync && docker compose up -d --wait`.
+
+- **What is shared.** Documents (with their original files), chunks and photos. Chats and messages stay on each iPad, and so do
+  the vector and keyword indexes: each iPad builds its own from the documents it holds.
+- **One embedding model for everyone.** Shared vectors have to come from one model, the app's default (EmbeddingGemma 2). An
+  iPad that switches to another embedding model pauses sync, and says so on the Sync page and in the Models confirmation; it
+  resumes by itself once the iPad is back on the default and every document has been indexed with it.
+- **Originals up to 20 MB.** That is the largest attachment Sync Gateway takes, so larger files are refused at import, with or
+  without sync. A larger one imported by an older version stays on its iPad and is listed on the Sync page as not shared.
+- **Arriving documents.** A document received from another iPad is searchable only when all its chunks and photos have
+  arrived, and shows as *Arriving…* until then. One another iPad is still indexing shows as *Being indexed on another device*.
+- **Offline.** Sync never gets in the way: import, search and chat work with no connection, and changes are exchanged when
+  the server is reachable again.
+- **Network use.** With sync on, the only requests go to the server you entered, and carry documents and their search data,
+  never a question, an answer or a chat. The X-ray panel shows each burst of replication as a *Sync* operation: documents
+  sent and received, anything the server refused, and the moment a received document became searchable.
+
+A real iPad reaches a server on your network over `ws://` (the app allows plain connections to local addresses only, and iPadOS
+asks once to let it use the local network); use `wss://` for anything else.
 
 ## Photos
 
@@ -150,7 +184,7 @@ want to talk about relevance.
 ### Database explorer
 
 The Library toolbar has a **Database** button that opens a full-screen, read-only view of the local Couchbase
-Lite database; Done returns to exactly where you were. Collections are grouped as sync-ready and local only, each with its
+Lite database; Done returns to exactly where you were. Collections are grouped as replicated and local only, each with its
 document count (read when it opens, and again with Refresh). Pick a collection to page through its document IDs (filter by
 ID), then a document to see it as stored: vectors shortened with "Show in full", image and text blobs with a preview, and
 fields that name another document (`docId`, `chatId`, `imageId`) are links, with Back returning to where you came from.
@@ -235,6 +269,7 @@ repository or into `LocalModels/`, which git ignores):
 | `RUN_SPIKES=1` | | the EmbeddingGemma 2 spike (output size, input limits, templates, latency), and the minimum-runtime-version spike (add both model paths) |
 | `RUN_NETWORK_TESTS=1` | | the model header probe against the real Hugging Face host |
 | `IMAGE_EVAL_DIR` | a folder of photos (below) | photo and words-to-photo search evaluation on those photos |
+| `SYNC_GATEWAY_URL` | `ws://localhost:4984/manualbot`, with the stack in `sync/` running | in `Packages/Adapters`: replication through a real Sync Gateway, including an original of exactly 20 MB (`SYNC_GATEWAY_PASSWORD` if you changed the accounts' password) |
 
 For the iOS simulator, prefix the variables with `TEST_RUNNER_`.
 
@@ -275,4 +310,5 @@ The simulator needs an iOS 27 runtime; the app tests above name `iPad Pro 13-inc
 - `Packages/Core`: model-independent logic (chunking, retrieval, chat, ingestion).
 - `Packages/Adapters`: Couchbase Lite, LiteRT-LM (embedding and answers), Vision text recognition, extractors, downloader.
 - `Packages/LiteRTLMKit`: vendored, patched Swift wrapper for LiteRT-LM (see its README).
+- `sync/`: Couchbase Server and Sync Gateway as a Docker Compose stack for trying sync (see its README).
 - `openspec/`: the change's proposal, specs, design and task list.

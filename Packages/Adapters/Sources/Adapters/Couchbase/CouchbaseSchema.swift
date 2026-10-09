@@ -6,17 +6,22 @@ import Ports
 public enum CouchbaseSchema {
     public static let scope = "manualbot"
 
-    // Sync-ready: these are the collections a future replicator will carry.
+    // Replicated: the shared library, carried by the replicator when sync is on.
     public static let documents = "documents"
     public static let chunks = "chunks"
+    public static let images = "images"
+    // Device-local: never replicated. Chats and messages belong to the person using this iPad.
     public static let chats = "chats"
     public static let messages = "messages"
-    public static let images = "images"
-    // Device-local: never replicated.
     public static let ingestJobs = "ingestJobs"
     /// Facts about this device's database, such as the dimension each vector index was created with.
     public static let localMeta = "localMeta"
     static let vectorDimensionsDocument = "vectorIndexDimensions"
+
+    /// The collections the replicator carries between iPads.
+    public static let replicated: [String] = [documents, chunks, images]
+    /// The collections that never leave this device.
+    public static let deviceLocal: Set<String> = [chats, messages, ingestJobs, localMeta]
 
     public static let vectorIndex = "chunks_vec"
     public static let ftsIndex = "chunks_fts"

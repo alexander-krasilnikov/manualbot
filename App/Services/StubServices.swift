@@ -7,8 +7,16 @@ import PortsTesting
 /// Real database, extraction, ingestion, retrieval and chat logic with a stand-in embedder and a scripted
 /// language model, so UI tests run instantly and offline. Enabled by `-uiTestServices`.
 final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
+    /// What the stand-in replicator does, for UI tests of the Sync page and the cloud indicator.
+    enum SyncScenario: String, Sendable {
+        case off, syncing, upToDate, paused, error
+        /// The real replicator over the real database, with the stand-in models: for trying sync between simulators.
+        case live
+    }
+
     struct Options: Sendable {
         var seedDocuments = false
+        var sync = SyncScenario.off
         var slowAnswers = false
         /// Models (by id) that cannot be loaded: choosing one fails, as a file the runtime cannot run would.
         var failingModels: Set<String> = []
@@ -97,10 +105,31 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
             photoSearch: profile.supportsImages ? PhotoSearch(features: model, search: repository, recognizer: recognizer) : nil)
         let core = CoreServices(
             repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor, embedding: identity,
-            supportsPhotos: profile.supportsImages, photosExplanation: selection.photosExplanation)
+            supportsPhotos: profile.supportsImages, photosExplanation: selection.photosExplanation,
+            sync: options.sync == .live
+                ? CouchbaseLibrarySync(repository: repository, fleetModelTag: profile.identity.tag, tracer: tracer)
+                : ScriptedLibrarySync(onStart: Self.scriptedStates(for: options.sync)))
         let firstTime = lock.withLock { () -> Bool in defer { seeded = true }; return !seeded }
         if options.seedDocuments, firstTime { try await seed(core) }
         return core
+    }
+
+    /// What a replicator that never reaches a server reports after it is started.
+    static func scriptedStates(for scenario: SyncScenario) -> [SyncState] {
+        switch scenario {
+        case .off: [.upToDate]
+        case .syncing: [.connecting, .syncing]
+        case .upToDate: [.connecting, .syncing, .upToDate]
+        case .paused: [.upToDate]   // never started: the fleet-model rule pauses it first
+        case .error: [.connecting, .error(.credentialsRefused)]
+        case .live: []   // the real replicator reports for itself
+        }
+    }
+
+    /// The stand-in's own default embedder is the fleet model, so sync follows the same rule as in the real app. The
+    /// `paused` scenario names another model, so that the model in use is not the fleet's.
+    var fleetModel: EmbeddingModelIdentity {
+        options.sync == .paused ? EmbeddingModelIdentity(id: "fleet-model", version: "1", dimensions: 768) : Self.profile.identity
     }
 
     func makeChat(core: CoreServices, generator: ModelSpec) async throws -> ChatService {

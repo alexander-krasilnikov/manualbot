@@ -6,6 +6,8 @@ public struct TraceOperation: Sendable, Equatable, Hashable, Identifiable {
         case importDocument, ask, openSource, browseContents, reindex, delete, reset
         /// The Models page searched a model repository, or downloaded a model from one: the only network use after setup.
         case modelSearch, modelDownload
+        /// The replicator was busy: it connected, sent or received documents, or reported an error. Visible by default.
+        case sync
     }
 
     public var id: String
@@ -152,6 +154,14 @@ public enum TraceKind: Sendable, Equatable {
     /// The Models page asked a model repository for something: the only network use after setup, and only when the user
     /// asks. `subject` is the search text or the model's name. No document, question or answer is ever sent.
     case modelRequest(ModelRequestPurpose, host: String, subject: String)
+    /// The replicator changed state: connecting, syncing, up to date, offline, or stopped (with the reason, when it failed).
+    case syncState(String)
+    /// A batch of documents of one replicated collection was sent (`push`) or received.
+    case syncReplicated(collection: String, count: Int, push: Bool)
+    /// The server refused a record, or one could not be applied here.
+    case syncRefused(collection: String, id: String, reason: String)
+    /// A received document now has all of its chunks and images on this device, so it can be searched.
+    case syncDocumentSearchable(docId: String, title: String)
 }
 
 public struct TraceEvent: Sendable, Equatable, Identifiable {

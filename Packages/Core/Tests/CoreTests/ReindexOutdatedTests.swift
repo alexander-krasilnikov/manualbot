@@ -68,6 +68,33 @@ import Testing
         #expect(try await repo.jobs().allSatisfy { $0.state == .ready })
     }
 
+    @Test func receivedDocumentsAreLeftToTheirArrival() async throws {
+        let repo = InMemoryDocumentRepository()
+        // Arriving: the record names a set of 4 chunks, one of which is here. It is not outdated, the rest is on the way.
+        await repo.upsert(DocumentRecord(id: "arriving", title: "Arriving", type: .text, activeGeneration: 1, chunkCount: 4, activeImageCount: 0))
+        await repo.writeChunks([Chunk(
+            docId: "arriving", generation: 1, ordinal: 0, text: "first chunk", embedding: [Float](repeating: 0, count: 32),
+            embeddingModel: modelA.tag)])
+        // Still being indexed on another device: the record has no active generation yet.
+        await repo.upsert(DocumentRecord(id: "elsewhere", title: "Elsewhere", type: .text))
+
+        let current = service(repo, extractor: extractor(), model: modelB)
+        #expect(try await current.outdatedDocuments(for: modelB).isEmpty)
+        #expect(try await current.reindexOutdated(for: modelB) == 0)
+        #expect(try await repo.jobs().isEmpty, "nothing is queued for a document whose index is on the way")
+    }
+
+    @Test func aReceivedDocumentIsOutdatedOnceItsSetIsWhole() async throws {
+        let repo = InMemoryDocumentRepository()
+        await repo.upsert(DocumentRecord(id: "received", title: "Received", type: .text, activeGeneration: 1, chunkCount: 1, activeImageCount: 0))
+        await repo.writeChunks([Chunk(
+            docId: "received", generation: 1, ordinal: 0, text: "only chunk", embedding: [Float](repeating: 0, count: 32),
+            embeddingModel: modelA.tag)])
+
+        let current = service(repo, extractor: extractor(), model: modelB)
+        #expect(try await current.outdatedDocuments(for: modelB) == ["received"])
+    }
+
     @Test func anEmptyLibraryQueuesNothing() async throws {
         let repo = InMemoryDocumentRepository()
         #expect(try await service(repo, extractor: extractor(), model: modelB).reindexOutdated(for: modelB) == 0)

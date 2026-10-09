@@ -31,12 +31,20 @@ public struct DocumentRecord: Sendable, Codable, Hashable, Identifiable {
     public var importedAt: Date
     /// How many photos were found in the document (or 1 for an imported photo). `nil` when there are none.
     public var imageCount: Int?
+    /// How many chunks and images the active generation holds, written in the same transaction that activates it.
+    /// A device that received the record from sync searches the generation only once it holds that many of each.
+    /// `nil` for a record written before these were recorded.
+    public var chunkCount: Int?
+    public var activeImageCount: Int?
 
     public init(
         id: String, title: String, type: DocumentType, pageCount: Int? = nil,
-        activeGeneration: Int? = nil, importedAt: Date = Date(), imageCount: Int? = nil
+        activeGeneration: Int? = nil, importedAt: Date = Date(), imageCount: Int? = nil,
+        chunkCount: Int? = nil, activeImageCount: Int? = nil
     ) {
         self.imageCount = imageCount
+        self.chunkCount = chunkCount
+        self.activeImageCount = activeImageCount
         self.id = id
         self.title = title
         self.type = type

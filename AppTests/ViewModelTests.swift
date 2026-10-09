@@ -41,7 +41,8 @@ private func file(_ name: String, _ text: String) throws -> URL {
         func job(_ s: IngestState, _ p: Double = 0.5, error: String? = nil) -> IngestJobRecord {
             IngestJobRecord(docId: "d", targetGeneration: 1, state: s, progress: p, error: error)
         }
-        #expect(LibraryViewModel.status(of: fresh, job: nil) == .queued)
+        // No job means the record came from another device: nothing is being indexed here.
+        #expect(LibraryViewModel.status(of: fresh, job: nil) == .indexingElsewhere)
         #expect(LibraryViewModel.status(of: fresh, job: job(.queued)) == .queued)
         #expect(LibraryViewModel.status(of: fresh, job: job(.embedding)) == .embedding(0.5))
         #expect(LibraryViewModel.status(of: fresh, job: job(.recognizingText)) == .recognizing(0.5))
@@ -54,6 +55,50 @@ private func file(_ name: String, _ text: String) throws -> URL {
         #expect(LibraryViewModel.status(of: indexed, job: job(.ready)) == .ready)
         #expect(LibraryViewModel.status(of: indexed, job: job(.failed, error: "x")) == .ready)
         #expect(LibraryViewModel.Status.updating(0.5).isReady && LibraryViewModel.Status.updating(0.5).isWorking)
+    }
+
+    @Test func aFileOverTheSharingLimitIsRejectedWithItsSizeAndTheOthersAreImported() async throws {
+        let (library, repo, _) = make()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("limit-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let big = directory.appendingPathComponent("Huge Manual.pdf")
+        FileManager.default.createFile(atPath: big.path, contents: nil)
+        let handle = try FileHandle(forWritingTo: big)
+        try handle.truncate(atOffset: 34 * 1024 * 1024)
+        try handle.close()
+        let small = directory.appendingPathComponent("Notes.txt")
+        try Data("short notes".utf8).write(to: small)
+
+        await library.importFiles([big, small])
+
+        #expect(library.rejections.count == 1)
+        let message = try #require(library.rejections.first)
+        #expect(message.hasPrefix("Huge Manual.pdf:") && message.contains("34 MB") && message.contains("20 MB"))
+        #expect(try await repo.documents().map(\.title) == ["Notes"])
+    }
+
+    @Test func aReceivedDocumentIsArrivingUntilItsSetIsWholeAndIndexedElsewhereUntilItHasOne() async throws {
+        let (library, repo, _) = make()
+        await repo.upsert(DocumentRecord(id: "elsewhere", title: "Elsewhere", type: .pdf))
+        await repo.upsert(DocumentRecord(id: "arriving", title: "Arriving", type: .pdf, activeGeneration: 1, chunkCount: 2, activeImageCount: 0))
+        await repo.writeChunks([Chunk(docId: "arriving", generation: 1, ordinal: 0, text: "one", embedding: [0], embeddingModel: "m@1/1")])
+        await library.refresh()
+        func status(_ id: String) -> LibraryViewModel.Status? { library.items.first { $0.id == id }?.status }
+        #expect(status("elsewhere") == .indexingElsewhere)
+        #expect(status("arriving") == .arriving)
+        #expect(library.readyDocuments.isEmpty, "neither can be searched or pinned yet")
+
+        await repo.writeChunks([Chunk(docId: "arriving", generation: 1, ordinal: 1, text: "two", embedding: [0], embeddingModel: "m@1/1")])
+        await library.refresh()
+        #expect(status("arriving") == .ready)
+        #expect(LibraryViewModel.Status.arriving.isWorking && !LibraryViewModel.Status.arriving.isReady)
+    }
+
+    @Test func aLocalImportIsNeverShownAsArriving() async throws {
+        let record = DocumentRecord(id: "d", title: "T", type: .pdf, activeGeneration: 1, chunkCount: 3, activeImageCount: 0)
+        let job = IngestJobRecord(docId: "d", targetGeneration: 1, state: .ready, progress: 1)
+        #expect(LibraryViewModel.status(of: record, job: job) == .ready)
     }
 
     @Test func theListShowsTheResultWhenItsOwnObservingRunDoesAllTheIndexing() async throws {

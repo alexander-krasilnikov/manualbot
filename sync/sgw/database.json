@@ -1,0 +1,14 @@
+{
+  "bucket": "manualbot",
+  "index": { "num_replicas": 0 },
+  "enable_shared_bucket_access": true,
+  "scopes": {
+    "manualbot": {
+      "collections": {
+        "documents": { "sync": "function (doc, oldDoc, meta) { requireAccess('library'); channel('library'); }" },
+        "chunks": { "sync": "function (doc, oldDoc, meta) { requireAccess('library'); channel('library'); }" },
+        "images": { "sync": "function (doc, oldDoc, meta) { requireAccess('library'); channel('library'); }" }
+      }
+    }
+  }
+}

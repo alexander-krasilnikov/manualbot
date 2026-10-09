@@ -195,8 +195,52 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
             let caption = XrayText.caption(for: tag)
             #expect(caption.hasSuffix("."), "\(tag) must end with a full stop")
             #expect(!caption.dropLast().contains(". "), "\(tag) has more than one sentence: \(caption)")
-            #expect(!caption.contains("sync") || tag == .jobState, "\(tag): the app does not sync")
         }
+    }
+
+    @Test func syncActivityIsAVisibleGroupOfItsOwnKindWithEveryEventExplained() async {
+        let tracer = DemoTracer()
+        tracer.isEnabled = true
+        let model = XrayModel(tracer: tracer)
+        let task = Task { await model.run() }
+        defer { task.cancel() }
+        let sync = TraceOperation(id: "sync-1", kind: .sync, title: "Sync")
+        let kinds: [TraceKind] = [
+            .syncState("connecting"), .syncReplicated(collection: "chunks", count: 4, push: false),
+            .syncRefused(collection: "documents", id: "d1", reason: "forbidden"),
+            .syncDocumentSearchable(docId: "d1", title: "Pump manual"), .syncState("up to date"),
+        ]
+        for kind in kinds { tracer.record(TraceEvent(operation: sync, kind: kind)) }
+        #expect(await eventually { model.log.groups.first?.events.count == kinds.count })
+
+        #expect(model.visibleGroups.map(\.id) == ["sync-1"], "shown without asking for background activity")
+        #expect(model.visibleGroups.first?.operation?.kind == .sync)
+        for kind in kinds {
+            #expect(!XrayText.title(for: kind).isEmpty)
+            #expect(!XrayText.caption(for: kind.tag).isEmpty)
+        }
+        #expect(XrayText.title(for: kinds[1]) == "Received 4 chunks")
+        #expect(XrayText.detail(for: kinds[1]) == "chunks · the server to this iPad")
+        #expect(XrayText.detail(for: kinds[3]) == "“Pump manual”")
+        #expect(XrayText.detail(for: kinds[2])?.contains("forbidden") == true)
+    }
+
+    @Test func theSyncCaptionsSayTheLibraryReplicatesAndTheIndexesAreBuiltOnEachDevice() {
+        let replicated = XrayText.caption(for: .syncReplicated)
+        #expect(replicated.contains("replicate") && replicated.contains("built on each device"))
+        #expect(XrayText.caption(for: .syncSearchable).contains("all of its chunks"))
+    }
+
+    @Test func nothingFromSyncAppearsWhenSyncIsOff() async {
+        // With sync off nothing starts the replicator, so the log holds no sync group.
+        let tracer = DemoTracer()
+        tracer.isEnabled = true
+        let model = XrayModel(tracer: tracer)
+        let task = Task { await model.run() }
+        defer { task.cancel() }
+        tracer.record(event(operation(1)))
+        #expect(await eventually { model.log.groups.count == 1 })
+        #expect(model.visibleGroups.allSatisfy { $0.operation?.kind != .sync })
     }
 
     @Test func theFunnelAddsUpAndSaysWhenTheSearchStoppedEarly() {
@@ -411,6 +455,20 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
         #expect(try Data(contentsOf: urls[4]).prefix(4) == Data("%PDF".utf8))
         #expect(try Data(contentsOf: urls[5]).prefix(2) == Data([0xFF, 0xD8]))
         #expect(try String(contentsOf: urls[0], encoding: .utf8).contains("E-042"))
+    }
+
+    @Test func everySampleHasAFixedIdentityThatIsTheSameOnEveryDevice() throws {
+        let urls = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
+        defer { try? FileManager.default.removeItem(at: urls[0].deletingLastPathComponent()) }
+        let ids = urls.map(SampleDocuments.id(for:))
+        #expect(ids == [
+            "sample-x200-manual", "sample-bike-repair", "sample-warranty", "sample-filter-guide", "sample-x200-service-manual",
+            "sample-nameplate-x100",
+        ])
+        // Written again into another folder, as on a second iPad: the same identities.
+        let again = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
+        defer { try? FileManager.default.removeItem(at: again[0].deletingLastPathComponent()) }
+        #expect(again.map(SampleDocuments.id(for:)) == ids)
     }
 
     @Test func everySampleCanBeIndexedByTheRealExtractors() async throws {

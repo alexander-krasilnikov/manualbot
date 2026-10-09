@@ -65,7 +65,7 @@ final class ExplorerModel {
 
     @ObservationIgnored private var listGeneration = 0
 
-    var syncReady: [CollectionSummary] { collections.filter { !$0.localOnly } }
+    var replicated: [CollectionSummary] { collections.filter { !$0.localOnly } }
     var localOnly: [CollectionSummary] { collections.filter(\.localOnly) }
     var starters: [StarterQuery] { StarterQuery.all(firstDocumentID: firstDocumentID) }
 

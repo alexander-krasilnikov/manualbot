@@ -27,6 +27,8 @@ final class XrayModel {
     let network: NetworkMonitor
     /// Clears the library and chats and imports the samples. Set once the app's services exist.
     var resetAction: (() async -> Void)?
+    /// Whether sync is on, so that the reset confirmation can say the documents go from every device that shares the library.
+    var syncEnabled: () -> Bool = { false }
     private(set) var isResetting = false
 
     // MARK: Presenter aids

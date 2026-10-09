@@ -41,7 +41,7 @@ extension CouchbaseDocumentRepository: TraceInspector {
         CouchbaseSchema.documents, CouchbaseSchema.chunks, CouchbaseSchema.images, CouchbaseSchema.chats,
         CouchbaseSchema.messages, CouchbaseSchema.ingestJobs, CouchbaseSchema.localMeta,
     ]
-    private static let localOnly: Set<String> = [CouchbaseSchema.ingestJobs, CouchbaseSchema.localMeta]
+    private static let localOnly = CouchbaseSchema.deviceLocal
 
     public func collectionSummaries() throws -> [CollectionSummary] {
         try database.collections(scope: CouchbaseSchema.scope)

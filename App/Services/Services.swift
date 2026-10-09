@@ -15,6 +15,8 @@ struct CoreServices: Sendable {
     var supportsPhotos = true
     /// Why photos cannot be analyzed, in words for the user. `nil` when they can.
     var photosExplanation: String?
+    /// Replication of this library with a server. It is made here because it works on this library's database.
+    let sync: any LibrarySync
 }
 
 /// The embedding model in use, and the profile that says how to ask it and what its answers mean.
@@ -44,10 +46,13 @@ protocol ServiceFactory: Sendable {
     func unloadModels() async
     /// UI tests have no photo picker to drive: a photo the attach button uses instead. `nil` in the real app.
     var stubPhoto: Data? { get }
+    /// The embedding model every iPad that shares a library uses. Sync pauses while another one is in use.
+    var fleetModel: EmbeddingModelIdentity { get }
 }
 
 extension ServiceFactory {
     var stubPhoto: Data? { nil }
+    var fleetModel: EmbeddingModelIdentity { SyncPolicy.fleetModel }
 }
 
 enum ServiceError: LocalizedError {
@@ -113,7 +118,8 @@ final class LiveServiceFactory: ServiceFactory, @unchecked Sendable {
             tracer: tracer, photoSearch: imageFeatures.map { PhotoSearch(features: $0, search: repository, recognizer: recognizer) })
         return CoreServices(
             repository: repository, ingestion: ingestion, retriever: retriever, extractor: extractor, embedding: identity,
-            supportsPhotos: profile.supportsImages, photosExplanation: selection.photosExplanation)
+            supportsPhotos: profile.supportsImages, photosExplanation: selection.photosExplanation,
+            sync: CouchbaseLibrarySync(repository: repository, tracer: tracer))
     }
 
     func makeChat(core: CoreServices, generator spec: ModelSpec) async throws -> ChatService {

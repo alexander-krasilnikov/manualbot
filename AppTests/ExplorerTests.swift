@@ -11,7 +11,7 @@ import Testing
         documents: [
             "documents": ["d1": "{ \"title\" : \"Manual\" }"], "chunks": chunkDocs, "ingestJobs": [:], "localMeta": ["x": "{}"],
         ],
-        localOnly: ["ingestJobs", "localMeta"])
+        localOnly: ["chats", "messages", "ingestJobs", "localMeta"])
     let model = ExplorerModel()
     model.inspector = fake
     return (model, fake)
@@ -23,7 +23,7 @@ import Testing
     @Test func openingReadsTheCountsAndListsTheFirstCollection() async {
         let (model, _) = model()
         await model.open()
-        #expect(model.syncReady.map(\.name) == ["chunks", "documents"])
+        #expect(model.replicated.map(\.name) == ["chunks", "documents"])
         #expect(model.localOnly.map(\.name) == ["ingestJobs", "localMeta"])
         #expect(model.collections.first { $0.name == "chunks" }?.count == 3)
         #expect(model.selection == .collection("chunks"))

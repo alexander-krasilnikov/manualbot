@@ -46,8 +46,15 @@
 	<string>1</string>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>ManualBot uses the camera so you can photograph a nameplate or a part and find it in your documents. Photos are analyzed on this iPad and never leave it.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>ManualBot connects to your own sync server on this network to share your documents with your other iPads. Nothing else on the network is contacted.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>

@@ -24,7 +24,8 @@ import Testing
         let f = try await seeded(); defer { Task { await f.cleanUp() } }
         let summaries = try await f.repo.collectionSummaries()
         #expect(summaries.map(\.name) == ["documents", "chunks", "images", "chats", "messages", "ingestJobs", "localMeta"])
-        #expect(summaries.filter(\.localOnly).map(\.name) == ["ingestJobs", "localMeta"])
+        #expect(summaries.filter(\.localOnly).map(\.name) == ["chats", "messages", "ingestJobs", "localMeta"])
+        #expect(summaries.filter { !$0.localOnly }.map(\.name) == ["documents", "chunks", "images"])
         #expect(summaries.first { $0.name == "documents" }?.count == 1)
         #expect(summaries.first { $0.name == "chunks" }?.count == 3)
         #expect(summaries.first { $0.name == "localMeta" }?.count == 1)

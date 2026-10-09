@@ -16,9 +16,9 @@ struct RootView: View {
             }
         }
         .task { await app.run() }
-        .fullScreenCover(isPresented: Bindable(app).showingSettings) {
-            // The Models page is a screen of its own, not a small dialog.
-            ModelSettingsView(model: app.settings)
+        .fullScreenCover(item: Bindable(app).presentedSettings) { page in
+            // Settings is a screen of its own, not a small dialog.
+            SettingsView(app: app, initial: page)
         }
         .onOpenURL { url in Task { await app.open([url]) } }
     }

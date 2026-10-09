@@ -6,10 +6,9 @@ import SwiftUI
 /// models. Searching and downloading are the only network use after setup, and only when the user asks.
 struct ModelSettingsView: View {
     @Bindable var model: ModelSettingsViewModel
-    @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
+        Group {
             List {
                 inUseSection
                 installedSection
@@ -31,7 +30,6 @@ struct ModelSettingsView: View {
                 }
             }
             .navigationTitle("Models")
-            .toolbar { Button("Done") { dismiss() }.accessibilityIdentifier("settingsDone") }
             .alert(
                 "Use \(model.confirmation?.title ?? "this model")?",
                 isPresented: Binding(get: { model.confirmation != nil }, set: { if !$0 { model.dismissConfirmation() } }),
@@ -51,7 +49,7 @@ struct ModelSettingsView: View {
             }
             .task { await model.observe() }
         }
-        .accessibilityIdentifier("settingsSheet")
+        .accessibilityIdentifier("modelsPage")
     }
 
     // MARK: Sections

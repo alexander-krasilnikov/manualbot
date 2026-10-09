@@ -10,6 +10,8 @@ public actor InMemoryDocumentRepository: DocumentRepository, IngestJobStore, Cha
     private var messageStore: [String: MessageRecord] = [:]
     private var imageStore: [String: ImageWrite] = [:]
     private var attachments: [String: Data] = [:]
+    /// The generation of each document that `refreshArrivals` has reported whole.
+    private var announced: [String: Int] = [:]
 
     public init() {}
 
@@ -57,6 +59,8 @@ public actor InMemoryDocumentRepository: DocumentRepository, IngestJobStore, Cha
     public func activate(generation: Int, for docId: String) throws {
         guard var doc = docs[docId] else { throw RepositoryError.documentNotFound(docId) }
         doc.activeGeneration = generation
+        doc.chunkCount = chunkStore.values.filter { $0.docId == docId && $0.generation == generation }.count
+        doc.activeImageCount = imageStore.values.filter { $0.record.docId == docId && $0.record.generation == generation }.count
         docs[docId] = doc
         chunkStore = chunkStore.filter { !($0.value.docId == docId && $0.value.generation != generation) }
         imageStore = imageStore.filter { !($0.value.record.docId == docId && $0.value.record.generation != generation) }
@@ -69,9 +73,33 @@ public actor InMemoryDocumentRepository: DocumentRepository, IngestJobStore, Cha
 
     public func originalFileURL(docId: String) -> URL? { originals[docId] }
 
+    private func isComplete(_ document: DocumentRecord) -> Bool {
+        guard let generation = document.activeGeneration, let chunks = document.chunkCount,
+            let images = document.activeImageCount
+        else { return true }
+        return self.chunks(docId: document.id, generation: generation).count >= chunks
+            && self.images(docId: document.id, generation: generation).count >= images
+    }
+
+    public func arrivingDocumentIDs() -> Set<String> {
+        Set(documents().filter { $0.activeGeneration != nil && !isComplete($0) }.map(\.id))
+    }
+
+    public func refreshArrivals(of docIDs: Set<String>?) -> [String] {
+        var became: [String] = []
+        for document in documents() where docIDs?.contains(document.id) ?? true {
+            guard let generation = document.activeGeneration, document.chunkCount != nil, isComplete(document),
+                announced[document.id] != generation
+            else { continue }
+            announced[document.id] = generation
+            became.append(document.id)
+        }
+        return became.sorted()
+    }
+
     public func documentIDs(notEmbeddedBy textModel: String, imageModel: String) -> [String] {
         documents().filter { document in
-            guard document.activeGeneration != nil else { return false }
+            guard document.activeGeneration != nil, isComplete(document) else { return false }
             return activeChunks(docId: document.id).contains { $0.embeddingModel != textModel }
                 || activeImages(docId: document.id).contains { $0.featureModel != imageModel }
         }.map(\.id)

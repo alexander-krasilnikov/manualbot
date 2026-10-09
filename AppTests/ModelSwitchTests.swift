@@ -34,11 +34,15 @@ import Testing
     }
 
     /// The app model with both defaults installed and ready, and the other embedder and language model installed beside them.
-    private func launch(_ options: StubServiceFactory.Options = .init(), tracer: any Tracer = NoTracer()) async throws -> Running {
+    private func launch(
+        _ options: StubServiceFactory.Options = .init(), tracer: any Tracer = NoTracer(), syncSettings: SyncSettings? = nil
+    ) async throws -> Running {
         let backend = FakeModelBackend()
         let store = ModelStore(manifest: ModelManifest(models: [embedderA.spec, llm]), downloader: backend, files: backend, safetyMargin: 0)
         let models = ModelSetupViewModel(store: store)
-        let app = AppModel(models: models, factory: StubServiceFactory(options: options, tracer: tracer), catalog: StubServiceFactory.catalog)
+        let app = AppModel(
+            models: models, factory: StubServiceFactory(options: options, tracer: tracer), catalog: StubServiceFactory.catalog,
+            syncSettings: syncSettings)
         let run = Task { await app.run() }
         await models.start()
         #expect(await eventually { app.preparation == .ready && app.chat?.availability != .modelNotReady })
@@ -136,6 +140,69 @@ import Testing
         try await running.app.switchModel(to: embedderA.spec.id)
         #expect(await settle(&running))
         #expect(try await chunkModels(running.app) == [StubServiceFactory.profile.identity.tag], "switching back indexes everything again")
+    }
+
+    @Test func syncPausesOnAnotherEmbedderAndResumesOnlyOnceTheLibraryIsBackOnTheFleetModel() async throws {
+        let defaults = UserDefaults(suiteName: "switch-sync-\(UUID().uuidString)")!
+        let settings = SyncSettings(defaults: defaults, secrets: InMemorySecretStore())
+        settings.address = "localhost:4984"
+        settings.username = "ipad1"
+        settings.isEnabled = true
+        var running = try await launch(.init(seedDocuments: true), syncSettings: settings)
+        defer { running.run.cancel(); running.observer?.cancel() }
+        #expect(await settle(&running))
+        #expect(await eventually { running.app.sync.state == .upToDate }, "on the fleet model, sync runs: \(running.app.sync.state)")
+
+        try await running.app.switchModel(to: embedderB.spec.id)
+        #expect(running.app.sync.state == .paused(.otherEmbedder(active: "Stub Text Embedder", fleet: SyncPolicy.fleetModelName)))
+        #expect(await settle(&running))
+        #expect(
+            running.app.sync.state == .paused(.otherEmbedder(active: "Stub Text Embedder", fleet: SyncPolicy.fleetModelName)),
+            "re-indexing with the other model does not bring it back")
+
+        try await running.app.switchModel(to: embedderA.spec.id)
+        #expect(await settle(&running))
+        #expect(await eventually { running.app.sync.state == .upToDate }, "back on the fleet model and re-indexed: \(running.app.sync.state)")
+    }
+
+    @Test func aResetWithSyncOnIsTracedAsOneResetOperationWithItsDeletesAndImports() async throws {
+        let defaults = UserDefaults(suiteName: "reset-sync-\(UUID().uuidString)")!
+        let settings = SyncSettings(defaults: defaults, secrets: InMemorySecretStore())
+        settings.address = "localhost:4984"
+        settings.username = "ipad1"
+        settings.isEnabled = true
+        let tracer = RecordingTracer()
+        var running = try await launch(.init(seedDocuments: true), tracer: tracer, syncSettings: settings)
+        defer { running.run.cancel(); running.observer?.cancel() }
+        #expect(await settle(&running))
+        #expect(running.app.sync.isEnabled)
+        let before = try #require(running.app.library).items.count
+        #expect(before == 5)
+
+        await running.app.resetDemo()
+
+        let reset = tracer.events.filter { $0.operation?.kind == .reset }
+        let deletes = reset.filter { if case .documentDeleted = $0.kind { true } else { false } }
+        #expect(deletes.count == before, "every document is deleted inside the reset operation, as without sync")
+        #expect(Set(reset.compactMap(\.operation?.id)).count == 1, "one reset operation")
+        #expect(await settle(&running), "the samples are imported again and become ready")
+        // Fixed identities: the samples are the documents every device that shares the library has.
+        let ids = Set(try #require(running.app.library).items.map(\.id))
+        #expect(ids.allSatisfy { $0.hasPrefix("sample-") }, "\(ids)")
+    }
+
+    @Test func theConfirmationAlsoWarnsThatSyncPausesWhenItIsOn() async throws {
+        let defaults = UserDefaults(suiteName: "switch-sync-\(UUID().uuidString)")!
+        let settings = SyncSettings(defaults: defaults, secrets: InMemorySecretStore())
+        var running = try await launch(.init(seedDocuments: true), syncSettings: settings)
+        defer { running.run.cancel(); running.observer?.cancel() }
+        #expect(await settle(&running))
+
+        #expect(try #require(await running.app.switchCost(to: embedderB.spec.id)).pausesSync == false, "sync is off")
+        settings.isEnabled = true
+        let cost = try #require(await running.app.switchCost(to: embedderB.spec.id))
+        #expect(cost.pausesSync)
+        #expect(ModelSettingsViewModel.message(for: cost).contains("Sync pauses"))
     }
 
     @Test func theReindexAlsoFinishesWhileTheServicesAreTraced() async throws {

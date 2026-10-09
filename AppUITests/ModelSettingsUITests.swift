@@ -18,9 +18,12 @@ final class ModelSettingsUITests: UITestCase {
     private func openModels(_ app: XCUIApplication) {
         element(app, "settingsButton").tap()
         waitFor(element(app, "settingsSheet"))
+        element(app, "settingsModelsRow").tap()
+        waitFor(element(app, "modelsPage"))
     }
 
     private func closeModels(_ app: XCUIApplication) {
+        backToSettings(app, from: "Models")
         element(app, "settingsDone").tap()
         waitFor(app.navigationBars["Library"], timeout: 30)
     }

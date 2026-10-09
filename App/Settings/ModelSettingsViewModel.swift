@@ -251,7 +251,10 @@ final class ModelSettingsViewModel {
             let untested = cost.untested
                 ? " This embedding model has not been tested with ManualBot, so how well search works with it is unknown. You can switch back."
                 : ""
-            return "\(reindex) \(photos)\(untested) An answer that is being written, and indexing in progress, will stop."
+            let sync = cost.pausesSync
+                ? " Sync pauses while this model is in use, and resumes when \(SyncPolicy.fleetModelName), the model every iPad that shares the library uses, is in use again and every document has been re-indexed with it."
+                : ""
+            return "\(reindex) \(photos)\(untested)\(sync) An answer that is being written, and indexing in progress, will stop."
         }
     }
 }

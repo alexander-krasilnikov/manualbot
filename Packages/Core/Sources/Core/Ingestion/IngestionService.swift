@@ -9,6 +9,8 @@ public enum IngestionError: Error, Equatable, LocalizedError {
     case documentNotFound(String)
     /// A photo was imported on a device that cannot analyze photos.
     case photosUnavailable
+    /// The file is larger than the limit for a stored original, which is the largest attachment that can be shared.
+    case tooLarge(bytes: Int64, limit: Int64)
 
     public var errorDescription: String? {
         switch self {
@@ -17,7 +19,16 @@ public enum IngestionError: Error, Equatable, LocalizedError {
         case .embeddingMismatch(let expected, let got): "The embedding model returned \(got) vectors or dimensions where \(expected) were expected."
         case .documentNotFound(let id): "Document \(id) no longer exists."
         case .photosUnavailable: "Photos cannot be analyzed with the embedding model in use."
+        case .tooLarge(let bytes, let limit):
+            "The file is \(Self.size(bytes)), over the \(Self.size(limit)) limit for documents that can be shared."
         }
+    }
+}
+
+extension IngestionError {
+    /// Binary units, so the limit reads as the round number it is (20 MB, not 21 MB).
+    fileprivate static func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .memory)
     }
 }
 
@@ -93,16 +104,31 @@ public actor IngestionService {
 
     // MARK: Queueing
 
+    /// The largest original that is imported: 20 MB, the largest attachment Sync Gateway accepts, so every stored document
+    /// can be shared.
+    public static let maxOriginalBytes: Int64 = 20 * 1024 * 1024
+
     /// Registers a file for indexing and returns its document ID. The original is stored with the
     /// document, so it can be shown and re-indexed later without importing again.
+    ///
+    /// `id` names the document instead of a new random ID, so the same file imported on several devices that share a
+    /// library (the bundled samples) is one document. When a document with that ID exists, nothing is imported and the
+    /// ID is returned: its record, index and original are left as they are.
     @discardableResult
-    public func enqueue(fileURL: URL, title: String? = nil) async throws -> String {
+    public func enqueue(fileURL: URL, title: String? = nil, id requestedID: String? = nil) async throws -> String {
         guard let type = supportedType(fileURL) else {
             throw IngestionError.unsupportedType(fileURL.pathExtension.isEmpty ? "unknown" : fileURL.pathExtension)
         }
+        // Checked before anything is stored. A file whose size cannot be read is left to fail on its own, later.
+        if let bytes = (try? fileURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize.map(Int64.init),
+            bytes > Self.maxOriginalBytes
+        {
+            throw IngestionError.tooLarge(bytes: bytes, limit: Self.maxOriginalBytes)
+        }
+        if let requestedID, try await repository.document(id: requestedID) != nil { return requestedID }
         // Without an image model a photo cannot be analyzed: refuse it now, instead of keeping a document that will fail.
         if type == .image, imageFeatures == nil { throw IngestionError.photosUnavailable }
-        let id = UUID().uuidString
+        let id = requestedID ?? UUID().uuidString
         let name = title ?? fileURL.deletingPathExtension().lastPathComponent
         // Always its own group, even inside a demo reset, so each import reads as a complete story.
         return try await inOperation(Self.operation(docId: id, generation: 1, title: name), replacing: true) {

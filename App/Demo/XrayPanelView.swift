@@ -76,7 +76,14 @@ private struct XrayStatusBar: View {
     }
 }
 
-private struct XrayControls: View {
+struct XrayControls: View {
+    /// What a reset deletes, in words. With sync on, the documents go from every device that shares the library.
+    static func resetMessage(syncEnabled: Bool) -> String {
+        syncEnabled
+            ? "This deletes every document and chat on this iPad, and the documents from every device that shares the library, then imports four sample documents."
+            : "This deletes every document and chat in this app, then imports four sample documents."
+    }
+
     @Bindable var xray: XrayModel
     @State private var confirmingReset = false
 
@@ -114,7 +121,7 @@ private struct XrayControls: View {
             .accessibilityIdentifier("xrayResetConfirm")
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This deletes every document and chat in this app, then imports four sample documents.")
+            Text(Self.resetMessage(syncEnabled: xray.syncEnabled()))
         }
         .padding(.horizontal)
         .padding(.vertical, 10)

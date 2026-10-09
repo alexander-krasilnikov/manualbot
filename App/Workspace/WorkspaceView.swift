@@ -16,7 +16,9 @@ struct WorkspaceView: View {
                 LibraryView(
                     library: library,
                     onOpenExplorer: { app.demo.explorer.present() },
-                    onOpenSettings: { app.showingSettings = true },
+                    onOpenSettings: { app.presentedSettings = .root },
+                    onOpenSync: { app.presentedSettings = .sync },
+                    sync: app.sync,
                     settings: app.settings,
                     makeContents: { item in contents(for: item) },
                     onContentsDeleted: { model in

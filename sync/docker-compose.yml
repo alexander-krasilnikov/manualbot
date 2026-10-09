@@ -1,0 +1,96 @@
+# Couchbase Server and Sync Gateway, set up for ManualBot. See README.md.
+#
+#   docker compose up -d --wait     start (or restart) everything
+#   docker compose down -v          stop and delete all data
+#
+# Four services. couchbase-server and sync-gateway are the servers. cb-init and sgw-init set them up, then stay up idle: they
+# are healthy once they have finished, which is what lets `up --wait` mean "ready" and a second `up` change nothing. Each
+# creates only what is missing, so running them again (after `down`, or `restart cb-init`) is safe.
+
+name: manualbot-sync
+
+x-couchbase-image: &couchbase-image couchbase:enterprise-8.0.3
+
+services:
+  couchbase-server:
+    image: *couchbase-image
+    ports:
+      - "${CB_CONSOLE_PORT:-18091}:8091"
+    volumes:
+      - couchbase-data:/opt/couchbase/var
+    healthcheck:
+      # 200 on a server that is not set up yet, 401 once it is: both mean the web service is up.
+      test: ["CMD-SHELL", "curl -s -o /dev/null -w '%{http_code}' http://localhost:8091/pools | grep -qE '^(200|401)$'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    restart: unless-stopped
+
+  # Sets up the cluster, the bucket with the app's scope and collections, and the account Sync Gateway uses.
+  cb-init:
+    image: *couchbase-image
+    depends_on:
+      couchbase-server:
+        condition: service_healthy
+    environment:
+      CB_HOST: couchbase-server
+      CB_ADMIN_USER: ${CB_ADMIN_USER:-Administrator}
+      CB_ADMIN_PASSWORD: ${CB_ADMIN_PASSWORD:-manualbot-admin}
+      SG_BUCKET_USER: ${SG_BUCKET_USER:-sync_gateway}
+      SG_BUCKET_PASSWORD: ${SG_BUCKET_PASSWORD:-manualbot-gateway}
+    volumes:
+      - ./init/cb-init.sh:/init/cb-init.sh:ro
+    entrypoint: ["/bin/bash", "/init/cb-init.sh"]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 3
+      start_period: 300s
+    restart: "no"
+
+  sync-gateway:
+    image: couchbase/sync-gateway:4.1.2-enterprise
+    depends_on:
+      cb-init:
+        condition: service_healthy
+    ports:
+      - "${SG_PUBLIC_PORT:-4984}:4984"
+      # The admin interface has no login: it is reachable from this machine only.
+      - "127.0.0.1:${SG_ADMIN_PORT:-4985}:4985"
+    environment:
+      SG_BUCKET_USER: ${SG_BUCKET_USER:-sync_gateway}
+      SG_BUCKET_PASSWORD: ${SG_BUCKET_PASSWORD:-manualbot-gateway}
+    volumes:
+      - ./sgw/bootstrap.json:/etc/sync_gateway/config.json:ro
+    command: ["/etc/sync_gateway/config.json"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4985/"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    restart: unless-stopped
+
+  # Creates the Sync Gateway database for the bucket and the iPads' accounts.
+  sgw-init:
+    image: *couchbase-image
+    depends_on:
+      sync-gateway:
+        condition: service_healthy
+    environment:
+      SGW_ADMIN: http://sync-gateway:4985
+      IPAD_PASSWORD: ${IPAD_PASSWORD:-manualbot-ipad}
+    volumes:
+      - ./init/sgw-init.sh:/init/sgw-init.sh:ro
+      - ./sgw/database.json:/init/database.json:ro
+    entrypoint: ["/bin/bash", "/init/sgw-init.sh"]
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/ready"]
+      interval: 3s
+      timeout: 3s
+      retries: 3
+      start_period: 300s
+    restart: "no"
+
+volumes:
+  couchbase-data:

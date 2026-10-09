@@ -9,6 +9,7 @@ enum XrayEventTag: CaseIterable {
     case imageAnalyzed, imagesWritten, photoAnalyzed, imageQuery
     case imageByWordsQuery, wordsMatchedPhotos
     case modelRequest
+    case syncState, syncReplicated, syncRefused, syncSearchable
 }
 
 extension TraceKind {
@@ -41,6 +42,10 @@ extension TraceKind {
         case .photoAnalyzed: .photoAnalyzed
         case .wordsMatchedPhotos: .wordsMatchedPhotos
         case .modelRequest: .modelRequest
+        case .syncState: .syncState
+        case .syncReplicated: .syncReplicated
+        case .syncRefused: .syncRefused
+        case .syncDocumentSearchable: .syncSearchable
         }
     }
 }
@@ -59,7 +64,7 @@ enum XrayText {
         case .blobRead:
             "Files stream out of the database on demand, so the app keeps no separate file store that could drift out of step."
         case .jobState:
-            "Indexing progress sits in a collection that is local to this device and never replicated, so turning on sync later sends nothing about it."
+            "Indexing progress sits in a collection that is local to this device and never replicated, so sync sends nothing about it."
         case .batchWritten:
             "Many chunks and their vectors go in as one atomic transaction, all of it or none of it, even if the app is killed."
         case .generationActivated:
@@ -98,6 +103,14 @@ enum XrayText {
             "Whether typed words match a photo is decided by a distance threshold of its own, and a match only adds the photo and the text beside it, so it never makes a question answerable on its own."
         case .modelRequest:
             "The only network use after setup is a model search or download that you ask for on the Models page, and documents, questions and answers never leave the device."
+        case .syncState:
+            "Couchbase Lite's replicator runs in the background and keeps retrying, so the app works the same with or without a connection."
+        case .syncReplicated:
+            "Documents, their files and their vectors replicate, while the vector and full-text indexes are built on each device from what it holds, so no index is ever sent."
+        case .syncRefused:
+            "The server decides what it accepts, and a record it refuses is reported here, never silently dropped."
+        case .syncSearchable:
+            "A received document turns searchable only when all of its chunks and photos are on this device, so a search never sees a half-arrived manual."
         }
     }
 
@@ -131,6 +144,11 @@ enum XrayText {
         case .wordsMatchedPhotos(let matches, _, _):
             matches == 0 ? "No photo matches the words" : "\(matches) photo\(matches == 1 ? "" : "s") match\(matches == 1 ? "es" : "") the words"
         case .modelRequest(let purpose, _, _): purpose == .search ? "Searched the model repository" : "Downloaded a model"
+        case .syncState(let state): "Sync: \(state)"
+        case .syncReplicated(let collection, let count, let push):
+            "\(push ? "Sent" : "Received") \(count) \(collection == "documents" ? "document" : collection == "chunks" ? "chunk" : "photo")\(count == 1 ? "" : "s")"
+        case .syncRefused: "A record was not accepted"
+        case .syncDocumentSearchable: "A received document can be searched"
         }
     }
 
@@ -172,6 +190,10 @@ enum XrayText {
                 + " · \(dimensions)-dimension vector"
         case .wordsMatchedPhotos(let matches, let best, let threshold): wordsMatch(matches: matches, best: best, threshold: threshold)
         case .modelRequest(_, let host, let subject): "\(subject) · \(host)"
+        case .syncState: nil
+        case .syncReplicated(let collection, _, let push): "\(collection) · \(push ? "this iPad to the server" : "the server to this iPad")"
+        case .syncRefused(let collection, let id, let reason): "\(collection)/\(id) · \(reason)"
+        case .syncDocumentSearchable(_, let title): "“\(title)”"
         }
     }
 
@@ -263,6 +285,10 @@ enum XrayText {
         case .imageQuery: "photo.on.rectangle"
         case .imageByWordsQuery, .wordsMatchedPhotos: "text.below.photo"
         case .modelRequest: "network"
+        case .syncState: "icloud"
+        case .syncReplicated: "arrow.up.arrow.down.circle"
+        case .syncRefused: "exclamationmark.icloud"
+        case .syncSearchable: "checkmark.icloud"
         }
     }
 }

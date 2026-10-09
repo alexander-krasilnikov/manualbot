@@ -31,6 +31,10 @@ struct LibraryView: View {
     var onOpenExplorer: (() -> Void)?
     /// Opens the Models page.
     var onOpenSettings: (() -> Void)?
+    /// Opens Settings at the Sync page; the cloud in the toolbar does this.
+    var onOpenSync: (() -> Void)?
+    /// What the cloud shows. Without it there is no cloud.
+    var sync: SyncModel?
     /// Where About reads the installed models from.
     var settings: ModelSettingsViewModel?
     /// Builds the contents model for a document, or `nil` if contents cannot be shown yet.
@@ -62,6 +66,12 @@ struct LibraryView: View {
     }
 
     /// Only a document that has been indexed has contents, and a photo document has just the one image.
+    /// What deleting a document costs, in words. With sync on it is gone from every device that shares the library.
+    static func deleteMessage(syncEnabled: Bool) -> String {
+        let where_ = syncEnabled ? "every device that shares the library" : "this iPad"
+        return "The document and its search index are removed from \(where_). Earlier answers keep their quoted chunks."
+    }
+
     private func hasContents(_ item: LibraryViewModel.Item) -> Bool { item.status.isReady && item.type != .image }
 
     private var libraryList: some View {
@@ -121,8 +131,15 @@ struct LibraryView: View {
                     Button("Database", systemImage: "cylinder.split.1x2", action: onOpenExplorer)
                         .accessibilityIdentifier("explorerButton")
                 }
+                if let sync, let onOpenSync {
+                    Button(action: onOpenSync) {
+                        Label("Sync: \(SyncText.summary(sync.state))", systemImage: SyncText.symbol(sync.state))
+                    }
+                    .accessibilityIdentifier("syncIndicator")
+                    .accessibilityValue(SyncText.summary(sync.state))
+                }
                 if let onOpenSettings {
-                    Button("Models", systemImage: "gearshape", action: onOpenSettings).accessibilityIdentifier("settingsButton")
+                    Button("Settings", systemImage: "gearshape", action: onOpenSettings).accessibilityIdentifier("settingsButton")
                 }
                 Button("About", systemImage: "info.circle") { showAbout = true }.accessibilityIdentifier("aboutButton")
                 Button("Import", systemImage: "plus") { importing = true }.accessibilityIdentifier("importButton")
@@ -145,7 +162,7 @@ struct LibraryView: View {
                             titleVisibility: .visible) {
             Button("Delete", role: .destructive) { if let item = deleting { Task { await library.delete(item.id) } } }
         } message: {
-            Text("The document and its search index are removed from this iPad. Earlier answers keep their quoted chunks.")
+            Text(Self.deleteMessage(syncEnabled: sync?.isEnabled == true))
         }
     }
 }
@@ -214,6 +231,16 @@ struct LibraryRow: View {
             progress("Indexing", p)
         case .updating(let p):
             progress("Updating index", p)
+        case .arriving:
+            HStack(spacing: 6) {
+                ProgressView().controlSize(.small)
+                Text("Arriving…").font(.caption).foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("status-arriving")
+        case .indexingElsewhere:
+            Label("Being indexed on another device", systemImage: "icloud.and.arrow.down")
+                .font(.caption).foregroundStyle(.secondary)
+                .accessibilityIdentifier("status-elsewhere")
         case .failed(let reason):
             HStack {
                 Label(reason, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red).lineLimit(2)

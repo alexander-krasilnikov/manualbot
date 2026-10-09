@@ -24,6 +24,14 @@ enum SampleDocuments {
         "Dispose of the used filter with household waste and record the date in the service log.",
     ]
 
+    /// The identity of a sample: the same on every device, so samples loaded on several iPads that share a library are one
+    /// document each ("X200 Service Manual.pdf" is `sample-x200-service-manual`).
+    static func id(for sample: URL) -> String {
+        let name = sample.deletingPathExtension().lastPathComponent.lowercased()
+        let slug = name.split { !$0.isLetter && !$0.isNumber }.joined(separator: "-")
+        return "sample-" + slug
+    }
+
     /// Writes the sample files into a new folder under `parent` and returns their URLs.
     static func write(into parent: URL, bundle: Bundle = .main, cropFigure: Bool = true) throws -> [URL] {
         let folder = parent.appendingPathComponent("DemoSamples-\(UUID().uuidString)", isDirectory: true)

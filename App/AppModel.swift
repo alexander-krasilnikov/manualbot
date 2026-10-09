@@ -24,6 +24,8 @@ final class AppModel {
 
     let models: ModelSetupViewModel
     let demo: DemoSession
+    /// Sync of the library with a server: its settings, and the replicator of the library that is open.
+    let sync: SyncModel
     private(set) var preparation = Preparation.waitingForModels
     private(set) var library: LibraryViewModel?
     private(set) var chat: ChatViewModel?
@@ -37,9 +39,11 @@ final class AppModel {
     private var chatService: ChatService?
     private var building = false
 
-    /// Whether the Models page is showing. It is presented from the root view, so that it stays when the workspace is
+    /// The Settings page showing, if any. It is presented from the root view, so that it stays when the workspace is
     /// rebuilt for a switch of models.
-    var showingSettings = false
+    var presentedSettings: SettingsPage?
+    /// The embedding model in use, as it is named to the user.
+    private var embedderTitle = ""
 
     /// The Models page: its models, its search and the switch of the model in use.
     @ObservationIgnored private(set) lazy var settings = ModelSettingsViewModel(
@@ -47,8 +51,9 @@ final class AppModel {
 
     init(
         models: ModelSetupViewModel, factory: any ServiceFactory, catalog: EmbedderCatalog,
-        finder: ModelCandidateFinder = AppModel.offlineFinder, demo: DemoSession? = nil
+        finder: ModelCandidateFinder = AppModel.offlineFinder, demo: DemoSession? = nil, syncSettings: SyncSettings? = nil
     ) {
+        self.sync = SyncModel(settings: syncSettings ?? SyncSettings())
         self.models = models
         self.factory = factory
         self.catalog = catalog
@@ -101,6 +106,7 @@ final class AppModel {
                 Task { @MainActor in self.preparation = .preparing(message) }
             }
             self.core = core
+            embedderTitle = selection.spec.title
             // A new embedding model re-indexes the library by itself; the library view runs the queued work.
             _ = try? await core.ingestion.reindexOutdated(for: core.embedding)
             demo.xray.inspector = core.repository
@@ -116,6 +122,11 @@ final class AppModel {
             chat?.photosAvailable = core.supportsPhotos
             chat?.photosExplanation = core.photosExplanation
             demo.xray.resetAction = { [weak self] in await self?.resetDemo() }
+            demo.xray.syncEnabled = { [weak self] in self?.sync.isEnabled ?? false }
+            sync.onActivity = { [weak self] in await self?.library?.refresh() }
+            await sync.attach(SyncModel.Library(
+                sync: core.sync, ingestion: core.ingestion, embedding: core.embedding, embeddingName: embedderTitle,
+                fleet: factory.fleetModel))
         }
         if readiness.canChat, let core, chatService == nil {
             preparation = .preparing("Loading the language model…")
@@ -142,6 +153,8 @@ final class AppModel {
         var supportsPhotos: Bool
         /// An embedding model that is not in the built-in list: how well search works with it is unknown.
         var untested = false
+        /// Sync is on, and this embedding model is not the one every iPad shares: sync pauses while it is in use.
+        var pausesSync = false
     }
 
     /// `nil` when the model is not installed, or is an embedding model the app has no profile for.
@@ -154,7 +167,8 @@ final class AppModel {
             guard let selection = await selection(for: record.spec) else { return nil }
             let documents = (try? await core?.ingestion.outdatedDocuments(for: selection.profile.identity))?.count ?? 0
             return SwitchCost(
-                role: .embedder, documentsToReindex: documents, supportsPhotos: selection.profile.supportsImages, untested: !selection.isTested)
+                role: .embedder, documentsToReindex: documents, supportsPhotos: selection.profile.supportsImages, untested: !selection.isTested,
+                pausesSync: sync.isEnabled && selection.profile.identity != factory.fleetModel)
         }
     }
 
@@ -206,6 +220,7 @@ final class AppModel {
     /// Drops everything built on the embedding model, and closes the library database so that the next one opens it
     /// afresh with the new model's vector size.
     private func tearDownServices() async {
+        await sync.detach()   // the replicator works on the database that is about to close
         let old = core
         core = nil
         chatService = nil
@@ -302,7 +317,7 @@ final class AppModel {
             for document in (try? await repository.documents()) ?? [] { try? await ingestion.delete(docId: document.id) }
             // With stand-in image features (stub mode) the manual's figure must be the plate as photographed.
             let samples = (try? SampleDocuments.write(into: FileManager.default.temporaryDirectory, cropFigure: factory.stubPhoto == nil)) ?? []
-            for url in samples { _ = try? await ingestion.enqueue(fileURL: url) }
+            for url in samples { _ = try? await ingestion.enqueue(fileURL: url, id: SampleDocuments.id(for: url)) }
         }
         source?.close()
         await chat.load()

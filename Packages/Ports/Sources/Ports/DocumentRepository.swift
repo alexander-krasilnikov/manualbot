@@ -35,6 +35,15 @@ public protocol DocumentRepository: Sendable {
     /// or `nil` if the document has none.
     func originalFileURL(docId: String) async throws -> URL?
 
+    /// IDs of the documents whose active generation has arrived only in part. The record says how many chunks and images the
+    /// set has (`chunkCount`, `activeImageCount`) and this device holds fewer. Such a document is not searchable yet, and
+    /// not outdated either: the rest of its set is on the way. A record without counts is never arriving.
+    func arrivingDocumentIDs() async throws -> Set<String>
+
+    /// Checks again whether the active sets of `docIDs` (every document when `nil`) are complete, and returns those that
+    /// have become complete since they were last checked: the moment a received document turns searchable.
+    func refreshArrivals(of docIDs: Set<String>?) async throws -> [String]
+
     /// IDs of the documents whose active generation holds a chunk embedded by a model other than `textModel`, or an image
     /// whose vector came from a model other than `imageModel` (both are model tags). Documents without an active generation
     /// are not included: they have nothing searchable yet.

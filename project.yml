@@ -58,6 +58,9 @@ targets:
               - public.heic
               - public.heif
         LSSupportsOpeningDocumentsInPlace: false
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        NSLocalNetworkUsageDescription: ManualBot connects to your own sync server on this network to share your documents with your other iPads. Nothing else on the network is contacted.
         NSCameraUsageDescription: ManualBot uses the camera so you can photograph a nameplate or a part and find it in your documents. Photos are analyzed on this iPad and never leave it.
         UISupportedInterfaceOrientations~ipad:
           - UIInterfaceOrientationPortrait

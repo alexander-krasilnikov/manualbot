@@ -17,13 +17,17 @@ final class LibraryViewModel {
         case updating(Double)
         case ready
         case failed(String)
+        /// Received from another device, whose chunks and images are still on their way. Not searchable until all are here.
+        case arriving
+        /// Received from another device that is still indexing it: there is nothing to search yet, and none to wait for here.
+        case indexingElsewhere
 
         /// Searchable: ready, or ready from the previous index while it is being updated.
         var isReady: Bool { self == .ready || isUpdating }
         var isUpdating: Bool { if case .updating = self { true } else { false } }
         var isWorking: Bool {
             switch self {
-            case .queued, .extracting, .recognizing, .analyzing, .embedding, .updating: true
+            case .queued, .extracting, .recognizing, .analyzing, .embedding, .updating, .arriving, .indexingElsewhere: true
             case .ready, .failed: false
             }
         }
@@ -88,16 +92,22 @@ final class LibraryViewModel {
     func refresh() async {
         guard let records = try? await documents.documents() else { return }
         let jobByDoc = Dictionary(((try? await jobs.jobs()) ?? []).map { ($0.docId, $0) }, uniquingKeysWith: { a, _ in a })
+        let arriving = (try? await documents.arrivingDocumentIDs()) ?? []
         items = records.map { record in
             Item(id: record.id, title: record.title, type: record.type, pageCount: record.pageCount,
                  imageCount: record.imageCount ?? 0, importedAt: record.importedAt,
-                 status: Self.status(of: record, job: jobByDoc[record.id]))
+                 status: Self.status(of: record, job: jobByDoc[record.id], arriving: arriving.contains(record.id)))
         }.sorted { $0.importedAt > $1.importedAt }
     }
 
-    static func status(of record: DocumentRecord, job: IngestJobRecord?) -> Status {
-        let searchable = record.activeGeneration != nil
-        guard let job else { return searchable ? .ready : .queued }
+    /// A document this device imported always has a job. One with no job was received from another device: it is arriving
+    /// while its active set is incomplete here, and being indexed elsewhere while it has no active set at all.
+    static func status(of record: DocumentRecord, job: IngestJobRecord?, arriving: Bool = false) -> Status {
+        let searchable = record.activeGeneration != nil && !arriving
+        guard let job else {
+            if record.activeGeneration == nil { return .indexingElsewhere }
+            return arriving ? .arriving : .ready
+        }
         switch job.state {
         case .queued: return searchable ? .updating(0) : .queued
         case .extracting: return searchable ? .updating(job.progress) : .extracting(job.progress)

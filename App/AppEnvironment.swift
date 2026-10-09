@@ -20,7 +20,10 @@ enum AppEnvironmentError: LocalizedError {
 ///
 /// UI tests launch with `-uiTestModelStub <scenario>` (fake downloads: `happy`, `llmFailsOnce`, `lowStorage`),
 /// optionally `-uiTestSeed` (five sample documents already indexed, among them a photo and a PDF with a photo), `-uiTestSlow`
-/// (answers stream slowly) and `-uiTestSearch <scenario>` (what the Models page finds: `results`, the default, or `offline`).
+/// (answers stream slowly), `-uiTestSearch <scenario>` (what the Models page finds: `results`, the default, or `offline`)
+/// and `-uiTestSync <scenario>` (what sync does: `off`, the default, `syncing`, `upToDate`, `paused` or `error`; any other
+/// than `off` also fills in the sync settings and turns sync on; `live` runs the real replicator against `localhost:4984` as
+/// the account named by `-uiTestSyncUser <name>`, `ipad1` by default). A stub launch never touches the real defaults or Keychain.
 @MainActor
 enum AppEnvironment {
     static func makeAppModel() throws -> AppModel {
@@ -35,11 +38,31 @@ enum AppEnvironment {
             demo.xray.usesStubModels = true
             let searchFlag = arguments.firstIndex(of: "-uiTestSearch")
             let search = searchFlag.flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? "results"
+            let syncFlag = arguments.firstIndex(of: "-uiTestSync")
+            let syncName = syncFlag.flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? "off"
+            options.sync = StubServiceFactory.SyncScenario(rawValue: syncName) ?? .off
             return AppModel(
                 models: models, factory: StubServiceFactory(options: options, tracer: demo.tracer),
-                catalog: StubServiceFactory.catalog, finder: stubFinder(scenario: search), demo: demo)
+                catalog: StubServiceFactory.catalog, finder: stubFinder(scenario: search), demo: demo,
+                syncSettings: stubSyncSettings(
+                    options.sync, user: arguments.firstIndex(of: "-uiTestSyncUser").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }))
         }
         return try liveModel(demo: demo)
+    }
+
+    /// Sync settings of a stub launch: kept in a throwaway suite and in memory, and filled in unless the scenario is `off`.
+    private static func stubSyncSettings(_ scenario: StubServiceFactory.SyncScenario, user: String? = nil) -> SyncSettings {
+        let suite = "uitest-sync-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite) ?? .standard
+        defaults.removePersistentDomain(forName: suite)
+        let settings = SyncSettings(defaults: defaults, secrets: InMemorySecretStore())
+        if scenario != .off {
+            settings.address = "localhost:4984"
+            settings.username = user ?? "ipad1"
+            settings.password = scenario == .live ? "manualbot-ipad" : "secret"
+            settings.isEnabled = true
+        }
+        return settings
     }
 
     private static func liveModel(demo: DemoSession) throws -> AppModel {

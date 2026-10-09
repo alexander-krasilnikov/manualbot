@@ -37,7 +37,7 @@ private struct ExplorerSidebar: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("explorerQuery")
             }
-            Section("Sync-ready") { ForEach(explorer.syncReady) { row($0) } }
+            Section("Replicated") { ForEach(explorer.replicated) { row($0) } }
             Section("Local only") { ForEach(explorer.localOnly) { row($0) } }
             Section {
                 Label("Indexes (\(explorer.indexes.count))", systemImage: "list.bullet.indent")

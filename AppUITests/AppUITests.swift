@@ -20,6 +20,12 @@ class UITestCase: XCTestCase {
         app.descendants(matching: .any).matching(identifier: id).firstMatch
     }
 
+    /// Goes back from a page pushed in Settings (Models, Sync) to the Settings list. The back button is the first button of the
+    /// page's own navigation bar; the library's gear button, also called "Settings", is in another bar.
+    func backToSettings(_ app: XCUIApplication, from page: String) {
+        app.navigationBars[page].buttons.element(boundBy: 0).tap()
+    }
+
     func waitFor(_ element: XCUIElement, timeout: TimeInterval = 10, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: timeout), "\(element) did not appear", file: file, line: line)
     }
