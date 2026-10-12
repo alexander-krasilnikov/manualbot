@@ -1,0 +1,33 @@
+{
+  "originHash" : "ee66a28e0594bae64a364318a45f1271d04d55a32a3123b49f5b8ce004f2f6c8",
+  "pins" : [
+    {
+      "identity" : "couchbase-lite-swift-ee",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/couchbase/couchbase-lite-swift-ee.git",
+      "state" : {
+        "revision" : "6a57dedd8a590ab696579a137e29c71dab0a1fd6",
+        "version" : "4.1.2"
+      }
+    },
+    {
+      "identity" : "couchbase-lite-vector-search-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/couchbase/couchbase-lite-vector-search-spm.git",
+      "state" : {
+        "revision" : "0d275616008c0774c82cf39c9b9d915b37b69b78",
+        "version" : "2.0.0"
+      }
+    },
+    {
+      "identity" : "zipfoundation",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/weichsel/ZIPFoundation.git",
+      "state" : {
+        "revision" : "edbeaa39b426e54702194b0a601342322f01e400",
+        "version" : "0.9.9"
+      }
+    }
+  ],
+  "version" : 3
+}

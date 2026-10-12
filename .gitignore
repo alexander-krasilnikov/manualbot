@@ -1,0 +1,9 @@
+.build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+.DS_Store
+ManualBot.xcodeproj/
+LocalModels/
+sync/.env

@@ -1,0 +1,30 @@
+{
+  "models": [
+    {
+      "id": "embeddinggemma-2-text-vision-440m",
+      "version": "1",
+      "role": "embedder",
+      "displayName": "EmbeddingGemma 2",
+      "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-vision-440m-litert-lm/resolve/main/embeddinggemma-2-text-vision-440m.litertlm",
+      "bytes": 387710976,
+      "sha256": "92dcbea108899e5d6e30d919b0744f90d9967e80c67a4ab5503ac16d54f62eb0",
+      "fileName": "embeddinggemma-2-text-vision-440m.litertlm",
+      "packaging": "file",
+      "licence": "Apache License 2.0",
+      "repository": "https://huggingface.co/litert-community/embeddinggemma-2-text-vision-440m-litert-lm"
+    },
+    {
+      "id": "gemma-4-e2b",
+      "version": "1",
+      "role": "generator",
+      "displayName": "Gemma 4 E2B",
+      "url": "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
+      "bytes": 2588147712,
+      "sha256": "181938105e0eefd105961417e8da75903eacda102c4fce9ce90f50b97139a63c",
+      "fileName": "gemma-4-E2B-it.litertlm",
+      "packaging": "file",
+      "licence": "Apache License 2.0",
+      "repository": "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm"
+    }
+  ]
+}

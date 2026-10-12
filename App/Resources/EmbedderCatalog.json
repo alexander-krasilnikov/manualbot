@@ -1,0 +1,130 @@
+{
+  "embedders": [
+    {
+      "spec": {
+        "id": "embeddinggemma-2-text-vision-440m",
+        "version": "1",
+        "role": "embedder",
+        "displayName": "EmbeddingGemma 2",
+        "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-vision-440m-litert-lm/resolve/main/embeddinggemma-2-text-vision-440m.litertlm",
+        "bytes": 387710976,
+        "sha256": "92dcbea108899e5d6e30d919b0744f90d9967e80c67a4ab5503ac16d54f62eb0",
+        "fileName": "embeddinggemma-2-text-vision-440m.litertlm",
+        "packaging": "file",
+        "licence": "Apache License 2.0",
+        "repository": "https://huggingface.co/litert-community/embeddinggemma-2-text-vision-440m-litert-lm"
+      },
+      "profile": {
+        "identity": {
+          "id": "embeddinggemma-2-text-vision-440m",
+          "version": "1",
+          "dimensions": 256
+        },
+        "prompts": {
+          "query": "task: search query | text: ",
+          "passageWithTitle": "task: search result | title: {title} | text: ",
+          "passage": "task: search result | text: ",
+          "titleLimit": 60
+        },
+        "maxInputLength": 512,
+        "outputSize": 256,
+        "chunker": {
+          "targetTokens": 130,
+          "maxTokens": 180,
+          "overlapTokens": 22,
+          "minTailTokens": 35
+        },
+        "thresholds": {
+          "text": 0.28,
+          "image": 0.25,
+          "textToImage": 0.3
+        },
+        "supportsImages": true
+      }
+    },
+    {
+      "spec": {
+        "id": "embeddinggemma-2-text-270m",
+        "version": "1",
+        "role": "embedder",
+        "displayName": "EmbeddingGemma 2 Text (270M)",
+        "url": "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm/resolve/9be6e8b90982095dc05c2bd162e4b954ee4dbac7/embeddinggemma-2-text-270m.litertlm",
+        "bytes": 164626432,
+        "sha256": "2d079ee2f6f066b1f368e8d7c819f55214eaef1d0513b312321901f30ab286fb",
+        "fileName": "embeddinggemma-2-text-270m.litertlm",
+        "packaging": "file",
+        "licence": "Apache License 2.0",
+        "repository": "https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm"
+      },
+      "profile": {
+        "identity": {
+          "id": "embeddinggemma-2-text-270m",
+          "version": "1",
+          "dimensions": 256
+        },
+        "prompts": {
+          "query": "task: search query | text: ",
+          "passageWithTitle": "task: search result | title: {title} | text: ",
+          "passage": "task: search result | text: ",
+          "titleLimit": 60
+        },
+        "maxInputLength": 512,
+        "outputSize": 256,
+        "chunker": {
+          "targetTokens": 130,
+          "maxTokens": 180,
+          "overlapTokens": 22,
+          "minTailTokens": 35
+        },
+        "thresholds": {
+          "text": 0.28,
+          "image": 0.25,
+          "textToImage": 0.3
+        },
+        "supportsImages": false
+      }
+    },
+    {
+      "spec": {
+        "id": "embeddinggemma-2-740m",
+        "version": "1",
+        "role": "embedder",
+        "displayName": "EmbeddingGemma 2 Full (740M)",
+        "url": "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm/resolve/24d962e906c7d332c6428e71c9676855024569e2/embeddinggemma-2-740m.litertlm",
+        "bytes": 484622336,
+        "sha256": "e7a8a2204b91e0f96e92960e84a09a89212e1633dcb7575a9bf3378b4df77f4c",
+        "fileName": "embeddinggemma-2-740m.litertlm",
+        "packaging": "file",
+        "licence": "Apache License 2.0",
+        "repository": "https://huggingface.co/litert-community/embeddinggemma-2-740m-litert-lm"
+      },
+      "profile": {
+        "identity": {
+          "id": "embeddinggemma-2-740m",
+          "version": "1",
+          "dimensions": 256
+        },
+        "prompts": {
+          "query": "task: search query | text: ",
+          "passageWithTitle": "task: search result | title: {title} | text: ",
+          "passage": "task: search result | text: ",
+          "titleLimit": 60
+        },
+        "maxInputLength": 512,
+        "outputSize": 256,
+        "chunker": {
+          "targetTokens": 130,
+          "maxTokens": 180,
+          "overlapTokens": 22,
+          "minTailTokens": 35
+        },
+        "thresholds": {
+          "text": 0.28,
+          "image": 0.25,
+          "textToImage": 0.3
+        },
+        "supportsImages": true
+      }
+    }
+  ]
+}
