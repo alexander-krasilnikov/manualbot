@@ -1,5 +1,31 @@
 import Foundation
 
+/// Local Couchbase Lite revision metadata for a stored document. This describes the local database snapshot, not
+/// whether the document has reached a Sync Gateway.
+public struct DocumentSyncAttributes: Sendable, Equatable, Codable {
+    public var id: String
+    public var scope: String
+    public var collection: String
+    public var revisionID: String?
+    public var sequence: UInt64
+    /// Raw Couchbase Lite revision timestamp, in its native units.
+    public var timestamp: UInt64
+    public var expiration: Date?
+
+    public init(
+        id: String, scope: String, collection: String, revisionID: String?, sequence: UInt64, timestamp: UInt64,
+        expiration: Date?
+    ) {
+        self.id = id
+        self.scope = scope
+        self.collection = collection
+        self.revisionID = revisionID
+        self.sequence = sequence
+        self.timestamp = timestamp
+        self.expiration = expiration
+    }
+}
+
 /// A collection in the app's scope, as the database explorer lists it.
 public struct CollectionSummary: Sendable, Equatable, Identifiable {
     public var name: String

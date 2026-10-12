@@ -228,6 +228,8 @@ public protocol TraceInspector: Sendable {
     /// The document as stored, pretty-printed JSON; blobs reduced to type, length and digest, and vectors shortened
     /// unless `fullVectors`. `nil` when it does not exist.
     func storedDocument(collection: String, id: String, fullVectors: Bool) async throws -> String?
+    /// Local revision metadata for a stored document. `nil` if it no longer exists.
+    func syncAttributes(collection: String, id: String) async throws -> DocumentSyncAttributes?
 
     /// Every collection in the app's scope with its document count.
     func collectionSummaries() async throws -> [CollectionSummary]

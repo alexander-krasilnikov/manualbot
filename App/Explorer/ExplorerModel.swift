@@ -171,6 +171,10 @@ final class ExplorerModel {
         }
     }
 
+    func syncAttributes(collection: String, id: String) async throws -> DocumentSyncAttributes? {
+        try await inspector?.syncAttributes(collection: collection, id: id)
+    }
+
     func blob(collection: String, id: String, key: String) async -> BlobContent? {
         try? await inspector?.blob(collection: collection, id: id, key: key)
     }

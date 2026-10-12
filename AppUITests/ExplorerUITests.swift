@@ -99,6 +99,60 @@ final class ExplorerUITests: UITestCase {
         waitFor(app.buttons["Show shortened"])
     }
 
+    func testSyncAttributesLoadOnExpansionAboveTheBodyAndCanBeHidden() {
+        let app = readyApp()
+        openExplorer(app)
+        element(app, "explorerCollection-documents").tap()
+        let first = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'explorerDoc-'" )).firstMatch
+        waitFor(first)
+        first.tap()
+
+        let section = element(app, "explorerSyncAttributes")
+        waitFor(section)
+        let attributes = element(app, "explorerSyncAttributesJSON")
+        XCTAssertFalse(attributes.exists)
+        app.buttons["Sync attributes"].tap()
+        waitFor(attributes)
+        XCTAssertTrue(attributes.label.contains("revisionID"), attributes.label)
+        XCTAssertTrue(attributes.label.contains("sequence"), attributes.label)
+        XCTAssertLessThan(section.frame.minY, element(app, "explorerJSON").frame.minY)
+
+        let copy = element(app, "explorerCopySyncAttributes")
+        waitFor(copy)
+        copy.tap()
+        app.buttons["Sync attributes"].tap()
+        XCTAssertFalse(attributes.exists)
+        XCTAssertTrue(element(app, "xrayStoredDocument").exists)
+    }
+
+    func testSyncAttributesStayScopedAcrossReplicatedAndLocalOnlyDocumentsWithSyncDisabled() {
+        let app = readyApp()
+        openExplorer(app)
+
+        element(app, "explorerCollection-documents").tap()
+        let replicated = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'explorerDoc-'" )).firstMatch
+        waitFor(replicated)
+        replicated.tap()
+        app.buttons["Sync attributes"].tap()
+        let attributes = element(app, "explorerSyncAttributesJSON")
+        waitFor(attributes)
+        XCTAssertTrue(attributes.label.contains("\"collection\": \"documents\""), attributes.label)
+
+        app.buttons["Sync attributes"].tap()
+        XCTAssertFalse(attributes.exists)
+        element(app, "explorerCollection-localMeta").tap()
+        let localOnly = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'explorerDoc-'" )).firstMatch
+        waitFor(localOnly)
+        localOnly.tap()
+        waitFor(element(app, "xrayStoredDocument"))
+        XCTAssertFalse(attributes.exists)
+
+        app.buttons["Sync attributes"].tap()
+        waitFor(attributes)
+        XCTAssertTrue(attributes.label.contains("\"collection\": \"localMeta\""), attributes.label)
+        XCTAssertTrue(element(app, "xrayStoredDocument").exists)
+    }
+
     func testAnImageBlobCanBePreviewed() {
         let app = readyApp()
         openExplorer(app)

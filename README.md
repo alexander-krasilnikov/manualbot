@@ -195,6 +195,11 @@ console: pick a starter (keyword search, the chunks of one document, ingest jobs
 200 rows with the time, and open the query plan. Parameters (`$name`, including `$vector`) are not supported. Tapping a
 document ID in X-ray opens the explorer at that document. It never writes, and it adds nothing to the X-ray log.
 
+Above a document's JSON, **Sync attributes** is collapsed by default. Expanding it loads the local Couchbase Lite document
+ID, scope, collection, revision ID, sequence, raw revision timestamp and expiration; no server lookup is made. Loading works
+offline and with sync disabled. The values are a local snapshot and do not indicate whether a revision reached the server.
+Collapse the section to hide its values while you inspect the document body.
+
 ### Document contents
 
 To see how a document was split, tap the **›** at the right of a ready document in the Library (photos have nothing to

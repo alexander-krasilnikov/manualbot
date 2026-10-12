@@ -156,6 +156,7 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
     func storedDocument(collection: String, id: String, fullVectors: Bool) async throws -> String? {
         id == "gone" ? nil : "{ \"id\" : \"\(id)\" }"
     }
+    func syncAttributes(collection: String, id: String) async throws -> DocumentSyncAttributes? { nil }
     func collectionSummaries() async throws -> [CollectionSummary] { [] }
     func documentIDs(collection: String, after: String?, containing: String?, limit: Int) async throws -> [String] { [] }
     func blob(collection: String, id: String, key: String) async throws -> BlobContent? { nil }

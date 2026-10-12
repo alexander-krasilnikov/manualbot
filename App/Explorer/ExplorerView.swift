@@ -197,6 +197,7 @@ private struct ExplorerDetail: View {
     @ViewBuilder private func destination(_ destination: ExplorerDestination) -> some View {
         switch destination {
         case .document(let collection, let id): DocumentView(explorer: explorer, collection: collection, id: id)
+            .id("\(collection)/\(id)")
         case .index(let id): IndexDetailView(explorer: explorer, indexID: id)
         case .resultRow(let row): ResultRowView(console: explorer.console, row: row)
         case .plan: PlanView(console: explorer.console)

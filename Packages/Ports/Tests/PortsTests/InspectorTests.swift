@@ -30,4 +30,19 @@ import Testing
         #expect(try await fake.storedDocument(collection: "chunks", id: "a") == "short")
         #expect(try await fake.storedDocument(collection: "chunks", id: "a", fullVectors: true) == "full")
     }
+
+    @Test func fakeSyncAttributesDistinguishConfiguredMissingAndFailedReads() async throws {
+        let fake = FakeTraceInspector(documents: ["chunks": ["a": "{}"]])
+        let attributes = DocumentSyncAttributes(
+            id: "a", scope: "manualbot", collection: "chunks", revisionID: nil, sequence: .max,
+            timestamp: .max, expiration: nil)
+        fake.setSyncAttributes(attributes, collection: "chunks", id: "a")
+        #expect(try await fake.syncAttributes(collection: "chunks", id: "a") == attributes)
+        #expect(try await fake.syncAttributes(collection: "chunks", id: "gone") == nil)
+
+        struct ReadFailure: Error {}
+        fake.setSyncAttributesError(ReadFailure())
+        await #expect(throws: ReadFailure.self) { try await fake.syncAttributes(collection: "chunks", id: "a") }
+        #expect(fake.syncAttributesCalls == 3)
+    }
 }

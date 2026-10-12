@@ -91,6 +91,78 @@ import Testing
         #expect(await model.document(collection: "chunks", id: "chunk-000") == .gone)
     }
 
+    @Test func syncAttributesAreLoadedForTheRequestedDocument() async throws {
+        let (model, fake) = model()
+        let attributes = DocumentSyncAttributes(
+            id: "d1", scope: "manualbot", collection: "documents", revisionID: "revision-1", sequence: 8,
+            timestamp: 9, expiration: nil)
+        fake.setSyncAttributes(attributes, collection: "documents", id: "d1")
+
+        #expect(try await model.syncAttributes(collection: "documents", id: "d1") == attributes)
+        #expect(try await model.syncAttributes(collection: "documents", id: "gone") == nil)
+        #expect(fake.syncAttributesCalls == 2)
+    }
+
+    @Test func syncAttributesLoaderCachesUntilRetryIsNeeded() async {
+        let (model, fake) = model()
+        let attributes = DocumentSyncAttributes(
+            id: "d1", scope: "manualbot", collection: "documents", revisionID: "rev", sequence: 1,
+            timestamp: 2, expiration: nil)
+        fake.setSyncAttributes(attributes, collection: "documents", id: "d1")
+        let loader = SyncAttributesLoader(collection: "documents", id: "d1")
+
+        #expect(loader.state == .idle)
+        await loader.loadIfNeeded(using: model)
+        #expect(loader.state == .loaded(attributes))
+        await loader.loadIfNeeded(using: model)
+        #expect(fake.syncAttributesCalls == 1)
+    }
+
+    @Test func syncAttributesLoaderKeepsFailuresLocalAndRetries() async {
+        let (model, fake) = model()
+        let attributes = DocumentSyncAttributes(
+            id: "d1", scope: "manualbot", collection: "documents", revisionID: "rev", sequence: 1,
+            timestamp: 2, expiration: nil)
+        fake.setSyncAttributes(attributes, collection: "documents", id: "d1")
+        struct ReadFailure: LocalizedError { var errorDescription: String? { "read failed" } }
+        fake.setSyncAttributesError(ReadFailure())
+        let loader = SyncAttributesLoader(collection: "documents", id: "d1")
+
+        await loader.loadIfNeeded(using: model)
+        #expect(loader.state == .failed("read failed"))
+        fake.setSyncAttributesError(nil)
+        await loader.retry(using: model)
+        #expect(loader.state == .loaded(attributes))
+        #expect(fake.syncAttributesCalls == 2)
+    }
+
+    @Test func aLateReadCannotReplaceTheNextDocumentOrItsState() async {
+        let (model, fake) = model()
+        let first = DocumentSyncAttributes(
+            id: "d1", scope: "manualbot", collection: "documents", revisionID: "first", sequence: 1,
+            timestamp: 2, expiration: nil)
+        let second = DocumentSyncAttributes(
+            id: "d2", scope: "manualbot", collection: "documents", revisionID: "second", sequence: 3,
+            timestamp: 4, expiration: nil)
+        fake.add(collection: "documents", id: "d2", json: "{}")
+        fake.setSyncAttributes(first, collection: "documents", id: "d1")
+        fake.setSyncAttributes(second, collection: "documents", id: "d2")
+        fake.setSyncAttributesError(nil, delay: .milliseconds(80))
+        let firstLoader = SyncAttributesLoader(collection: "documents", id: "d1")
+        let pending = Task { await firstLoader.loadIfNeeded(using: model) }
+        await Task.yield()
+        #expect(firstLoader.state == .loading)
+        firstLoader.cancel()
+        await pending.value
+        #expect(firstLoader.state == .idle)
+
+        fake.setSyncAttributesError(nil)
+        let secondLoader = SyncAttributesLoader(collection: "documents", id: "d2")
+        await secondLoader.loadIfNeeded(using: model)
+        #expect(secondLoader.state == .loaded(second))
+        #expect(firstLoader.state == .idle)
+    }
+
     @Test func fieldsThatHoldAnotherDocumentsIDAreReferences() {
         #expect(ExplorerModel.collection(referencedBy: "docId") == "documents")
         #expect(ExplorerModel.collection(referencedBy: "chatId") == "chats")

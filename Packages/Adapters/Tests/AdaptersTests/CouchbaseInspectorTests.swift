@@ -1,8 +1,19 @@
 import Foundation
+@preconcurrency import CouchbaseLiteSwift
 import Ports
 import PortsTesting
 import Testing
 @testable import Adapters
+
+private extension CouchbaseDocumentRepository {
+    func setExpirationForInspectorTest(_ expiration: Date, id: String) throws {
+        guard let collection = try database.collection(name: "documents", scope: CouchbaseSchema.scope) else {
+            Issue.record("documents collection missing")
+            return
+        }
+        try collection.setDocumentExpiration(id: id, expiration: expiration)
+    }
+}
 
 /// The read-only calls behind the X-ray panel and the database explorer.
 @Suite struct CouchbaseInspectorTests {
@@ -88,6 +99,31 @@ import Testing
         #expect((shortened["embedding"] as? String)?.contains("\(RepoFixture.identity.dimensions) values") == true)
         #expect((full["embedding"] as? [Any])?.count == RepoFixture.identity.dimensions)
         #expect(try await f.repo.storedDocument(collection: "chunks", id: "nope", fullVectors: false) == nil)
+    }
+
+    @Test func syncAttributesReadLocalRevisionAndExpirationWithoutChangingTheDocument() async throws {
+        let f = try await seeded(); defer { Task { await f.cleanUp() } }
+        let expiration = Date(timeIntervalSince1970: 2_000_000_000)
+        try await f.repo.setExpirationForInspectorTest(expiration, id: "d1")
+        let before = try #require(try await f.repo.storedDocument(collection: "documents", id: "d1", fullVectors: false))
+        let count = try await f.repo.collectionSummaries().first { $0.name == "documents" }?.count
+
+        let attributes = try #require(try await f.repo.syncAttributes(collection: "documents", id: "d1"))
+        #expect(attributes.id == "d1")
+        #expect(attributes.scope == CouchbaseSchema.scope)
+        #expect(attributes.collection == "documents")
+        #expect(attributes.revisionID != nil)
+        #expect(attributes.sequence > 0)
+        #expect(attributes.timestamp > 0)
+        #expect(attributes.expiration == expiration)
+        #expect(try await f.repo.storedDocument(collection: "documents", id: "d1", fullVectors: false) == before)
+        #expect(try await f.repo.collectionSummaries().first { $0.name == "documents" }?.count == count)
+
+        try await f.repo.upsert(chat: ChatRecord(id: "local-chat", title: "Local", pinnedDocIds: []))
+        let local = try #require(try await f.repo.syncAttributes(collection: "chats", id: "local-chat"))
+        #expect(local.collection == "chats")
+        #expect(local.expiration == nil)
+        #expect(try await f.repo.syncAttributes(collection: "documents", id: "missing") == nil)
     }
 
     @Test func anImageRecordsBlobIsReturned() async throws {

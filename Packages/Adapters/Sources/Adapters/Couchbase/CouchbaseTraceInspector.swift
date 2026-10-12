@@ -34,6 +34,16 @@ extension CouchbaseDocumentRepository: TraceInspector {
         return Self.json(doc.toDictionary(), fullVectors: fullVectors)
     }
 
+    public func syncAttributes(collection: String, id: String) async throws -> DocumentSyncAttributes? {
+        guard let target = try database.collection(name: collection, scope: CouchbaseSchema.scope),
+            let doc = try target.document(id: id)
+        else { return nil }
+        return DocumentSyncAttributes(
+            id: doc.id, scope: doc.collection?.scope.name ?? CouchbaseSchema.scope, collection: collection,
+            revisionID: doc.revisionID, sequence: doc.sequence, timestamp: doc.timestamp,
+            expiration: try target.getDocumentExpiration(id: id))
+    }
+
     // MARK: Explorer
 
     /// Collections in the order the explorer lists them; any other collection follows by name.

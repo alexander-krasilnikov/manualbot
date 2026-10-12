@@ -65,6 +65,17 @@ struct DocumentView: View {
     @State private var children: DocumentChildren?
     @State private var fullVectors: [String: [Any]] = [:]
     @State private var previews: [String: BlobContent] = [:]
+    @State private var syncAttributesExpanded = false
+    @State private var syncAttributes: SyncAttributesLoader
+
+    private var documentIdentity: String { "\(collection)/\(id)" }
+
+    init(explorer: ExplorerModel, collection: String, id: String) {
+        self.explorer = explorer
+        self.collection = collection
+        self.id = id
+        _syncAttributes = State(initialValue: SyncAttributesLoader(collection: collection, id: id))
+    }
 
     var body: some View {
         Group {
@@ -81,6 +92,7 @@ struct DocumentView: View {
             case .found(let json):
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
+                        syncAttributesSection
                         jsonView(json)
                         if let children, !(children.chunks.isEmpty && children.images.isEmpty) { childrenView(children) }
                     }
@@ -94,9 +106,64 @@ struct DocumentView: View {
         }
         .navigationTitle("\(collection)/\(id)")
         .navigationBarTitleDisplayMode(.inline)
-        .task {
+        .task(id: documentIdentity) {
+            syncAttributesExpanded = false
+            state = nil
+            children = nil
+            fullVectors = [:]
+            previews = [:]
             state = await explorer.document(collection: collection, id: id)
             if collection == CollectionNames.documents { children = await explorer.children(of: id) }
+        }
+        .onAppear {
+            if syncAttributesExpanded { Task { await syncAttributes.loadIfNeeded(using: explorer) } }
+        }
+        .onDisappear { syncAttributes.cancel() }
+    }
+
+    // MARK: Sync attributes
+
+    private var syncAttributesSection: some View {
+        DisclosureGroup(isExpanded: $syncAttributesExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                switch syncAttributes.state {
+                case .idle:
+                    EmptyView()
+                case .loading:
+                    ProgressView("Loading local sync attributes…")
+                        .accessibilityIdentifier("explorerSyncAttributesLoading")
+                case .loaded(let attributes):
+                    Text(SyncAttributesJSON.highlight(attributes))
+                        .font(.system(.callout, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("explorerSyncAttributesJSON")
+                    Button("Copy Sync Attributes", systemImage: "doc.on.doc") {
+                        UIPasteboard.general.string = SyncAttributesJSON.encode(attributes)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityIdentifier("explorerCopySyncAttributes")
+                case .missing:
+                    Text("This document no longer exists in the local database.")
+                        .accessibilityIdentifier("explorerSyncAttributesMissing")
+                case .failed(let message):
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Cannot read sync attributes: \(message)")
+                        Button("Retry", systemImage: "arrow.clockwise") {
+                            Task { await syncAttributes.retry(using: explorer) }
+                        }
+                            .accessibilityIdentifier("explorerRetrySyncAttributes")
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } label: {
+            Text("Sync attributes")
+                .font(.headline)
+                .accessibilityIdentifier("explorerSyncAttributes")
+        }
+        .onChange(of: syncAttributesExpanded) { _, expanded in
+            if expanded { Task { await syncAttributes.loadIfNeeded(using: explorer) } }
         }
     }
 
