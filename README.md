@@ -1,321 +1,110 @@
 # ManualBot
 
-An iPad app that answers questions about your own documents (PDF, Word, text, photos), entirely on the device. If you want,
-your iPads can share one library through your own server (see [Sync](#sync)).
-Import documents, and ask in a chat, with words, with a photo, or both. Answers come only from your documents and cite
-the page or section they came from; if the documents don't say, the app says so.
+**Ask your manuals. On the iPad, offline.** ManualBot answers questions about your own documents (PDF, Word, text,
+photos) entirely on the device, and every answer cites the page or section it came from.
 
-- Search: vector search (EmbeddingGemma 2, 256 dimensions) plus keyword search, stored in Couchbase Lite.
-- Photos: the same model embeds photos into the same space as the text, in a second vector index in the same database, so
-  a photo finds photos that look like it and typed words find photos by meaning ("the red pump"), even uncaptioned ones.
-  The text printed on a photo (a nameplate, say) is read by Apple's Vision text recognition.
-- Answers: Gemma 4 E2B, constrained to the retrieved chunks.
-- Runtime: both models run on [LiteRT-LM](https://github.com/google-ai-edge/LiteRT-LM) (GPU on devices and Mac, CPU in the
-  simulator). The one Apple framework left is Vision's text recognition, which reads scanned pages, photos and nameplates:
-  it ships with the operating system, needs no model of its own, and replacing it (a second runtime, hand-written
-  pre- and post-processing) was judged not worth it.
-- Offline: after the models are downloaded, nothing needs the network. There are two exceptions, both under your control: the
-  Models page, when you ask it to search for or download another model (see [Models](#models)), and sync, which is off
-  until you turn it on and then talks only to the server you name (see [Sync](#sync)). Questions, answers and chats never
+## What it does
+
+- **Import** PDF, Word, text files and photos; scanned pages and text on photos are read too.
+- **Ask in a chat**, with words, a photo, or both. Answers come only from your documents, with citations; if the
+  documents don't say, the app says so instead of guessing.
+- **Find photos** by how they look or by what you type, even photos nobody captioned.
+- **Work offline**: after the models are downloaded, nothing needs the network, and questions, answers and chats never
   leave the iPad.
-- Targets: iPadOS 26 on M4/M5 iPads.
+- **Share a library** between iPads through your own Sync Gateway, if you want to.
+- **Show its work**: the X-ray panel traces every database step behind an action, and a database explorer shows what
+  is stored.
 
-## Set up
+## Built with
 
-Requirements: Xcode 26 or later, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+| Layer | Technology |
+|---|---|
+| App | Swift, SwiftUI, iPadOS 26 on M4/M5 iPads |
+| Database | Couchbase Lite 4.1 (Swift, Enterprise Edition) with Vector Search 2.0: documents, chunks, photos, chats, two vector indexes and a full-text index in one database, queried with SQL++ |
+| Search | EmbeddingGemma 2 (256-dimension vectors for text and photos) plus full-text search, merged by rank |
+| Answers | Gemma 4 E2B, constrained to the retrieved chunks |
+| Model runtime | LiteRT-LM (GPU on devices, CPU in the simulator), through a vendored Swift wrapper; models from Hugging Face `litert-community` |
+| Text recognition | Apple Vision |
+| Sync (optional) | Couchbase Sync Gateway and Couchbase Server |
+| Build and specs | XcodeGen, Swift packages (Ports, Core, Adapters), OpenSpec |
+
+<details open>
+<summary><b>Screenshot:</b> a cited answer, with X-ray showing the database steps behind it</summary>
+
+![ManualBot on an iPad: the library, a chat with a cited answer, and the X-ray panel showing the database steps behind it](docs/images/hero.png)
+
+</details>
+
+## Answers only from your documents
+
+Every answer cites the page or section it came from; if the documents don't say, the app says so, without calling the
+language model.
+
+<details>
+<summary>Screenshot: a question the documents don't cover</summary>
+
+![An off-topic question answered with "I couldn't find an answer", with X-ray showing the relevance check that stopped the model being called](docs/images/talk-4-follow-up.png)
+
+</details>
+
+## A photo finds the page it shows
+
+Photograph a figure, a screen or a nameplate: the app reads the text on it, finds the page whose picture looks like it,
+and answers from that document. Typed words find photos too, by meaning, even ones nobody captioned.
+
+<details>
+<summary>Screenshot: a photo sent alone</summary>
+
+![A photo of the Eventing debugger sent alone, answered with page 28 of Couchbase Under the Hood and the figure it matched](docs/images/photo-answer.png)
+
+</details>
+
+## One Couchbase Lite database does it all
+
+Documents, chunks with their vectors, photos, chats, the vector indexes and the full-text index live in one Couchbase
+Lite database on the iPad, queried with SQL++. The built-in database explorer and X-ray panel show every step.
+
+<details>
+<summary>Screenshot: the database explorer</summary>
+
+![The database explorer running a full-text query over the chunks, with its result rows](docs/images/explorer-query.png)
+
+</details>
+
+## How it works
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ask-flow-dark.svg">
+  <img src="docs/images/ask-flow-light.svg" width="960" alt="Asking a question, all on the iPad: a follow-up is rewritten as a standalone query and embedded; vector, keyword and words-to-photos searches run at once in one Couchbase Lite database, plus photo-to-photo with a photo; the results are merged by rank; if nothing is relevant the app says it couldn't find an answer without calling the model; otherwise Gemma 4 E2B answers from the retrieved chunks only, a citation check keeps only real citations, and the answer shows the page or section each part came from.">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/import-sync-flow-dark.svg">
+  <img src="docs/images/import-sync-flow-light.svg" width="960" alt="Importing a document, on the iPad: the original is stored as a blob beside its JSON record and an indexing job is queued; text is extracted, with Apple's Vision reading scans and photos; the text is split into overlapping chunks; photos are read and written in one transaction; chunks are embedded and written 16 per transaction with their vectors; then the new chunk set is made searchable in one switch. With sync on, documents, chunks and images go to Sync Gateway with their vectors; chats, messages, the indexing queue and the indexes stay on the iPad.">
+</picture>
+
+More in [How ManualBot works](docs/architecture.md).
+
+## Run it
+
+Requirements: Xcode 26 or later, [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`); iPadOS 26
+on M4/M5 iPads, or an iPad simulator.
 
 ```sh
 xcodegen generate             # creates ManualBot.xcodeproj from project.yml
 open ManualBot.xcodeproj      # run on an iPad simulator, landscape
 ```
 
-Nothing is built into the app. On first launch it needs a network connection to download two models from Hugging Face,
-each verified by checksum: the embedding model (EmbeddingGemma 2, 388 MB) first, so documents can be imported as soon as it
-arrives, then the language model (Gemma 4 E2B, 2.6 GB). Until the embedding model is installed nothing can be imported. If
-a model file is deleted later, the app returns to the setup screen for it and keeps every document and chat. When an update
-replaces a default model (the earlier Gemma 4 E4B, 3.7 GB, was one), the old file is deleted at launch so it does not leave
-gigabytes behind, unless you chose that model on the [Models page](#models): it then stays until you delete it.
+On first launch the app downloads its two models (about 3 GB). **Reset demo** in the X-ray panel loads the sample
+documents, two Couchbase whitepapers. To try the app without the models, add the launch arguments
+`-uiTestModelStub happy -uiTestSeedDemo`: stand-in models and the sample documents over the real database.
 
-**After an update that changes the embedding model**, every document is re-indexed automatically in the background
-(the library shows "Updating index"), because vectors from different models cannot be compared. Keyword search keeps
-finding the documents meanwhile, and vector and photo search return as each one finishes. Chats and originals are untouched.
-A document that was half indexed by the old model starts over with the new one: one chunk set never mixes vectors of two models.
+## More
 
-In the simulator both models run on the CPU (its Metal cannot run them), so indexing and answers are much slower than on an iPad.
-
-### Try it without the real models
-
-Add launch arguments in the scheme (Run, Arguments): `-uiTestModelStub happy -uiTestSeed`. This uses the real database,
-extraction, ingestion, retrieval and chat logic with stand-in models (text on photos is still read by the operating system; one stand-in model embeds words and photos, and the words "x100 nameplate" are scripted to find the sample nameplate photo), and five sample documents already indexed, including a photo and a manual with a photo in it.
-Other flags: `-uiTestSlow` (slow, stoppable answers), `-uiTestSearch results|offline` (what the Models page finds: a scripted
-set of language models, or a failed search as with no connection), `-uiTestSync off|syncing|upToDate|paused|error` (what sync
-reports, with a stand-in replicator that never reaches a server; any value but `off` also fills in the Sync settings and turns
-sync on). Stub scenarios: `happy`, `llmFailsOnce`, `lowStorage`.
-The stub offers a second, text-only embedding model, to try a switch of embedder.
-
-## Models
-
-The first-run setup installs the default pair. The **Models** page (**Settings**, the gear in the library toolbar, then *Models*)
-is where you change it.
-It lists what is **in use**, what is **installed** but not in use, the **embedding models** the app offers, and a search for
-**language and embedding models**.
-
-**Finding and downloading.** The app ships a list of embedding models, because each one needs settings (prompt templates,
-chunk sizes, the distances that separate a match from a poor one) that were tested for it. Search finds the public
-`litert-community` models on Hugging Face, language models and embedding models, each marked with its kind. Each result is
-judged before anything is downloaded, from its size and the first 64 KB of the file: *Checked after download* (the file
-does not say which runtime it needs), *Unknown kind of model*, *Not a LiteRT-LM model file*, or *Too large for this iPad*
-(the file is over 45% of the iPad's memory). The last three cannot be downloaded. Once a file is downloaded and its checksum
-verified, the app's own LiteRT-LM runtime reads it and has the last word: the wrong type, a newer runtime than the app's, a
-language model with a context under 4,096 tokens, or an embedding model that reports no vector size removes the file and
-shows why. A downloaded model is installed but not in use.
-
-**Untested embedding models.** An embedding model found by search that is not in the list is marked *Untested*. It is used
-with generic settings: no prompt templates, the vector size and an input length the file reports, and the distances the app
-ships with, so how well search works with it is unknown. The confirmation says so, and you can switch back to a tested model
-at any time (everything is then indexed again). A search result that is the very file of a list entry installs as that tested entry.
-
-**Using a model.** *Use* asks first and names the cost. For an embedding model: how many documents will be re-indexed,
-that each is found by keywords only until its re-index is done, and that photo search is unavailable until it finishes
-(or, for a model that cannot analyze photos, for as long as it is in use). For a language model: that an answer being
-written will stop. After you confirm, the switch happens at once: an answer being written is kept as a stopped answer, indexing
-stops where it is, the services are built again from the new model and indexing carries on. If the new model cannot be loaded,
-the previous one is back in use and the page says why. Chats, documents and their originals are never touched.
-
-**Photos.** A model without photos in its vector space (the stub's text-only embedder, say) turns photo import and photo
-questions off, with an explanation that names it; PDF and Word files still import and search by text. Photo documents already in
-the library keep the vectors they had: search skips them (they belong to another model) and they are valid again when a
-model with photos is back in use.
-
-**Deleting.** Any installed model that is not in use can be deleted; the one in use cannot.
-
-**Network.** Searching and downloading on this page are the only network use after setup, and only when you ask. Nothing
-about your documents, questions or answers is sent. The X-ray panel shows each request as a *Model search* or
-*Model download* operation, and importing documents and asking questions record none. **About** lists every installed model with its licence as its
-publisher states it, and links to the full terms.
-
-The list offers EmbeddingGemma 2 Text Vision 440M (the default, 388 MB), Text 270M (165 MB, no photos) and 740M (485 MB; its audio and
-video are not used). All three are one model with different encoders loaded and gave identical results in the evaluations
-(`openspec/changes/add-model-settings/evaluations/embedder-candidates.md`).
-
-To add an embedding model to the list (and so make it tested), give it an entry in `App/Resources/EmbedderCatalog.json` with a profile, and settle
-the profile with the retrieval and photo evaluations first (`EvalTests`, `ImageEvalTests`): the model has to meet the recall baselines
-in the `hybrid-retrieval` and `image-search` specs.
-
-## Sync
-
-Several iPads can share one library. Turn it on under **Settings → Sync** (or tap the cloud in the library toolbar): enter the
-address of your Sync Gateway, the iPad's user name and password (kept in the Keychain), and switch it on. A document imported
-on one iPad then appears on the others, searchable without being indexed again, because the chunks and their vectors travel
-with it. Any iPad can import, rename, re-index and delete; deleting removes a document from every iPad, and the confirmation
-says so.
-
-To try it, [`sync/`](sync/README.md) has a Docker Compose stack that starts Couchbase Server and Sync Gateway, already set up
-for the app, with one command: `cd sync && docker compose up -d --wait`.
-
-- **What is shared.** Documents (with their original files), chunks and photos. Chats and messages stay on each iPad, and so do
-  the vector and keyword indexes: each iPad builds its own from the documents it holds.
-- **One embedding model for everyone** (the *fleet model* in the code). Shared vectors have to come from one model, the app's
-  default (EmbeddingGemma 2). An iPad that switches to another embedding model pauses sync, and says so on the Sync page and
-  in the Models confirmation; it resumes by itself once the iPad is back on the default and every document has been indexed
-  with it.
-- **Originals up to 20 MB.** That is the largest attachment Sync Gateway takes, so larger files are refused at import, with or
-  without sync. A larger one imported by an older version stays on its iPad and is listed on the Sync page as not shared.
-- **Arriving documents.** A document received from another iPad is searchable only when all its chunks and photos have
-  arrived, and shows as *Arriving…* until then. One another iPad is still indexing shows as *Being indexed on another device*.
-- **Offline.** Sync never gets in the way: import, search and chat work with no connection, and changes are exchanged when
-  the server is reachable again.
-- **Network use.** With sync on, the only requests go to the server you entered, and carry documents and their search data,
-  never a question, an answer or a chat. The X-ray panel shows each burst of replication as a *Sync* operation: documents
-  sent and received, anything the server refused, and the moment a received document became searchable.
-
-A real iPad reaches a server on your network over `ws://` (the app allows plain connections to local addresses only, and iPadOS
-asks once to let it use the local network); use `wss://` for anything else.
-
-## Photos
-
-**Import.** JPEG, PNG and HEIC files import like any document (picker, share sheet, drag and drop). A photo document is
-findable by its title, by the text read from it, and by how it looks. Photos *inside* PDF and Word files are found too:
-each one is stored with its page (PDF) or section (Word) and a caption, taken from the text next to it or the author's
-description. Logos, icons, pictures repeated on many pages, and full-page scans are skipped. Documents imported before
-photos were supported get their photos when they are re-indexed.
-
-**Ask with a photo.** In the chat, the camera button takes a photo and the photo button picks one; send it alone or with a
-question.
-
-- Photographing a **nameplate** reads its model and part numbers (ratings, dates and protection classes are left out) and
-  searches the documents for them, so "how do I descale it?" with a photo of the unit finds the right manual.
-- A photo **alone** is answered with the library photos that look like it, each with its document and page, and the
-  chunks from those pages. Nothing is generated.
-- An answer shows the photos on the pages it cites, and tapping one opens that page.
-
-**Ask with words.** A typed question also searches the photos by meaning, so "where is the drain plug?" finds a photo of
-the drain plug that nobody captioned, and the answer shows it beside the text, with the chunks of its page. Matching
-photos only add to the answer: a photo whose look merely resembles the words never makes a question answerable on its own.
-
-Photos are analyzed on the iPad and are never given to the language model: answers still come only from document text.
-A photo kept with a question is stored without its metadata (no location, camera or time).
-
-**Simulator.** Photo search works in the simulator too, on the CPU with the real embedding model (about a second per
-photo), or in stub mode with stand-in features (`-uiTestModelStub`).
-
-The distances that count as a match are `imageMaxDistance` (photo to photo) and `textToImageMaxDistance` (words to photo)
-in `RetrievalConfiguration`. Both are **provisional**: tuned on 14 Wikimedia Commons photos of equipment, where the query is
-a *different* photo of the same kind of thing, not photos taken in the field. Re-tune them with real photos before relying on
-them (see Tests, `IMAGE_EVAL_DIR`).
-
-## X-ray and the database explorer
-
-For showing what the app and Couchbase Lite do behind each action. There is nothing to switch on: the right-hand column
-has a `Source | X-ray` switch, and tapping a citation or a document returns to Source.
-
-X-ray lists every import, question, source opening, re-index and deletion as a group, with each database step inside
-(for photos: each photo read, the batch of photos stored as blobs beside their JSON, and the image search over the second
-vector index):
-the SQL++ as executed with its parameters, the time, the index the query plan uses (the raw plan is one tap away), how
-many rows the index returned, how many were visible and how many were used, and the stored JSON of any chunk or
-document ID you tap. "Why it matters" adds one sentence per step. "Slow reveal" shows a burst of steps one at a time,
-the text buttons enlarge the panel for a projector, and "Reset demo" (after confirming) clears the library and chats
-and imports six sample documents (the four text ones, a service manual PDF whose figure is a photo of a nameplate, and a
-photo of another unit's nameplate; the photos are drawn in code, so they carry no licence of their own).
-
-Run it on the real database without the real models: `-uiTestModelStub happy -uiTestSeed`. The panel then shows a
-"stub models" notice, because the distances come from a stand-in embedder and mean nothing; use the real models when you
-want to talk about relevance.
-
-### Database explorer
-
-The Library toolbar has a **Database** button that opens a full-screen, read-only view of the local Couchbase
-Lite database; Done returns to exactly where you were. Collections are grouped as replicated and local only, each with its
-document count (read when it opens, and again with Refresh). Pick a collection to page through its document IDs (filter by
-ID), then a document to see it as stored: vectors shortened with "Show in full", image and text blobs with a preview, and
-fields that name another document (`docId`, `chatId`, `imageId`) are links, with Back returning to where you came from.
-A document record also lists its chunks and images. Indexes shows each index's kind and settings. **Query** is a SQL++
-console: pick a starter (keyword search, the chunks of one document, ingest jobs by state) or type a SELECT, see up to
-200 rows with the time, and open the query plan. Parameters (`$name`, including `$vector`) are not supported. Tapping a
-document ID in X-ray opens the explorer at that document. It never writes, and it adds nothing to the X-ray log.
-
-Above a document's JSON, **Sync attributes** is collapsed by default. Expanding it loads the local Couchbase Lite document
-ID, scope, collection, revision ID, sequence, raw revision timestamp and expiration; no server lookup is made. Loading works
-offline and with sync disabled. The values are a local snapshot and do not indicate whether a revision reached the server.
-Collapse the section to hide its values while you inspect the document body.
-
-### Document contents
-
-To see how a document was split, tap the **›** at the right of a ready document in the Library (photos have nothing to
-open). The sidebar then lists the document's chunks or its images (the switch at the top), grouped under page headers for
-a PDF and under headings for other files. A chunk that stands for a photo carries a photo mark. Tap one and the right-hand
-column shows it: for a chunk, its number out of the total, page and heading, length, embedding model and number of
-dimensions, and its full text, with the sentences it repeats from the previous chunk and the next chunk tinted
-(Previous and Next step through the list); for an image, the stored picture (pinch to zoom), its size, caption and where
-the caption came from, and the text read off it. **Show in document** opens the original at that spot with the chunk
-highlighted, and **Show chunk** on an image jumps to the chunk that makes it searchable. The list is read when it opens and
-again when a re-index finishes; X-ray shows that read as one "Contents of …" step. Nothing is written, and previews run
-no queries, so stepping through chunks adds nothing to the X-ray log.
-
-### Talk track
-
-1. **Import.** Tap Reset demo, then watch the Import groups: the file is stored as a blob next to its JSON record, the
-   chunks and their vectors are written in one transaction, and the chunk set is made searchable in a second one. The
-   indexing job is saved in a collection that never replicates.
-2. **Ask.** "How do I reset the X200?" Open the vector search: one SQL++ query over the same database that holds the
-   documents, the index it used, and the stored chunk with its 256-number vector as an ordinary JSON field.
-3. **Exact codes.** "What does error E-042 mean?" Open the keyword search and the merge: a full-text query in the same
-   engine, and the two result lists merged by rank. This is why a code and a description both land on the right page.
-4. **Follow-up.** Ask "And the X100?" and show the rewritten standalone query, then an off-topic question and the
-   relevance check that stops the model being called.
-5. **Photo.** Tap the sample-photo button (or the camera, with a real nameplate) and send the photo alone: the app reads
-   "MODEL X200-B" off the plate, finds the manual page whose figure looks like it, and lists that page's chunks. In
-   X-ray, open the photo analysis, then the image search: a second vector index (`images_vec`) in the same database,
-   queried with the same SQL++, and the merge now has a third list. Add "how do I descale it?" to get a cited answer.
-   Then type "where is the nameplate?" with no photo: the question's own vector searches the same photo index (Words → photos
-   search), and a fourth column appears in the merge.
-6. **Look inside.** Tap Database after an import: the chunks each point back to their document, ingest jobs and the
-   vector-index settings sit in collections that never replicate, and the keyword starter runs the same full-text query
-   in the console, with a plan that names `chunks_fts`.
-7. **Chunks.** Tap › next to the service manual and open its image, then Show chunk to land on the text that makes the
-   figure searchable. To show the overlap, open a longer document (the sample PDFs are about one chunk a page, so there
-   is nothing to tint): step through two chunks and point out the sentences the next chunk repeats, which is why a
-   question that lands on a chunk's edge still finds its answer.
-8. **Offline.** Turn on airplane mode: the network indicator flips and everything above still works and is still traced.
-
-### If asked: "so filtered vector search is slow?"
-
-At 20,000 chunks, adding the visibility filter to the vector query cost about 160-330 ms, against a few milliseconds
-without it. So the index is queried unfiltered and visibility (the active generation of a ready document) is decided from
-the chunk ID, which encodes document, generation and position. The row funnel in X-ray shows this: rows the index
-returned, rows that were visible, rows used. It also keeps a re-index in progress invisible to search until it is switched
-in. These figures were measured earlier in this project and are recorded in the comment above the search code
-(`CouchbaseChunkSearch.swift`); re-measure with `RUN_BENCHMARKS=1` before quoting them, and do not generalise them to other products.
-
-## Tests
-
-```sh
-for p in Ports Core Adapters; do (cd Packages/$p && swift test); done      # packages, on the Mac
-DEST='platform=iOS Simulator,name=iPad Pro 13-inch (M5)'
-xcodebuild test -project ManualBot.xcodeproj -scheme ManualBot -destination "$DEST" \
-  -only-testing:ManualBotTests                                                # app unit tests
-xcodebuild test-without-building -project ManualBot.xcodeproj -scheme ManualBot -destination "$DEST" \
-  -only-testing:ManualBotUITests -parallel-testing-enabled YES -parallel-testing-worker-count 2   # UI tests, ~12 min
-```
-
-The UI tests run on two simulator clones at once (about 12 minutes instead of 20). Three clones are not faster: they slow
-each other down enough that timing-sensitive tests fail. The unit tests run on their own first for the same reason.
-
-Tests against the real models are skipped unless you point them at the files (the app downloads its models; to run these
-tests fetch them yourself from the `url` entries in `App/Resources/ModelManifest.json`, into a folder outside the
-repository or into `LocalModels/`, which git ignores):
-
-| Variable | Points at | Enables |
-|---|---|---|
-| `EMBEDDER_MODEL_PATH` | `embeddinggemma-2-text-vision-440m.litertlm` | embedder, retrieval and photo evaluations, large-document tests, model validator tests |
-| `GENERATOR_MODEL_PATH` | `gemma-4-E2B-it.litertlm` | generator and its warm-up, full-pipeline tests, answer evaluation, model validator tests |
-| `ANSWER_EVAL_BASELINE_MODEL_PATH` | `gemma-4-E4B-it.litertlm` | with the two above, runs a baseline model first and prints whether the candidate meets the pass criteria |
-| `ANSWER_EVAL_REPORT`, `ANSWER_EVAL_MODEL` | a Markdown file, a name | save the answer evaluation's report and name the model in it |
-| `RUN_BENCHMARKS=1` | | 20,000-chunk retrieval benchmark and 5,000-photo search benchmark (add `EMBEDDER_MODEL_PATH`) |
-| `RUN_SPIKES=1` | | the EmbeddingGemma 2 spike (output size, input limits, templates, latency), and the minimum-runtime-version spike (add both model paths) |
-| `RUN_NETWORK_TESTS=1` | | the model header probe against the real Hugging Face host |
-| `IMAGE_EVAL_DIR` | a folder of photos (below) | photo and words-to-photo search evaluation on those photos |
-| `SYNC_GATEWAY_URL` | `ws://localhost:4984/manualbot`, with the stack in `sync/` running | in `Packages/Adapters`: replication through a real Sync Gateway, including an original of exactly 20 MB (`SYNC_GATEWAY_PASSWORD` if you changed the accounts' password) |
-
-For the iOS simulator, prefix the variables with `TEST_RUNNER_`.
-
-```sh
-# Retrieval quality (recall, relevance threshold, chunk sizes), in Packages/Adapters:
-EMBEDDER_MODEL_PATH=…/embeddinggemma-2-text-vision-440m.litertlm swift test --filter RealEvalTests
-# Answer quality of a language model (31 questions and 6 follow-up pairs), comparing a candidate with the current one:
-EMBEDDER_MODEL_PATH=… GENERATOR_MODEL_PATH=…/gemma-4-E2B-it.litertlm ANSWER_EVAL_BASELINE_MODEL_PATH=…/gemma-4-E4B-it.litertlm \
-  swift test --filter AnswerEvalTests
-```
-
-The photo evaluation (`ImageEvalTests`) always runs on a generated set (procedural scenes and drawn shapes such as "a red
-circle"), which checks the harness but cannot judge real photos. For real ones, point `IMAGE_EVAL_DIR` at a folder with the
-library's photos in `references/`, other photos of the same things (other angle, light, crop) and unrelated photos in
-`queries/`, and an `eval.json` that may also list typed descriptions of the reference photos:
-
-```json
-{"queries": [{"file": "pump-angle2.jpg", "expected": "pump.jpg"}, {"file": "unrelated.jpg", "expected": null}],
- "texts": [{"text": "a centrifugal pump", "expected": "pump.jpg"}],
- "unrelatedTexts": ["a plate of spaghetti"]}
-```
-
-```sh
-IMAGE_EVAL_DIR=~/image-eval EMBEDDER_MODEL_PATH=…/embeddinggemma-2-text-vision-440m.litertlm \
-  swift test --filter ImageEvalTests    # in Packages/Adapters; prints recall and a threshold table
-```
-
-It reports the share of query photos and of descriptions whose expected photo is in the top three, and, for each candidate
-threshold, how many matches are kept and how many unrelated photos or descriptions are rejected. Use it to set
-`imageMaxDistance` and `textToImageMaxDistance`.
-
-The simulator needs an iOS 27 runtime; the app tests above name `iPad Pro 13-inch (M5)`, which is one.
-
-## Layout
-
-- `App/`: SwiftUI app (library, chat, source viewer, model setup).
-- `Packages/Ports`: the interfaces between parts (including `LibrarySync`), plus test fakes.
-- `Packages/Core`: model-independent logic (chunking, retrieval, chat, ingestion, and `SyncPolicy`, which decides when sync may run).
-- `Packages/Adapters`: Couchbase Lite (including the replicator, `CouchbaseLibrarySync`), LiteRT-LM (embedding and answers), Vision text recognition, extractors, downloader.
-- `Packages/LiteRTLMKit`: vendored, patched Swift wrapper for LiteRT-LM (see its README).
-- `sync/`: Couchbase Server and Sync Gateway as a Docker Compose stack for trying sync (see its README).
-- `openspec/`: the change's proposal, specs, design and task list.
+| | |
+|---|---|
+| [Using ManualBot](docs/using.md) | set up, models, sync, photos |
+| [Demo](docs/demo.md) | X-ray, the database explorer, document contents, and the eight-step talk track |
+| [How ManualBot works](docs/architecture.md) | the parts, the import and answer pipelines, what syncs |
+| [Testing](docs/testing.md) | tests, model evaluations, regenerating these screenshots |
+| [Local sync stack](sync/README.md) | Couchbase Server and Sync Gateway in Docker Compose |

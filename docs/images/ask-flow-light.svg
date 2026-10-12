@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Asking a question</title>
+  <desc id="desc">Asking a question, all on the iPad: a follow-up is rewritten as a standalone query and embedded; vector, keyword and words-to-photos searches run at once in one Couchbase Lite database (plus photo-to-photo with a photo); the results are merged by rank; if nothing is relevant the app says it couldn't find an answer without calling the model; otherwise Gemma 4 E2B answers from the retrieved chunks only, a citation check keeps only real citations, and the answer shows the page or section each part came from.</desc>
+  <style>
+    svg { --bg: #ffffff; --panel: #f6f8fa; --box: #ffffff; --line: #d0d7de; --text: #1f2328;
+          --muted: #59636e; --accent: #0969da; --warn: #bc4c00; }
+    .bg { fill: var(--bg); }
+    .frame { fill: var(--panel); stroke: var(--line); stroke-dasharray: 6 5; }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--text); text-anchor: middle; }
+    .h { font-size: 15px; font-weight: 600; text-anchor: start; }
+    .t { font-size: 13px; font-weight: 600; }
+    .s { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: var(--muted); }
+    .lbl { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: var(--muted); }
+    .fl { font-size: 12px; fill: var(--muted); text-anchor: start; }
+    .cap { font-size: 14px; }
+    .box { fill: var(--box); stroke: var(--line); stroke-width: 1.5; }
+    .box.alt { stroke: var(--warn); stroke-dasharray: 5 4; }
+    .box.opt { stroke-dasharray: 5 4; }
+    .arrow { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+    .arrow.alt { stroke: var(--warn); stroke-dasharray: 5 4; }
+    .head { fill: var(--muted); }
+    .ring { fill: none; stroke: var(--accent); stroke-width: 2.5; opacity: 0; }
+    .c { opacity: 0; }
+    .c.final { opacity: 1; }
+
+    /* 12 s loop: stage n lights up at (n-1) s with its caption, then everything holds lit for 3 s. */
+    .st1 { animation: st1 12s linear infinite; }
+    @keyframes st1 { 0%, 0.0% { opacity: .18; } 3.0%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg1 { animation: rg1 12s linear infinite; }
+    @keyframes rg1 { 0%, 0.0% { opacity: 0; } 1.0%, 7.33% { opacity: 1; } 8.33%, 100% { opacity: 0; } }
+    .st2 { animation: st2 12s linear infinite; }
+    @keyframes st2 { 0%, 8.33% { opacity: .18; } 11.33%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg2 { animation: rg2 12s linear infinite; }
+    @keyframes rg2 { 0%, 8.33% { opacity: 0; } 9.33%, 15.670000000000002% { opacity: 1; } 16.67%, 100% { opacity: 0; } }
+    .st3 { animation: st3 12s linear infinite; }
+    @keyframes st3 { 0%, 16.67% { opacity: .18; } 19.67%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg3 { animation: rg3 12s linear infinite; }
+    @keyframes rg3 { 0%, 16.67% { opacity: 0; } 17.67%, 24.0% { opacity: 1; } 25.0%, 100% { opacity: 0; } }
+    .st4 { animation: st4 12s linear infinite; }
+    @keyframes st4 { 0%, 25.0% { opacity: .18; } 28.0%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg4 { animation: rg4 12s linear infinite; }
+    @keyframes rg4 { 0%, 25.0% { opacity: 0; } 26.0%, 32.33% { opacity: 1; } 33.33%, 100% { opacity: 0; } }
+    .st5 { animation: st5 12s linear infinite; }
+    @keyframes st5 { 0%, 33.33% { opacity: .18; } 36.33%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg5 { animation: rg5 12s linear infinite; }
+    @keyframes rg5 { 0%, 33.33% { opacity: 0; } 34.33%, 40.67% { opacity: 1; } 41.67%, 100% { opacity: 0; } }
+    .st6 { animation: st6 12s linear infinite; }
+    @keyframes st6 { 0%, 41.67% { opacity: .18; } 44.67%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg6 { animation: rg6 12s linear infinite; }
+    @keyframes rg6 { 0%, 41.67% { opacity: 0; } 42.67%, 49.0% { opacity: 1; } 50.0%, 100% { opacity: 0; } }
+    .st7 { animation: st7 12s linear infinite; }
+    @keyframes st7 { 0%, 50.0% { opacity: .18; } 53.0%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg7 { animation: rg7 12s linear infinite; }
+    @keyframes rg7 { 0%, 50.0% { opacity: 0; } 51.0%, 57.33% { opacity: 1; } 58.33%, 100% { opacity: 0; } }
+    .st8 { animation: st8 12s linear infinite; }
+    @keyframes st8 { 0%, 58.33% { opacity: .18; } 61.33%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg8 { animation: rg8 12s linear infinite; }
+    @keyframes rg8 { 0%, 58.33% { opacity: 0; } 59.33%, 65.67% { opacity: 1; } 66.67%, 100% { opacity: 0; } }
+    .st9 { animation: st9 12s linear infinite; }
+    @keyframes st9 { 0%, 66.67% { opacity: .18; } 69.67%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg9 { animation: rg9 12s linear infinite; }
+    @keyframes rg9 { 0%, 66.67% { opacity: 0; } 67.67%, 74.0% { opacity: 1; } 75.0%, 100% { opacity: 0; } }
+    .c1 { animation: c1 12s linear infinite; }
+    @keyframes c1 { 0%, 0.0% { opacity: 0; } 1.0%, 7.33% { opacity: 1; } 8.33%, 100% { opacity: 0; } }
+    .c2 { animation: c2 12s linear infinite; }
+    @keyframes c2 { 0%, 8.33% { opacity: 0; } 9.33%, 15.670000000000002% { opacity: 1; } 16.67%, 100% { opacity: 0; } }
+    .c3 { animation: c3 12s linear infinite; }
+    @keyframes c3 { 0%, 16.67% { opacity: 0; } 17.67%, 24.0% { opacity: 1; } 25.0%, 100% { opacity: 0; } }
+    .c4 { animation: c4 12s linear infinite; }
+    @keyframes c4 { 0%, 25.0% { opacity: 0; } 26.0%, 32.33% { opacity: 1; } 33.33%, 100% { opacity: 0; } }
+    .c5 { animation: c5 12s linear infinite; }
+    @keyframes c5 { 0%, 33.33% { opacity: 0; } 34.33%, 40.67% { opacity: 1; } 41.67%, 100% { opacity: 0; } }
+    .c6 { animation: c6 12s linear infinite; }
+    @keyframes c6 { 0%, 41.67% { opacity: 0; } 42.67%, 49.0% { opacity: 1; } 50.0%, 100% { opacity: 0; } }
+    .c7 { animation: c7 12s linear infinite; }
+    @keyframes c7 { 0%, 50.0% { opacity: 0; } 51.0%, 57.33% { opacity: 1; } 58.33%, 100% { opacity: 0; } }
+    .c8 { animation: c8 12s linear infinite; }
+    @keyframes c8 { 0%, 58.33% { opacity: 0; } 59.33%, 65.67% { opacity: 1; } 66.67%, 100% { opacity: 0; } }
+    .c9 { animation: c9 12s linear infinite; }
+    @keyframes c9 { 0%, 66.67% { opacity: 0; } 67.67%, 74.0% { opacity: 1; } 75.0%, 100% { opacity: 0; } }
+    .c.final { animation: cf 12s linear infinite; }
+    @keyframes cf { 0%, 75.0% { opacity: 0; } 76.0%, 96% { opacity: 1; } 100% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .st, .ring, .c { animation: none !important; }
+      .st { opacity: 1; } .ring, .c { opacity: 0; } .c.final { opacity: 1; }
+    }
+  </style>
+  <defs>
+    <marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="960" height="540" rx="12"/>
+  <text class="h" x="24" y="30">Asking a question</text>
+  <rect class="frame" x="20" y="44" width="920" height="438" rx="12"/>
+  <text class="fl" x="34" y="470">On this iPad · one Couchbase Lite database · works offline</text>
+  <g class="st st1">
+      <rect class="box" x="40" y="64" width="150" height="54" rx="8"/>
+      <text class="t" x="115.0" y="88.0">Question</text>
+      <text class="s" x="115.0" y="105.0">“And conflicts?”</text>
+  </g>
+  <g class="ring rg1">
+      <rect x="37" y="61" width="156" height="60" rx="10"/>
+  </g>
+  <g class="st st2">
+      <path class="arrow" d="M190,91 L226,91" marker-end="url(#head)"/>
+      <rect class="box" x="230" y="64" width="200" height="54" rx="8"/>
+      <text class="t" x="330.0" y="88.0">Rewrite the follow-up</text>
+      <text class="s" x="330.0" y="105.0">standalone query</text>
+  </g>
+  <g class="ring rg2">
+      <rect x="227" y="61" width="206" height="60" rx="10"/>
+  </g>
+  <g class="st st3">
+      <path class="arrow" d="M430,91 L466,91" marker-end="url(#head)"/>
+      <rect class="box" x="470" y="64" width="200" height="54" rx="8"/>
+      <text class="t" x="570.0" y="88.0">Embed the question</text>
+      <text class="s" x="570.0" y="105.0">256-number vector</text>
+  </g>
+  <g class="ring rg3">
+      <rect x="467" y="61" width="206" height="60" rx="10"/>
+  </g>
+  <g class="st st4">
+      <path class="arrow" d="M570,118 L570,136 L160,136 L160,152" marker-end="url(#head)"/>
+      <rect class="box" x="40" y="156" width="240" height="44" rx="8"/>
+      <text class="t" x="160.0" y="175.0">Vector search</text>
+      <text class="s" x="160.0" y="192.0">chunks_vec</text>
+      <rect class="box" x="40" y="208" width="240" height="44" rx="8"/>
+      <text class="t" x="160.0" y="227.0">Keyword search</text>
+      <text class="s" x="160.0" y="244.0">chunks_fts</text>
+      <rect class="box" x="40" y="260" width="240" height="44" rx="8"/>
+      <text class="t" x="160.0" y="279.0">Words → photos</text>
+      <text class="s" x="160.0" y="296.0">images_vec</text>
+      <rect class="box opt" x="40" y="312" width="240" height="44" rx="8"/>
+      <text class="t" x="160.0" y="331.0">Photo → photos</text>
+      <text class="s" x="160.0" y="348.0">images_vec · with a photo</text>
+  </g>
+  <g class="ring rg4">
+      <rect x="37" y="153" width="246" height="50" rx="10"/>
+      <rect x="37" y="205" width="246" height="50" rx="10"/>
+      <rect x="37" y="257" width="246" height="50" rx="10"/>
+      <rect x="37" y="309" width="246" height="50" rx="10"/>
+  </g>
+  <g class="st st5">
+      <path class="arrow" d="M280,178 H304"/>
+      <path class="arrow" d="M280,230 H304"/>
+      <path class="arrow" d="M280,282 H304"/>
+      <path class="arrow" d="M280,334 H304"/>
+      <path class="arrow" d="M304,178 V334"/>
+      <path class="arrow" d="M304,256 L326,256" marker-end="url(#head)"/>
+      <rect class="box" x="330" y="229" width="150" height="54" rx="8"/>
+      <text class="t" x="405.0" y="253.0">Rank merge</text>
+      <text class="s" x="405.0" y="270.0">one list</text>
+  </g>
+  <g class="ring rg5">
+      <rect x="327" y="226" width="156" height="60" rx="10"/>
+  </g>
+  <g class="st st6">
+      <path class="arrow" d="M480,256 L516,256" marker-end="url(#head)"/>
+      <rect class="box" x="520" y="229" width="180" height="54" rx="8"/>
+      <text class="t" x="610.0" y="253.0">Relevance check</text>
+      <text class="s" x="610.0" y="270.0">best distance ≤ limit</text>
+      <path class="arrow alt" d="M610,283 L610,356" marker-end="url(#head)"/>
+      <text class="lbl" x="660" y="324">not relevant</text>
+      <rect class="box alt" x="490" y="360" width="240" height="54" rx="8"/>
+      <text class="t" x="610.0" y="384.0">“I couldn't find an answer…”</text>
+      <text class="s" x="610.0" y="401.0">model not called</text>
+  </g>
+  <g class="ring rg6">
+      <rect x="517" y="226" width="186" height="60" rx="10"/>
+      <rect x="487" y="357" width="246" height="60" rx="10"/>
+  </g>
+  <g class="st st7">
+      <path class="arrow" d="M700,256 L736,256" marker-end="url(#head)"/>
+      <rect class="box" x="740" y="229" width="190" height="54" rx="8"/>
+      <text class="t" x="835.0" y="253.0">Gemma 4 E2B answers</text>
+      <text class="s" x="835.0" y="270.0">from these chunks only</text>
+  </g>
+  <g class="ring rg7">
+      <rect x="737" y="226" width="196" height="60" rx="10"/>
+  </g>
+  <g class="st st8">
+      <path class="arrow" d="M835,283 L835,307" marker-end="url(#head)"/>
+      <rect class="box" x="740" y="311" width="190" height="50" rx="8"/>
+      <text class="t" x="835.0" y="333.0">Citation check</text>
+      <text class="s" x="835.0" y="350.0">keeps real citations</text>
+  </g>
+  <g class="ring rg8">
+      <rect x="737" y="308" width="196" height="56" rx="10"/>
+  </g>
+  <g class="st st9">
+      <path class="arrow" d="M835,361 L835,385" marker-end="url(#head)"/>
+      <rect class="box" x="740" y="389" width="190" height="50" rx="8"/>
+      <text class="t" x="835.0" y="411.0">Answer + citations</text>
+      <text class="s" x="835.0" y="428.0">page or section</text>
+  </g>
+  <g class="ring rg9">
+      <rect x="737" y="386" width="196" height="56" rx="10"/>
+  </g>
+  <text class="cap c c1" x="480.0" y="518">A question is asked in the chat, with words, a photo, or both.</text>
+  <text class="cap c c2" x="480.0" y="518">A follow-up is rewritten as a standalone query: “And conflicts?” → “How does XDCR resolve conflicts?”</text>
+  <text class="cap c c3" x="480.0" y="518">The query is embedded on the iPad by EmbeddingGemma 2: 256 numbers.</text>
+  <text class="cap c c4" x="480.0" y="518">Vector, keyword and words → photos searches run at once in one database; a photo adds a fourth.</text>
+  <text class="cap c c5" x="480.0" y="518">The result lists are merged by rank, so an exact code and a description both land on the right page.</text>
+  <text class="cap c c6" x="480.0" y="518">Relevance check: if nothing is close enough, the app says so at once, and the model is never called.</text>
+  <text class="cap c c7" x="480.0" y="518">Gemma 4 E2B writes the answer from the retrieved chunks only, on the iPad.</text>
+  <text class="cap c c8" x="480.0" y="518">Citation check: only citations of chunks that were actually retrieved are kept.</text>
+  <text class="cap c c9" x="480.0" y="518">The answer shows the page or section each part came from.</text>
+  <text class="cap c final" x="480.0" y="518">Every step on the iPad, in one Couchbase Lite database, with no network.</text>
+</svg>

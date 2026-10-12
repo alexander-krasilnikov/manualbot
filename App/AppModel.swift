@@ -315,8 +315,7 @@ final class AppModel {
         await TraceContext.$operation.withValue(operation) {
             for record in (try? await repository.chats()) ?? [] { try? await repository.deleteChat(id: record.id) }
             for document in (try? await repository.documents()) ?? [] { try? await ingestion.delete(docId: document.id) }
-            // With stand-in image features (stub mode) the manual's figure must be the plate as photographed.
-            let samples = (try? SampleDocuments.write(into: FileManager.default.temporaryDirectory, cropFigure: factory.stubPhoto == nil)) ?? []
+            let samples = (try? SampleDocuments.write(into: FileManager.default.temporaryDirectory)) ?? []
             for url in samples { _ = try? await ingestion.enqueue(fileURL: url, id: SampleDocuments.id(for: url)) }
         }
         source?.close()

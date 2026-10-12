@@ -228,11 +228,12 @@ final class ResetDemoUITests: UITestCase {
         waitFor(confirm)
         confirm.tap()
 
-        waitFor(app.buttons["doc-Bike Repair"], timeout: 30)
+        waitFor(app.buttons["doc-Couchbase Under the Hood"], timeout: 30)
         let ready = app.descendants(matching: .any).matching(identifier: "status-ready")
-        let settled = NSPredicate { _, _ in self.documents(app).count == 6 && ready.count == 6 }
-        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 60), .completed,
-                       "expected exactly the six sample documents, all ready; found \(documents(app).count)")
+        let settled = NSPredicate { _, _ in self.documents(app).count == 2 && ready.count == 2 }
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: settled, object: nil)], timeout: 120), .completed,
+                       "expected exactly the two sample PDFs, both ready; found \(documents(app).count)")
+        XCTAssertTrue(app.buttons["doc-Capella Architecture Overview"].exists)
         XCTAssertFalse(element(app, "assistantMessage").exists, "the old chat must be gone")
         waitFor(element(app, "xrayGroup-Reset demo"))
     }
@@ -252,7 +253,7 @@ final class ResetDemoUITests: UITestCase {
         XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: gone, object: confirm)], timeout: 5), .completed)
 
         XCTAssertEqual(documents(app).count, 5)
-        XCTAssertFalse(app.buttons["doc-Bike Repair"].exists)
+        XCTAssertFalse(app.buttons["doc-Couchbase Under the Hood"].exists)
         XCTAssertTrue(element(app, "assistantMessage").exists)
         XCTAssertFalse(element(app, "xrayGroup-Reset demo").exists)
     }
@@ -296,8 +297,11 @@ final class PhotoDemoUITests: UITestCase {
         XCTAssertTrue(element(app, "xrayGroup-Photo question").exists)
     }
 
-    func testTheResetImportsAPhotoAndAManualThatContainsOne() {
-        let app = demoApp()
+    func testAfterAResetTheSamplePhotoCanBeSentAlone() {
+        let app = launch(extra: ["-uiTestSeed", "-uiTestPhoto", "sample"])
+        app.buttons["startDownload"].tap()
+        waitFor(app.navigationBars["Library"], timeout: 30)   // seeding imports five documents first
+        waitFor(app.buttons["doc-X200 Manual"])
         let picker = element(app, "detailTabPicker")
         waitFor(picker)
         picker.buttons["X-ray"].tap()
@@ -309,20 +313,19 @@ final class PhotoDemoUITests: UITestCase {
         waitFor(confirm)
         confirm.tap()
 
-        waitFor(app.buttons["doc-X200 Service Manual"], timeout: 60)
-        waitFor(app.buttons["doc-Nameplate X100"], timeout: 60)
-        let shown = NSPredicate(format: "value == 'thumbnail shown'")
-        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: shown, object: app.buttons["doc-Nameplate X100"])], timeout: 60), .completed)
+        let whitepaper = app.buttons["doc-Couchbase Under the Hood"]
+        waitFor(whitepaper, timeout: 60)
+        let ready = app.descendants(matching: .any).matching(identifier: "status-ready")
+        let bothReady = NSPredicate(format: "count == 2")
+        XCTAssertEqual(XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: bothReady, object: ready)], timeout: 120), .completed)
 
-        // The sample nameplate matches the manual's figure, which is not the photo that was imported.
+        // The sample photo is the debugger screenshot as photographed. That it finds page 28 is checked with the real model
+        // (`SamplePhotoMatchTests`); the stub's colour-cell features cannot tell, so this checks the photo question runs.
         element(app, "attachPhotoButton").tap()
+        waitFor(element(app, "attachedPhoto"))
         let send = element(app, "sendButton")
         waitEnabled(send)
         send.tap()
         waitFor(element(app, "matchesMessage"), timeout: 60)
-        let match = element(app, "imageMatch-1")
-        waitFor(match)
-        XCTAssertTrue(match.label.contains("X200 Service Manual"), match.label)
-        XCTAssertFalse(match.label.contains("Nameplate X100"), match.label)
     }
 }

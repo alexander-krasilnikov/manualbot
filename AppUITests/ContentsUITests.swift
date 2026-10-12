@@ -166,7 +166,7 @@ final class ContentsUITests: UITestCase {
         waitFor(confirm)
         confirm.tap()
 
-        waitFor(app.buttons["doc-\(manual)"], timeout: 60)
+        waitFor(app.buttons["doc-Couchbase Under the Hood"], timeout: 60)
         XCTAssertFalse(element(app, "contentsKind").exists)
     }
 

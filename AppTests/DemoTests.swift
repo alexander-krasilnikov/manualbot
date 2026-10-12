@@ -436,51 +436,46 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
 // MARK: - 6.1 sample documents
 
 @MainActor @Suite struct SampleDocumentsTests {
-    @Test func theSamplesAreWrittenUnderTheirDisplayNamesIncludingPdfsAndAPhoto() throws {
+    @Test func theSamplesAreTheTwoCouchbasePdfsUnderTheirTitles() throws {
         let urls = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
         defer { try? FileManager.default.removeItem(at: urls[0].deletingLastPathComponent()) }
-        #expect(urls.map(\.lastPathComponent) == [
-            "X200 Manual.md", "Bike Repair.md", "Warranty.txt", "Filter Guide.pdf", "X200 Service Manual.pdf", "Nameplate X100.jpg",
-        ])
-        for url in urls { #expect(try Data(contentsOf: url).count > 100, "\(url.lastPathComponent) is empty") }
-        #expect(try Data(contentsOf: urls[3]).prefix(4) == Data("%PDF".utf8))
-        #expect(try Data(contentsOf: urls[4]).prefix(4) == Data("%PDF".utf8))
-        #expect(try Data(contentsOf: urls[5]).prefix(2) == Data([0xFF, 0xD8]))
-        #expect(try String(contentsOf: urls[0], encoding: .utf8).contains("E-042"))
+        #expect(urls.map(\.lastPathComponent) == ["Couchbase Under the Hood.pdf", "Capella Architecture Overview.pdf"])
+        for url in urls { #expect(try Data(contentsOf: url).prefix(4) == Data("%PDF".utf8), "\(url.lastPathComponent) is not a PDF") }
     }
 
     @Test func everySampleHasAFixedIdentityThatIsTheSameOnEveryDevice() throws {
         let urls = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
         defer { try? FileManager.default.removeItem(at: urls[0].deletingLastPathComponent()) }
         let ids = urls.map(SampleDocuments.id(for:))
-        #expect(ids == [
-            "sample-x200-manual", "sample-bike-repair", "sample-warranty", "sample-filter-guide", "sample-x200-service-manual",
-            "sample-nameplate-x100",
-        ])
+        #expect(ids == ["sample-couchbase-under-the-hood", "sample-capella-architecture-overview"])
         // Written again into another folder, as on a second iPad: the same identities.
         let again = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
         defer { try? FileManager.default.removeItem(at: again[0].deletingLastPathComponent()) }
         #expect(again.map(SampleDocuments.id(for:)) == ids)
     }
 
-    @Test func everySampleCanBeIndexedByTheRealExtractors() async throws {
+    @Test func bothSamplesHaveTextAndTheWhitepaperHasTheDebuggerFigureOnPage28() async throws {
         let urls = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
         defer { try? FileManager.default.removeItem(at: urls[0].deletingLastPathComponent()) }
         let extractor = FileDocumentExtractor()
-        for url in urls {
-            let document = try await extractor.extract(from: url) { _ in }
-            if FileDocumentExtractor.documentType(for: url) == .image {
-                #expect(document.images.count == 1, "\(url.lastPathComponent) is not a photo")
-            } else {
-                #expect(!document.blocks.isEmpty, "\(url.lastPathComponent) has no text")
-            }
-        }
+        let whitepaper = try await extractor.extract(from: urls[0]) { _ in }
+        let overview = try await extractor.extract(from: urls[1]) { _ in }
+        #expect(whitepaper.pageCount == 47 && overview.pageCount == 21)
+        #expect(!whitepaper.blocks.isEmpty && !overview.blocks.isEmpty)
+        #expect(whitepaper.images.contains { $0.page == 28 }, "pages with images: \(whitepaper.images.map(\.page))")
     }
 
-    @Test func theServiceManualHasTheNameplateAsACaptionedFigureOnPageTwo() async throws {
-        let urls = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
-        defer { try? FileManager.default.removeItem(at: urls[0].deletingLastPathComponent()) }
-        let manual = try await FileDocumentExtractor().extract(from: urls[4]) { _ in }
+    @Test func theSamplePhotoIsBundledAndItsCodeIsReadByTextRecognition() async throws {
+        let image = try #require(SampleDocuments.samplePhoto.flatMap { PhotoData.image(from: $0) })
+        let text = try await VisionTextRecognizer().recognize(image, correctLanguage: false).map(\.text).joined(separator: " ")
+        #expect(text.contains("OnUpdate") || text.contains("enrich_ip_nums"), "recognized: \(text)")
+    }
+
+    @Test func theFixtureServiceManualHasTheNameplateAsACaptionedFigureOnPageTwo() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("X200 Service Manual-\(UUID().uuidString).pdf")
+        try SampleDocuments.makeServiceManual().write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let manual = try await FileDocumentExtractor().extract(from: url) { _ in }
         #expect(manual.pageCount == 3)
         let figure = try #require(manual.images.first)
         #expect(manual.images.count == 1 && figure.page == 2)
