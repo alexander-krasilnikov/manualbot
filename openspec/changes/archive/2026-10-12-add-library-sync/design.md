@@ -48,7 +48,7 @@ the rename to "replicated" / "local only" follows.
 
 ### D2. Fleet model = the app's default embedder, enforced by a pause rule in Core
 `SyncPolicy` (Core, pure) computes `running` or `paused(reason)` from: sync enabled, active embedder identity, the fleet
-identity (`EmbedderProfile` default's identity), and the number of documents whose vectors are not from the fleet model
+model (a `FleetModel`: the identity and the name shown to the user; by default `EmbedderProfile`'s default), and the number of documents whose vectors are not from the fleet model
 (`outdatedDocuments(for: fleet)`). It pauses while the active embedder is not the fleet model **or** that number is
 above zero, and is re-evaluated on embedder switch, on every document becoming ready, and on launch.
 - *Why "and the library is back on the fleet model", not just "fleet model active":* while paused, an off-model iPad
@@ -66,11 +66,15 @@ generation, counted from what the database holds. (`imageCount` is not used: it 
 re-index it would describe the new set while `activeGeneration` still names the old one.) The check keys its cache on the
 record's revision, so a record deleted and created again under the same ID is checked again. On the receiving side, `activeGenerations()` returns a document only when the device holds that many
 chunks and images for that generation. Counting uses the existing `chunks_doc_gen` / `images_doc_gen` value indexes.
-To stay inside the 500 ms retrieval budget, completeness is cached in memory per `(docId, generation)` and recomputed
-only for documents named by the replicator's document listener, after local activation, and on open.
-- Library status gains two states: **arriving** (`activeGeneration` set, set incomplete, no local job) and **indexing on
-  another device** (no `activeGeneration`, no local job). A local import always has a job, so a record with neither is
-  necessarily received.
+To stay inside the 500 ms retrieval budget both answers are cached in memory, keyed on the record's generation, counts and
+revision: a whole set stays whole until its record changes, and a set found incomplete is not counted again until the
+replicator's document listener names the document (`refreshArrivals`) or the repository itself writes chunks or images for
+it. A refresh forgets "incomplete" before it queries, so a failed refresh cannot leave a document stuck as arriving. "Became
+searchable" is reported once per generation and counts (not per revision), so a rename does not announce it again.
+- Library status gains two states: **arriving** (`activeGeneration` set, set incomplete here, whatever the local job says)
+  and **indexing on another device** (no `activeGeneration`, no local job). A local import gets its job right after its
+  record, so a record with neither, that `IngestionService` is not storing at this moment, was received. A user can index
+  such a document here with the row's *Index here* button (the same re-index as the context menu's).
 - `reindexOutdated` skips arriving documents and documents with no `activeGeneration`: their vectors are on the way.
 - *Why not a separate manifest record:* with one writer per document at a time and one model, a field on the document
   is enough, and it is written in the same transaction as `activeGeneration`.
@@ -94,8 +98,8 @@ limit replicates.
 
 ### D6. Ports and lifetimes
 - **Ports:** `LibrarySync` protocol with `start(SyncConfiguration)`, `stop()`, and `statusUpdates` (an `AsyncStream` of
-  `SyncStatus`: off, connecting, syncing, upToDate(lastSync), paused(reason), error(kind, message), with sent and
-  received counts). `PortsTesting` gets a scripted stub.
+  `SyncStatus`: off, connecting, syncing, upToDate(lastSync), paused(reason), error(kind, message), with `sent` and
+  `received` counts of documents and `records`, a count of everything that moved, which tells the library that chunks arrived). `PortsTesting` gets a scripted stub.
 - **Adapters:** `CouchbaseLibrarySync` owns the `Replicator` over the repository's `Database`, maps replicator status and
   errors (401 → credentials refused, no stop-and-retry; unreachable → keeps retrying, the replicator's own behaviour),
   installs the push filter, and feeds the document listener to the arrival cache and the tracer.
@@ -122,7 +126,7 @@ ID after a reset is allowed by Couchbase Lite and replicates as a new revision.
 
 ### D9. X-ray
 New trace operation kind `sync`, grouped like user operations and visible by default. Events: replicator state changes,
-batches sent and received per collection (from the document listener, coalesced per collection over a short window),
+batches sent and received (one event per collection per batch the document listener reports),
 records refused with their error, and "document searchable" when D3's cache flips a document to complete. One caption
 explains replicated data versus indexes built on each device.
 

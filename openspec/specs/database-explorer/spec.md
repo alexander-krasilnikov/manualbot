@@ -24,11 +24,11 @@ The explorer MUST NOT create, change or delete any document, collection or index
 - **THEN** the X-ray log has no new events, and every collection has the same document count as before
 
 ### Requirement: Collections overview
-The explorer SHALL list every collection in the app's scope with its document count, grouped into collections that are meant to be replicated and collections that stay on the device. Counts MUST be read when the explorer opens and when the presenter asks to refresh; they MUST NOT change on their own while the explorer is showing.
+The explorer SHALL list every collection in the app's scope with its document count, grouped into collections that are replicated and collections that stay on the device. Counts MUST be read when the explorer opens and when the presenter asks to refresh; they MUST NOT change on their own while the explorer is showing.
 
 #### Scenario: Groups and counts
 - **WHEN** the presenter opens the explorer on a library of three ready documents and one chat
-- **THEN** documents, chunks, images, chats and messages are listed as sync-ready, ingestJobs and localMeta as local only, and documents shows a count of 3
+- **THEN** documents, chunks and images are listed as replicated, chats, messages, ingestJobs and localMeta as local only, and documents shows a count of 3
 
 #### Scenario: Refresh
 - **WHEN** a document finishes importing while the explorer is open and the presenter refreshes
