@@ -1,0 +1,188 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540" role="img" aria-labelledby="title desc">
+  <title id="title">Importing a document</title>
+  <desc id="desc">Importing a document, on the iPad: the original is stored as a blob beside its JSON record and an indexing job is queued; text is extracted, with Apple's Vision reading scans and photos; the text is split into overlapping chunks; photos are read and written in one transaction; chunks are embedded and written 16 per transaction with their vectors; then the new chunk set is made searchable in one switch. With sync on, documents, chunks and images go to Sync Gateway with their vectors; chats, messages, the indexing queue and the indexes stay on the iPad.</desc>
+  <style>
+    svg { --bg: #ffffff; --panel: #f6f8fa; --box: #ffffff; --line: #d0d7de; --text: #1f2328;
+          --muted: #59636e; --accent: #0969da; --warn: #bc4c00; }
+    .bg { fill: var(--bg); }
+    .frame { fill: var(--panel); stroke: var(--line); stroke-dasharray: 6 5; }
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: var(--text); text-anchor: middle; }
+    .h { font-size: 15px; font-weight: 600; text-anchor: start; }
+    .t { font-size: 13px; font-weight: 600; }
+    .s { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: var(--muted); }
+    .lbl { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: var(--muted); }
+    .fl { font-size: 12px; fill: var(--muted); text-anchor: start; }
+    .cap { font-size: 14px; }
+    .box { fill: var(--box); stroke: var(--line); stroke-width: 1.5; }
+    .box.alt { stroke: var(--warn); stroke-dasharray: 5 4; }
+    .box.opt { stroke-dasharray: 5 4; }
+    .arrow { fill: none; stroke: var(--muted); stroke-width: 1.5; }
+    .arrow.alt { stroke: var(--warn); stroke-dasharray: 5 4; }
+    .head { fill: var(--muted); }
+    .ring { fill: none; stroke: var(--accent); stroke-width: 2.5; opacity: 0; }
+    .c { opacity: 0; }
+    .c.final { opacity: 1; }
+
+    /* 12 s loop: stage n lights up at (n-1) s with its caption, then everything holds lit for 3 s. */
+    .st1 { animation: st1 12s linear infinite; }
+    @keyframes st1 { 0%, 0.0% { opacity: .18; } 3.0%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg1 { animation: rg1 12s linear infinite; }
+    @keyframes rg1 { 0%, 0.0% { opacity: 0; } 1.0%, 7.33% { opacity: 1; } 8.33%, 100% { opacity: 0; } }
+    .st2 { animation: st2 12s linear infinite; }
+    @keyframes st2 { 0%, 8.33% { opacity: .18; } 11.33%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg2 { animation: rg2 12s linear infinite; }
+    @keyframes rg2 { 0%, 8.33% { opacity: 0; } 9.33%, 15.670000000000002% { opacity: 1; } 16.67%, 100% { opacity: 0; } }
+    .st3 { animation: st3 12s linear infinite; }
+    @keyframes st3 { 0%, 16.67% { opacity: .18; } 19.67%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg3 { animation: rg3 12s linear infinite; }
+    @keyframes rg3 { 0%, 16.67% { opacity: 0; } 17.67%, 24.0% { opacity: 1; } 25.0%, 100% { opacity: 0; } }
+    .st4 { animation: st4 12s linear infinite; }
+    @keyframes st4 { 0%, 25.0% { opacity: .18; } 28.0%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg4 { animation: rg4 12s linear infinite; }
+    @keyframes rg4 { 0%, 25.0% { opacity: 0; } 26.0%, 32.33% { opacity: 1; } 33.33%, 100% { opacity: 0; } }
+    .st5 { animation: st5 12s linear infinite; }
+    @keyframes st5 { 0%, 33.33% { opacity: .18; } 36.33%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg5 { animation: rg5 12s linear infinite; }
+    @keyframes rg5 { 0%, 33.33% { opacity: 0; } 34.33%, 40.67% { opacity: 1; } 41.67%, 100% { opacity: 0; } }
+    .st6 { animation: st6 12s linear infinite; }
+    @keyframes st6 { 0%, 41.67% { opacity: .18; } 44.67%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg6 { animation: rg6 12s linear infinite; }
+    @keyframes rg6 { 0%, 41.67% { opacity: 0; } 42.67%, 49.0% { opacity: 1; } 50.0%, 100% { opacity: 0; } }
+    .st7 { animation: st7 12s linear infinite; }
+    @keyframes st7 { 0%, 50.0% { opacity: .18; } 53.0%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg7 { animation: rg7 12s linear infinite; }
+    @keyframes rg7 { 0%, 50.0% { opacity: 0; } 51.0%, 57.33% { opacity: 1; } 58.33%, 100% { opacity: 0; } }
+    .st8 { animation: st8 12s linear infinite; }
+    @keyframes st8 { 0%, 58.33% { opacity: .18; } 61.33%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg8 { animation: rg8 12s linear infinite; }
+    @keyframes rg8 { 0%, 58.33% { opacity: 0; } 59.33%, 65.67% { opacity: 1; } 66.67%, 100% { opacity: 0; } }
+    .st9 { animation: st9 12s linear infinite; }
+    @keyframes st9 { 0%, 66.67% { opacity: .18; } 69.67%, 96% { opacity: 1; } 100% { opacity: .18; } }
+    .rg9 { animation: rg9 12s linear infinite; }
+    @keyframes rg9 { 0%, 66.67% { opacity: 0; } 67.67%, 74.0% { opacity: 1; } 75.0%, 100% { opacity: 0; } }
+    .c1 { animation: c1 12s linear infinite; }
+    @keyframes c1 { 0%, 0.0% { opacity: 0; } 1.0%, 7.33% { opacity: 1; } 8.33%, 100% { opacity: 0; } }
+    .c2 { animation: c2 12s linear infinite; }
+    @keyframes c2 { 0%, 8.33% { opacity: 0; } 9.33%, 15.670000000000002% { opacity: 1; } 16.67%, 100% { opacity: 0; } }
+    .c3 { animation: c3 12s linear infinite; }
+    @keyframes c3 { 0%, 16.67% { opacity: 0; } 17.67%, 24.0% { opacity: 1; } 25.0%, 100% { opacity: 0; } }
+    .c4 { animation: c4 12s linear infinite; }
+    @keyframes c4 { 0%, 25.0% { opacity: 0; } 26.0%, 32.33% { opacity: 1; } 33.33%, 100% { opacity: 0; } }
+    .c5 { animation: c5 12s linear infinite; }
+    @keyframes c5 { 0%, 33.33% { opacity: 0; } 34.33%, 40.67% { opacity: 1; } 41.67%, 100% { opacity: 0; } }
+    .c6 { animation: c6 12s linear infinite; }
+    @keyframes c6 { 0%, 41.67% { opacity: 0; } 42.67%, 49.0% { opacity: 1; } 50.0%, 100% { opacity: 0; } }
+    .c7 { animation: c7 12s linear infinite; }
+    @keyframes c7 { 0%, 50.0% { opacity: 0; } 51.0%, 57.33% { opacity: 1; } 58.33%, 100% { opacity: 0; } }
+    .c8 { animation: c8 12s linear infinite; }
+    @keyframes c8 { 0%, 58.33% { opacity: 0; } 59.33%, 65.67% { opacity: 1; } 66.67%, 100% { opacity: 0; } }
+    .c9 { animation: c9 12s linear infinite; }
+    @keyframes c9 { 0%, 66.67% { opacity: 0; } 67.67%, 74.0% { opacity: 1; } 75.0%, 100% { opacity: 0; } }
+    .c.final { animation: cf 12s linear infinite; }
+    @keyframes cf { 0%, 75.0% { opacity: 0; } 76.0%, 96% { opacity: 1; } 100% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) {
+      .st, .ring, .c { animation: none !important; }
+      .st { opacity: 1; } .ring, .c { opacity: 0; } .c.final { opacity: 1; }
+    }
+  </style>
+  <defs>
+    <marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+  <rect class="bg" width="960" height="540" rx="12"/>
+  <text class="h" x="24" y="30">Importing a document</text>
+  <rect class="frame" x="20" y="44" width="920" height="352" rx="12"/>
+  <text class="fl" x="34" y="384">On this iPad · one Couchbase Lite database</text>
+  <g class="st st1">
+      <rect class="box" x="40" y="64" width="170" height="54" rx="8"/>
+      <text class="t" x="125.0" y="88.0">File</text>
+      <text class="s" x="125.0" y="105.0">PDF, Word, text, photo</text>
+  </g>
+  <g class="ring rg1">
+      <rect x="37" y="61" width="176" height="60" rx="10"/>
+  </g>
+  <g class="st st2">
+      <path class="arrow" d="M210,91 L246,91" marker-end="url(#head)"/>
+      <rect class="box" x="250" y="64" width="230" height="54" rx="8"/>
+      <text class="t" x="365.0" y="88.0">Store original, queue job</text>
+      <text class="s" x="365.0" y="105.0">documents (blob) · ingestJobs</text>
+  </g>
+  <g class="ring rg2">
+      <rect x="247" y="61" width="236" height="60" rx="10"/>
+  </g>
+  <g class="st st3">
+      <path class="arrow" d="M480,91 L516,91" marker-end="url(#head)"/>
+      <rect class="box" x="520" y="64" width="200" height="54" rx="8"/>
+      <text class="t" x="620.0" y="88.0">Extract text</text>
+      <text class="s" x="620.0" y="105.0">Vision reads scans, photos</text>
+  </g>
+  <g class="ring rg3">
+      <rect x="517" y="61" width="206" height="60" rx="10"/>
+  </g>
+  <g class="st st4">
+      <path class="arrow" d="M720,91 L756,91" marker-end="url(#head)"/>
+      <rect class="box" x="760" y="64" width="170" height="54" rx="8"/>
+      <text class="t" x="845.0" y="88.0">Chunk</text>
+      <text class="s" x="845.0" y="105.0">overlapping, with page</text>
+  </g>
+  <g class="ring rg4">
+      <rect x="757" y="61" width="176" height="60" rx="10"/>
+  </g>
+  <g class="st st5">
+      <path class="arrow" d="M845,118 L845,140 L145,140 L145,162" marker-end="url(#head)"/>
+      <rect class="box" x="40" y="166" width="210" height="54" rx="8"/>
+      <text class="t" x="145.0" y="190.0">Read the photos</text>
+      <text class="s" x="145.0" y="207.0">1 transaction · images</text>
+  </g>
+  <g class="ring rg5">
+      <rect x="37" y="163" width="216" height="60" rx="10"/>
+  </g>
+  <g class="st st6">
+      <path class="arrow" d="M250,193 L286,193" marker-end="url(#head)"/>
+      <rect class="box" x="290" y="166" width="250" height="54" rx="8"/>
+      <text class="t" x="415.0" y="190.0">Embed + write chunks</text>
+      <text class="s" x="415.0" y="207.0">16 per transaction · chunks</text>
+  </g>
+  <g class="ring rg6">
+      <rect x="287" y="163" width="256" height="60" rx="10"/>
+  </g>
+  <g class="st st7">
+      <path class="arrow" d="M540,193 L576,193" marker-end="url(#head)"/>
+      <rect class="box" x="580" y="166" width="250" height="54" rx="8"/>
+      <text class="t" x="705.0" y="190.0">Make the chunk set searchable</text>
+      <text class="s" x="705.0" y="207.0">one switch</text>
+  </g>
+  <g class="ring rg7">
+      <rect x="577" y="163" width="256" height="60" rx="10"/>
+  </g>
+  <g class="st st8">
+      <path class="arrow" d="M705,220 L705,418" marker-end="url(#head)"/>
+      <text class="lbl" x="812" y="330">documents · chunks · images</text>
+      <path class="box" d="M610,431 a95.0,9 0 0,1 190,0 v46 a95.0,9 0 0,1 -190,0 z"/>
+      <path class="box" d="M610,431 a95.0,9 0 0,0 190,0"/>
+      <text class="t" x="705.0" y="458.0">Sync Gateway</text>
+      <text class="s" x="705.0" y="474.0">to your other iPads</text>
+  </g>
+  <g class="ring rg8">
+      <rect x="606" y="418" width="198" height="72" rx="12"/>
+  </g>
+  <g class="st st9">
+      <rect class="box opt" x="40" y="262" width="400" height="54" rx="8"/>
+      <text class="t" x="240.0" y="286.0">Stays on this iPad</text>
+      <text class="s" x="240.0" y="303.0">chats · messages · ingestJobs · indexes</text>
+  </g>
+  <g class="ring rg9">
+      <rect x="37" y="259" width="406" height="60" rx="10"/>
+  </g>
+  <text class="cap c c1" x="480.0" y="518">A PDF, Word file, text file or photo is imported.</text>
+  <text class="cap c c2" x="480.0" y="518">The original is stored as a blob beside its JSON record, and an indexing job is queued.</text>
+  <text class="cap c c3" x="480.0" y="518">Text is extracted; Apple's Vision reads scanned pages and the text on photos.</text>
+  <text class="cap c c4" x="480.0" y="518">The text is split into overlapping chunks that remember their page or heading.</text>
+  <text class="cap c c5" x="480.0" y="518">Each photo is read and embedded; the batch is written in one transaction.</text>
+  <text class="cap c c6" x="480.0" y="518">Chunks are embedded on the iPad and written with their vectors, 16 per transaction.</text>
+  <text class="cap c c7" x="480.0" y="518">The new chunk set becomes searchable in one switch, so a re-index is never half visible.</text>
+  <text class="cap c c8" x="480.0" y="518">With sync on, documents, chunks and photos go to Sync Gateway, vectors included.</text>
+  <text class="cap c c9" x="480.0" y="518">Chats, messages, the indexing queue and the indexes never leave this iPad.</text>
+  <text class="cap c final" x="480.0" y="518">Another iPad gets the chunks with their vectors: searchable without indexing again.</text>
+</svg>

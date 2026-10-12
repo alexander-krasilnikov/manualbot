@@ -19,7 +19,9 @@ enum AppEnvironmentError: LocalizedError {
 /// Wires the real adapters together, or stubs them for UI tests.
 ///
 /// UI tests launch with `-uiTestModelStub <scenario>` (fake downloads: `happy`, `llmFailsOnce`, `lowStorage`),
-/// optionally `-uiTestSeed` (five sample documents already indexed, among them a photo and a PDF with a photo), `-uiTestSlow`
+/// optionally `-uiTestSeed` (five sample documents already indexed, among them a photo and a PDF with a photo) or
+/// `-uiTestSeedDemo` (the two Couchbase PDFs that Reset demo imports), `-uiTestPhoto sample` (the attach button attaches the
+/// demo's sample photo instead of the X200 nameplate), `-uiTestSlow`
 /// (answers stream slowly), `-uiTestSearch <scenario>` (what the Models page finds: `results`, the default, or `offline`)
 /// and `-uiTestSync <scenario>` (what sync does: `off`, the default, `syncing`, `upToDate`, `paused` or `error`; any other
 /// than `off` also fills in the sync settings and turns sync on; `live` runs the real replicator against `localhost:4984` as
@@ -34,6 +36,8 @@ enum AppEnvironment {
             let models = ModelSetupViewModel(store: stubStore(scenario: scenario))
             var options = StubServiceFactory.Options()
             options.seedDocuments = arguments.contains("-uiTestSeed")
+            options.seedDemoSamples = arguments.contains("-uiTestSeedDemo")
+            options.attachesSamplePhoto = Self.value(of: "-uiTestPhoto", in: arguments) == "sample"
             options.slowAnswers = arguments.contains("-uiTestSlow")
             demo.xray.usesStubModels = true
             let search = Self.value(of: "-uiTestSearch", in: arguments) ?? "results"

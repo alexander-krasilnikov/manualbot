@@ -28,7 +28,7 @@ struct WorkspaceView: View {
                 ) { id in show { await source.openDocument(id) } }
                     .navigationSplitViewColumnWidth(min: 260, ideal: 320, max: 400)
             } content: {
-                ChatView(chat: chat, models: app.models, samplePhoto: SampleDocuments.x200Nameplate) { citation in
+                ChatView(chat: chat, models: app.models, samplePhoto: SampleDocuments.samplePhoto) { citation in
                     show { await source.open(citation) }
                 }
                     .navigationSplitViewColumnWidth(min: 380, ideal: 520)

@@ -41,7 +41,7 @@ struct PhotoAttachButtons: View {
                         .labelStyle(.iconOnly).accessibilityIdentifier("cameraButton")
                 }
                 if let samplePhoto {
-                    Button("Use the sample nameplate photo", systemImage: "photo.badge.checkmark") { chat.attach(photo: samplePhoto) }
+                    Button("Use the sample photo", systemImage: "photo.badge.checkmark") { chat.attach(photo: samplePhoto) }
                         .labelStyle(.iconOnly).accessibilityIdentifier("samplePhotoButton")
                 }
             }

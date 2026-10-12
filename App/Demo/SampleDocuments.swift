@@ -4,25 +4,22 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// The documents a demo starts from: three bundled text files, a small generated PDF, a service manual whose
-/// figure is a photo of a nameplate, and a photo of another unit's nameplate.
+/// The documents a demo starts from: two Couchbase whitepapers, bundled as PDFs, and a sample photo of the Eventing
+/// debugger screenshot on page 28 of *Couchbase Under the Hood*, the one technical picture in them (their diagrams are
+/// vector drawings, which are not stored as photos).
 ///
-/// The photos are drawn in code (a steel plate with stamped text), not photographs of real equipment, so the
-/// samples carry no licence of their own. They are enough to show the whole path: a photo of the X200's
-/// nameplate finds the manual page that has its picture, and its model number is read off the plate.
+/// The generated X200 documents below (a service manual whose figure is a nameplate, and nameplates drawn in code) are
+/// what the UI-test stub seeds and the tests are built on; Reset demo no longer imports them.
 enum SampleDocuments {
     /// Bundled file, and the name it is imported under (which becomes the document title).
     private static let bundled: [(resource: String, ext: String, importedAs: String)] = [
-        ("x200-manual", "md", "X200 Manual.md"),
-        ("bike-repair", "md", "Bike Repair.md"),
-        ("warranty", "txt", "Warranty.txt"),
+        ("Couchbase Under the Hood", "pdf", "Couchbase Under the Hood.pdf"),
+        ("Capella Architecture Overview", "pdf", "Capella Architecture Overview.pdf"),
     ]
 
-    static let filterGuidePages = [
-        "This guide explains how to look after the filter of the purifier.",
-        "Replace the HEPA filter every six months by opening the rear panel and sliding out the old filter.",
-        "Dispose of the used filter with household waste and record the date in the service log.",
-    ]
+    /// The Eventing debugger screenshot of *Couchbase Under the Hood*, page 28, as photographed
+    /// (`scripts/make-sample-photo.swift` makes it from the PDF). What the chat's sample-photo button attaches.
+    static let samplePhoto: Data? = Bundle.main.url(forResource: "sample-photo", withExtension: "jpg").flatMap { try? Data(contentsOf: $0) }
 
     /// The identity of a sample: the same on every device, so samples loaded on several iPads that share a library are one
     /// document each ("X200 Service Manual.pdf" is `sample-x200-service-manual`).
@@ -33,25 +30,15 @@ enum SampleDocuments {
     }
 
     /// Writes the sample files into a new folder under `parent` and returns their URLs.
-    static func write(into parent: URL, bundle: Bundle = .main, cropFigure: Bool = true) throws -> [URL] {
+    static func write(into parent: URL, bundle: Bundle = .main) throws -> [URL] {
         let folder = parent.appendingPathComponent("DemoSamples-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        var urls: [URL] = try bundled.compactMap { sample in
+        return try bundled.compactMap { sample in
             guard let source = bundle.url(forResource: sample.resource, withExtension: sample.ext) else { return nil }
             let target = folder.appendingPathComponent(sample.importedAs)
             try FileManager.default.copyItem(at: source, to: target)
             return target
         }
-        let pdf = folder.appendingPathComponent("Filter Guide.pdf")
-        try makePDF(pages: filterGuidePages).write(to: pdf)
-        urls.append(pdf)
-        let manual = folder.appendingPathComponent("X200 Service Manual.pdf")
-        try makeServiceManual(cropFigure: cropFigure).write(to: manual)
-        urls.append(manual)
-        let photo = folder.appendingPathComponent("Nameplate X100.jpg")
-        try nameplatePhoto(model: "X100-A", serial: "2208-91", style: .label).write(to: photo)
-        urls.append(photo)
-        return urls
     }
 
     // MARK: Photos

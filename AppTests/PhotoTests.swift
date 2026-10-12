@@ -338,4 +338,41 @@ private func write(_ data: Data, as name: String) throws -> URL {
         print("SAMPLEPHOTO real model: to the manual's figure \(toFigure), to the X100 label \(toOther)")
         #expect(toFigure <= RetrievalConfiguration().imageMaxDistance && toFigure < toOther)
     }
+
+    /// Every picture the two demo PDFs store, with its document and page.
+    private func demoPictures() async throws -> [(name: String, page: Int?, image: CGImage)] {
+        let urls = try SampleDocuments.write(into: FileManager.default.temporaryDirectory)
+        defer { try? FileManager.default.removeItem(at: urls[0].deletingLastPathComponent()) }
+        var pictures: [(name: String, page: Int?, image: CGImage)] = []
+        for url in urls {
+            for image in try await FileDocumentExtractor().extract(from: url) { _ in }.images {
+                pictures.append((url.deletingPathExtension().lastPathComponent, image.page, image.image))
+            }
+        }
+        return pictures
+    }
+
+    /// Reset demo's sample photo must find the debugger figure on page 28 of the whitepaper, and nothing else first.
+    /// (`TEST_RUNNER_EMBEDDER_MODEL_PATH` in the simulator.)
+    private func expectSamplePhotoFindsPage28(_ features: (CGImage) async throws -> [Float], limit: Double, label: String) async throws {
+        let query = try await features(try #require(SampleDocuments.samplePhoto.flatMap { PhotoData.image(from: $0) }))
+        var ranked: [(name: String, page: Int?, distance: Double)] = []
+        for picture in try await demoPictures() {
+            ranked.append((picture.name, picture.page, distance(query, try await features(picture.image))))
+        }
+        ranked.sort { $0.distance < $1.distance }
+        print("SAMPLEPHOTO \(label): " + ranked.prefix(4).map { "\($0.name) p\($0.page ?? 0) \($0.distance)" }.joined(separator: "; "))
+        let best = try #require(ranked.first)
+        #expect(best.name == "Couchbase Under the Hood" && best.page == 28, "nearest: \(best)")
+        #expect(best.distance <= limit, "the demo photo would not find the figure")
+    }
+
+    // No stub-features variant: the stand-in's 8 x 8 colour cells see the photo, decoded as the app decodes photos, with
+    // darker edges than the figure stored from the PDF, and the mostly white figure has little else to tell it by. The
+    // claim only holds, and only matters, for the real model.
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] != nil))
+    func theDemoSamplePhotoFindsTheDebuggerFigureUnderTheRealModel() async throws {
+        let printer = LiteRTEmbedder(profile: .embeddingGemma2, modelPath: ProcessInfo.processInfo.environment["EMBEDDER_MODEL_PATH"] ?? "")
+        try await expectSamplePhotoFindsPage28({ try await printer.features(of: $0) }, limit: RetrievalConfiguration().imageMaxDistance, label: "real model")
+    }
 }

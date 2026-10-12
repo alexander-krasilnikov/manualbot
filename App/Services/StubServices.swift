@@ -16,6 +16,10 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
 
     struct Options: Sendable {
         var seedDocuments = false
+        /// Seed the Reset demo samples (the Couchbase PDFs) instead of the X200 fixtures, for the documentation screenshots.
+        var seedDemoSamples = false
+        /// The attach button attaches the demo's sample photo instead of the X200 nameplate.
+        var attachesSamplePhoto = false
         var sync = SyncScenario.off
         var slowAnswers = false
         /// Models (by id) that cannot be loaded: choosing one fails, as a file the runtime cannot run would.
@@ -110,7 +114,11 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
                 ? CouchbaseLibrarySync(repository: repository, fleetModelTag: profile.identity.tag, tracer: tracer)
                 : ScriptedLibrarySync(onStart: Self.scriptedStates(for: options.sync)))
         let firstTime = lock.withLock { () -> Bool in defer { seeded = true }; return !seeded }
-        if options.seedDocuments, firstTime { try await seed(core) }
+        if options.seedDemoSamples, firstTime {
+            try await seedDemoSamples(core)
+        } else if options.seedDocuments, firstTime {
+            try await seed(core)
+        }
         return core
     }
 
@@ -144,8 +152,15 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
 
     func unloadModels() async {}
 
-    /// The X200's nameplate: what the attach button provides in UI tests.
-    var stubPhoto: Data? { SampleDocuments.x200Nameplate }
+    /// The X200's nameplate, or the demo's sample photo: what the attach button provides in UI tests.
+    var stubPhoto: Data? { options.attachesSamplePhoto ? SampleDocuments.samplePhoto : SampleDocuments.x200Nameplate }
+
+    private func seedDemoSamples(_ core: CoreServices) async throws {
+        for url in try SampleDocuments.write(into: root) {
+            _ = try await core.ingestion.enqueue(fileURL: url, id: SampleDocuments.id(for: url))
+        }
+        await core.ingestion.run()
+    }
 
     private func seed(_ core: CoreServices) async throws {
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
