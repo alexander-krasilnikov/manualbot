@@ -30,7 +30,7 @@ couchbase-server  --healthy-->  cb-init  --done-->  sync-gateway  --healthy-->  
 |---|---|---|
 | Sync Gateway, for the app | `4984` on every interface | what iPads connect to |
 | Sync Gateway admin | `127.0.0.1:4985` | this machine only, no login |
-| Couchbase Server console | <http://localhost:18091> | `Administrator` / `manualbot-admin` |
+| Couchbase Server console | <http://localhost:18091> | `Administrator` / `manualbot-admin`; this machine only |
 
 The console is on 18091 rather than the usual 8091 so that it does not collide with a Couchbase Server you already run. If
 another program holds 4984, set `SG_PUBLIC_PORT` in `.env` and use that port in the app.
@@ -51,7 +51,9 @@ find devices on the local network: allow it. The iPad and the Mac must be on the
 let Docker accept connections on 4984.
 
 The accounts are `ipad1`, `ipad2` and `ipad3`, with the password from `IPAD_PASSWORD` in `.env` (`manualbot-ipad` by
-default). Every start sets the accounts' password again, so changing it in `.env` and starting the stack is enough.
+default). Every start sets the accounts' password again, so changing it in `.env` and starting the stack is enough. The
+Couchbase administrator password (`CB_ADMIN_PASSWORD`) is different: it is set once, when the cluster is created, so changing
+it later needs `docker compose down -v` and a fresh start.
 
 ## What is stored
 

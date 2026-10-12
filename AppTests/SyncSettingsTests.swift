@@ -54,6 +54,26 @@ import Testing
         #expect(secrets.secret(for: "library-sync") == nil)
     }
 
+    /// A secret store that cannot store anything, as a Keychain that refuses.
+    private struct RefusingSecretStore: SecretStore {
+        func secret(for account: String) -> String? { nil }
+        func setSecret(_ value: String?, for account: String) -> Bool { false }
+    }
+
+    @Test func aPasswordTheKeychainRefusesIsReportedNotSilentlyLost() {
+        let settings = SyncSettings(defaults: suite(), secrets: RefusingSecretStore())
+        #expect(!settings.passwordNotSaved)
+        settings.password = "s3cret"
+        #expect(settings.passwordNotSaved, "the Sync page can say it will be forgotten")
+        #expect(settings.password == "s3cret", "it is still used until the app closes")
+    }
+
+    @Test func aPasswordTheKeychainKeepsIsNotReportedAsLost() {
+        let settings = SyncSettings(defaults: suite(), secrets: InMemorySecretStore())
+        settings.password = "s3cret"
+        #expect(!settings.passwordNotSaved)
+    }
+
     @Test func theKeychainKeepsAndForgetsAPassword() {
         let store = KeychainSecretStore(service: "com.manualbot.tests.\(UUID().uuidString)")
         #expect(store.secret(for: "acct") == nil)
@@ -105,9 +125,9 @@ import Testing
     }
 
     @Test func theResetConfirmationSaysEveryDeviceOnlyWhenSyncIsOn() {
-        #expect(XrayControls.resetMessage(syncEnabled: true).contains("every device that shares the library"))
-        #expect(!XrayControls.resetMessage(syncEnabled: false).contains("every device"))
-        #expect(XrayControls.resetMessage(syncEnabled: false).contains("every document and chat in this app"))
+        #expect(XrayText.resetMessage(syncEnabled: true).contains("every device that shares the library"))
+        #expect(!XrayText.resetMessage(syncEnabled: false).contains("every device"))
+        #expect(XrayText.resetMessage(syncEnabled: false).contains("every document and chat in this app"))
     }
 
     @Test func theEmbedderConfirmationNamesTheSyncPauseOnlyWhenSyncWouldPause() {

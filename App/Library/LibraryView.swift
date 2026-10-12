@@ -29,7 +29,7 @@ struct LibraryView: View {
     let library: LibraryViewModel
     /// Opens the database explorer.
     var onOpenExplorer: (() -> Void)?
-    /// Opens the Models page.
+    /// Opens Settings (the gear in the toolbar), where the Models page and the Sync page are.
     var onOpenSettings: (() -> Void)?
     /// Opens Settings at the Sync page; the cloud in the toolbar does this.
     var onOpenSync: (() -> Void)?
@@ -65,13 +65,13 @@ struct LibraryView: View {
         }
     }
 
-    /// Only a document that has been indexed has contents, and a photo document has just the one image.
     /// What deleting a document costs, in words. With sync on it is gone from every device that shares the library.
     static func deleteMessage(syncEnabled: Bool) -> String {
-        let where_ = syncEnabled ? "every device that shares the library" : "this iPad"
-        return "The document and its search index are removed from \(where_). Earlier answers keep their quoted chunks."
+        let removedFrom = syncEnabled ? "every device that shares the library" : "this iPad"
+        return "The document and its search index are removed from \(removedFrom). Earlier answers keep their quoted chunks."
     }
 
+    /// Only a document that has been indexed has contents, and a photo document has just the one image.
     private func hasContents(_ item: LibraryViewModel.Item) -> Bool { item.status.isReady && item.type != .image }
 
     private var libraryList: some View {
@@ -170,6 +170,8 @@ struct LibraryView: View {
 struct LibraryRow: View {
     let item: LibraryViewModel.Item
     let loadThumbnail: () async -> Data?
+    /// What the row's button does: indexes the document again (Retry after a failure; Index here for a document another iPad
+    /// has not finished).
     let onRetry: () -> Void
     @State private var thumbnail: Data?
 
@@ -238,9 +240,13 @@ struct LibraryRow: View {
             }
             .accessibilityIdentifier("status-arriving")
         case .indexingElsewhere:
-            Label("Being indexed on another device", systemImage: "icloud.and.arrow.down")
-                .font(.caption).foregroundStyle(.secondary)
-                .accessibilityIdentifier("status-elsewhere")
+            HStack {
+                Label("Being indexed on another device", systemImage: "icloud.and.arrow.down")
+                    .font(.caption).foregroundStyle(.secondary)
+                // If the iPad that was indexing it is gone, this one can do it.
+                Button("Index here", action: onRetry).buttonStyle(.bordered).controlSize(.small)
+            }
+            .accessibilityIdentifier("status-elsewhere")
         case .failed(let reason):
             HStack {
                 Label(reason, systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red).lineLimit(2)

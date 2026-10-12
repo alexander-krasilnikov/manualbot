@@ -117,19 +117,20 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
     /// What a replicator that never reaches a server reports after it is started.
     static func scriptedStates(for scenario: SyncScenario) -> [SyncState] {
         switch scenario {
-        case .off: [.upToDate]
         case .syncing: [.connecting, .syncing]
         case .upToDate: [.connecting, .syncing, .upToDate]
-        case .paused: [.upToDate]   // never started: the fleet-model rule pauses it first
         case .error: [.connecting, .error(.credentialsRefused)]
-        case .live: []   // the real replicator reports for itself
+        // Never started (off, and paused by the fleet-model rule) or not scripted (live): an empty script reports up to date.
+        case .off, .paused, .live: []
         }
     }
 
     /// The stand-in's own default embedder is the fleet model, so sync follows the same rule as in the real app. The
     /// `paused` scenario names another model, so that the model in use is not the fleet's.
-    var fleetModel: EmbeddingModelIdentity {
-        options.sync == .paused ? EmbeddingModelIdentity(id: "fleet-model", version: "1", dimensions: 768) : Self.profile.identity
+    var fleetModel: FleetModel {
+        let identity = options.sync == .paused
+            ? EmbeddingModelIdentity(id: "fleet-model", version: "1", dimensions: 768) : Self.profile.identity
+        return FleetModel(identity: identity, name: FleetModel.standard.name)
     }
 
     func makeChat(core: CoreServices, generator: ModelSpec) async throws -> ChatService {

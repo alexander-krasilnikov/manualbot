@@ -1,6 +1,7 @@
 import Foundation
 import Ports
 import PortsTesting
+import Synchronization
 import Testing
 @testable import Core
 
@@ -121,5 +122,68 @@ import Testing
         try await service(repo, extractor: extractor).enqueue(fileURL: URL(fileURLWithPath: "/in/a.txt"), id: "sample-a")
         #expect(try await repo.jobs().isEmpty)
         #expect(try await repo.document(id: "sample-a")?.activeGeneration == 1)
+    }
+
+    // MARK: Shared text and import bookkeeping
+
+    @Test func sizesAreWrittenInBinaryUnitsSoTheLimitReadsTwentyMB() {
+        #expect(IngestionError.sizeText(IngestionService.maxOriginalBytes) == "20 MB")
+        #expect(IngestionError.sizeText(34 * 1024 * 1024) == "34 MB")
+    }
+
+    @Test func nothingIsReportedAsBeingImportedOnceEnqueueHasReturned() async throws {
+        let repo = InMemoryDocumentRepository()
+        let extractor = FakeExtractor(results: ["a.txt": .success(text(tag: "A"))])
+        let ingestion = service(repo, extractor: extractor)
+        #expect(await ingestion.importingDocumentIDs().isEmpty)
+        try await ingestion.enqueue(fileURL: URL(fileURLWithPath: "/in/a.txt"), id: "sample-a")
+        #expect(await ingestion.importingDocumentIDs().isEmpty, "the record has its job now")
+        #expect(try await repo.job(docId: "sample-a") != nil)
+    }
+
+    // MARK: A delete that is still pending
+
+    /// Embeds like `FakeEmbedder`, but never finishes the first batch until the task is cancelled: a document stays "being indexed".
+    private struct StallingEmbedder: Embedder {
+        let base = FakeEmbedder()
+        var identity: EmbeddingModelIdentity { base.identity }
+        func embed(_ texts: [String], kind: EmbeddingKind) async throws -> [[Float]] {
+            try await Task.sleep(for: .seconds(3600))
+            return try await base.embed(texts, kind: kind)
+        }
+    }
+
+    @Test(.timeLimit(.minutes(1)))
+    func anImportUnderAnIDWhoseDeleteIsPendingWaitsForItAndThenImportsFresh() async throws {
+        let repo = InMemoryDocumentRepository()
+        let extractor = FakeExtractor(results: ["a.txt": .success(text(tag: "A"))])
+        let ingestion = IngestionService(
+            extractor: extractor, embedder: StallingEmbedder(), repository: repo, jobs: repo, chunker: chunker, batchSize: 4,
+            supportedType: { ["txt": DocumentType.text][$0.pathExtension.lowercased()] })
+        let url = URL(fileURLWithPath: "/in/a.txt")
+        try await ingestion.enqueue(fileURL: url, id: "sample-a")
+        let running = Task { await ingestion.run() }
+        // Wait until the document is being indexed.
+        for _ in 0..<200 where try await repo.job(docId: "sample-a")?.state != .embedding { try await Task.sleep(for: .milliseconds(10)) }
+        #expect(try await repo.job(docId: "sample-a")?.state == .embedding)
+
+        try await ingestion.delete(docId: "sample-a")            // deferred: the document is being indexed right now
+        let finished = Mutex(false)
+        let importAgain = Task {
+            try await ingestion.enqueue(fileURL: url, id: "sample-a")
+            finished.withLock { $0 = true }
+        }
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(!finished.withLock { $0 }, "the import waits while the delete is pending")
+
+        // Indexing stops mid-batch (as it does for a switch of model): a stopped run leaves the delete for the next one, so the
+        // import itself carries it out and then imports.
+        await ingestion.stop()
+        running.cancel()
+        try await importAgain.value
+        #expect(finished.withLock { $0 })
+        let record = try await repo.document(id: "sample-a")
+        #expect(record != nil && record?.activeGeneration == nil, "a fresh record, not the one that was being deleted")
+        #expect(try await repo.job(docId: "sample-a")?.state == .queued, "with a fresh job")
     }
 }

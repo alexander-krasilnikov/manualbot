@@ -20,6 +20,17 @@ public enum CouchbaseSchema {
 
     /// The collections the replicator carries between iPads.
     public static let replicated: [String] = [documents, chunks, images]
+    /// The document a replicated record belongs to: the record itself for a `documents` record, the document named by the
+    /// ID of a chunk or image. `nil` for another collection or an ID that does not parse.
+    static func documentID(ofRecord id: String, in collection: String) -> String? {
+        switch collection {
+        case documents: id
+        case chunks: Chunk.parseID(id)?.docId
+        case images: ImageRecord.parseID(id)?.docId
+        default: nil
+        }
+    }
+
     /// The collections that never leave this device.
     public static let deviceLocal: Set<String> = [chats, messages, ingestJobs, localMeta]
 

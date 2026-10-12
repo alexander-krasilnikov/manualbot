@@ -25,7 +25,7 @@ enum SyncText {
         case .paused(.reindexing(let remaining, let fleet)):
             return "\(fleet) is in use again. Sync resumes when the \(remaining) document\(remaining == 1 ? "" : "s") still indexed with another model \(remaining == 1 ? "has" : "have") been indexed again."
         case .error(.credentialsRefused):
-            return "The server refused the user name or password. Correct them, then turn sync off and on again."
+            return "The server refused the user name or password. Correct them and sync tries again."
         case .error(.unreachable):
             return "The server cannot be reached. The app keeps trying, and everything else works as usual."
         case .error(.other(let message)):

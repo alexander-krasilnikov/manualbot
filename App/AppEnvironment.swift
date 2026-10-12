@@ -29,25 +29,27 @@ enum AppEnvironment {
     static func makeAppModel() throws -> AppModel {
         let arguments = ProcessInfo.processInfo.arguments
         let demo = DemoSession()
-        if let flag = arguments.firstIndex(of: "-uiTestModelStub") {
-            let scenario = arguments.indices.contains(flag + 1) ? arguments[flag + 1] : "happy"
+        if arguments.contains("-uiTestModelStub") {
+            let scenario = Self.value(of: "-uiTestModelStub", in: arguments) ?? "happy"
             let models = ModelSetupViewModel(store: stubStore(scenario: scenario))
             var options = StubServiceFactory.Options()
             options.seedDocuments = arguments.contains("-uiTestSeed")
             options.slowAnswers = arguments.contains("-uiTestSlow")
             demo.xray.usesStubModels = true
-            let searchFlag = arguments.firstIndex(of: "-uiTestSearch")
-            let search = searchFlag.flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? "results"
-            let syncFlag = arguments.firstIndex(of: "-uiTestSync")
-            let syncName = syncFlag.flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? "off"
-            options.sync = StubServiceFactory.SyncScenario(rawValue: syncName) ?? .off
+            let search = Self.value(of: "-uiTestSearch", in: arguments) ?? "results"
+            options.sync = StubServiceFactory.SyncScenario(rawValue: Self.value(of: "-uiTestSync", in: arguments) ?? "off") ?? .off
             return AppModel(
                 models: models, factory: StubServiceFactory(options: options, tracer: demo.tracer),
                 catalog: StubServiceFactory.catalog, finder: stubFinder(scenario: search), demo: demo,
-                syncSettings: stubSyncSettings(
-                    options.sync, user: arguments.firstIndex(of: "-uiTestSyncUser").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }))
+                syncSettings: stubSyncSettings(options.sync, user: Self.value(of: "-uiTestSyncUser", in: arguments)))
         }
         return try liveModel(demo: demo)
+    }
+
+    /// The value after a launch flag, such as `happy` after `-uiTestModelStub`; `nil` when the flag is absent or last.
+    private static func value(of flag: String, in arguments: [String]) -> String? {
+        guard let index = arguments.firstIndex(of: flag), arguments.indices.contains(index + 1) else { return nil }
+        return arguments[index + 1]
     }
 
     /// Sync settings of a stub launch: kept in a throwaway suite and in memory, and filled in unless the scenario is `off`.

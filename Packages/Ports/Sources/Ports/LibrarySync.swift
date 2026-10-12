@@ -44,15 +44,19 @@ public struct SyncStatus: Sendable, Equatable {
     public var state: SyncState
     /// When the replicator last had nothing left to send or receive.
     public var lastSync: Date?
-    /// Documents sent to and received from the server since sync was started, all collections together.
+    /// Documents sent to and received from the server since sync was started.
     public var sent: Int
     public var received: Int
+    /// Records of any kind (documents, chunks, photos) that moved in either direction. It rises with every batch, so a
+    /// change to it means something new arrived or left, which `sent` and `received` do not when only chunks moved.
+    public var records: Int
 
-    public init(state: SyncState = .off, lastSync: Date? = nil, sent: Int = 0, received: Int = 0) {
+    public init(state: SyncState = .off, lastSync: Date? = nil, sent: Int = 0, received: Int = 0, records: Int = 0) {
         self.state = state
         self.lastSync = lastSync
         self.sent = sent
         self.received = received
+        self.records = records
     }
 }
 

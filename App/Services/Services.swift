@@ -47,12 +47,12 @@ protocol ServiceFactory: Sendable {
     /// UI tests have no photo picker to drive: a photo the attach button uses instead. `nil` in the real app.
     var stubPhoto: Data? { get }
     /// The embedding model every iPad that shares a library uses. Sync pauses while another one is in use.
-    var fleetModel: EmbeddingModelIdentity { get }
+    var fleetModel: FleetModel { get }
 }
 
 extension ServiceFactory {
     var stubPhoto: Data? { nil }
-    var fleetModel: EmbeddingModelIdentity { SyncPolicy.fleetModel }
+    var fleetModel: FleetModel { .standard }
 }
 
 enum ServiceError: LocalizedError {

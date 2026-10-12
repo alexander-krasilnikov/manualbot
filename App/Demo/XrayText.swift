@@ -1,3 +1,4 @@
+import Adapters
 import Foundation
 import Ports
 
@@ -144,9 +145,9 @@ enum XrayText {
         case .wordsMatchedPhotos(let matches, _, _):
             matches == 0 ? "No photo matches the words" : "\(matches) photo\(matches == 1 ? "" : "s") match\(matches == 1 ? "es" : "") the words"
         case .modelRequest(let purpose, _, _): purpose == .search ? "Searched the model repository" : "Downloaded a model"
-        case .syncState(let state): "Sync: \(state)"
+        case .syncState(let activity): "Sync: \(XrayText.activity(activity))"
         case .syncReplicated(let collection, let count, let push):
-            "\(push ? "Sent" : "Received") \(count) \(collection == "documents" ? "document" : collection == "chunks" ? "chunk" : "photo")\(count == 1 ? "" : "s")"
+            "\(push ? "Sent" : "Received") \(count) \(replicatedNoun(collection))\(count == 1 ? "" : "s")"
         case .syncRefused: "A record was not accepted"
         case .syncDocumentSearchable: "A received document can be searched"
         }
@@ -195,6 +196,33 @@ enum XrayText {
         case .syncRefused(let collection, let id, let reason): "\(collection)/\(id) · \(reason)"
         case .syncDocumentSearchable(_, let title): "“\(title)”"
         }
+    }
+
+    /// The replicator's state in a few words.
+    static func activity(_ activity: ReplicatorActivity) -> String {
+        switch activity {
+        case .connecting: "connecting"
+        case .syncing: "syncing"
+        case .upToDate: "up to date"
+        case .offline: "offline, retrying"
+        case .stopped(let reason): reason.map { "stopped: \($0)" } ?? "stopped"
+        }
+    }
+
+    /// What one record of a replicated collection is called: a document, a chunk, a photo.
+    private static func replicatedNoun(_ collection: String) -> String {
+        switch collection {
+        case CouchbaseSchema.documents: "document"
+        case CouchbaseSchema.chunks: "chunk"
+        default: "photo"
+        }
+    }
+
+    /// What a reset deletes, in words. With sync on, the documents go from every device that shares the library.
+    static func resetMessage(syncEnabled: Bool) -> String {
+        syncEnabled
+            ? "This deletes every document and chat on this iPad, and the documents from every device that shares the library, then imports four sample documents."
+            : "This deletes every document and chat in this app, then imports four sample documents."
     }
 
     /// "closest photo 0.180 ≤ threshold 0.25", or why none matched.

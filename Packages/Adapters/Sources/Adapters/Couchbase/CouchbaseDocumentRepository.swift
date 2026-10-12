@@ -16,12 +16,10 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
     let imageFeatures: EmbeddingModelIdentity
     private let originalsCache: URL
     let tracer: any Tracer
-    /// Active sets known to be complete on this device, by document. A set stays complete until its record changes: a new
-    /// generation or a re-created record changes the key, and a deleted document's entry is dropped at the next look.
-    private var completeSets: [String: ActiveSet] = [:]
-    /// Active sets `refreshArrivals` has already reported as whole. Kept apart from `completeSets`, which a search fills
-    /// as well: a document that a search found whole before the replicator asked must still be reported once.
-    private var announcedSets: [String: ActiveSet] = [:]
+    // The arrival state of received documents (see CouchbaseDocumentRepository+Sharing.swift).
+    var completeSets: [String: ActiveSet] = [:]
+    var incompleteSets: [String: ActiveSet] = [:]
+    var announcedSets: [String: AnnouncedSet] = [:]
 
     /// Opens (or creates) the database in `directory` and prepares the schema.
     /// `originalsCache` is where stored originals are materialized as plain files on demand.
@@ -78,6 +76,7 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
     // MARK: Chunks
 
     public func writeChunks(_ chunks: [Chunk]) throws {
+        for docId in Set(chunks.map(\.docId)) { incompleteSets[docId] = nil }   // count again: this may complete a set
         let (_, seconds) = try timed { try writeBatch(chunks) }
         if let first = chunks.first {
             tracer.emit(duration: seconds, .batchWritten(
@@ -169,6 +168,7 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
     // MARK: Images
 
     public func writeImages(_ writes: [ImageWrite]) throws {
+        for docId in Set(writes.map(\.record.docId)) { incompleteSets[docId] = nil }
         let (_, seconds) = try timed { try writeImageBatch(writes) }
         if let first = writes.first {
             tracer.emit(duration: seconds, .imagesWritten(
@@ -432,80 +432,6 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
         return stale.sorted()
     }
 
-    /// An active generation with the number of chunks and images the document record says it has. `revision` is the
-    /// record's revision, so a record that is deleted and created again under the same ID is checked again.
-    struct ActiveSet: Equatable {
-        let generation: Int
-        let chunks: Int?
-        let images: Int?
-        let revision: String?
-    }
-
-    /// Every document that has an active generation, as its record says, complete or not.
-    func activeSets() throws -> [String: ActiveSet] {
-        var result: [String: ActiveSet] = [:]
-        let rows = try run(
-            "SELECT meta().id AS id, meta().revisionID AS revision, activeGeneration AS generation, chunkCount AS chunks, "
-                + "activeImageCount AS images FROM \(CouchbaseSchema.scope).documents WHERE activeGeneration IS NOT MISSING")
-        for row in rows {
-            guard let id = row.string(forKey: "id") else { continue }
-            result[id] = ActiveSet(
-                generation: row.int(forKey: "generation"),
-                chunks: row.contains(key: "chunks") ? row.int(forKey: "chunks") : nil,
-                images: row.contains(key: "images") ? row.int(forKey: "images") : nil,
-                revision: row.string(forKey: "revision"))
-        }
-        return result
-    }
-
-    /// Whether this device holds the whole of `set`. A record written before the counts existed cannot be checked and
-    /// counts as complete: that is how it behaved before sync.
-    private func isComplete(_ docId: String, _ set: ActiveSet) throws -> Bool {
-        guard let chunks = set.chunks, let images = set.images else { return true }
-        if completeSets[docId] == set { return true }
-        let haveChunks = try Self.count(CouchbaseSchema.chunks, in: database, docId: docId, generation: set.generation)
-        let haveImages = try Self.count(CouchbaseSchema.images, in: database, docId: docId, generation: set.generation)
-        guard haveChunks >= chunks, haveImages >= images else { return false }
-        completeSets[docId] = set
-        return true
-    }
-
-    /// `docId → active generation` for every document that has completed ingestion and whose set is whole on this device.
-    /// Search and re-indexing look at these only: a set that is still arriving is neither searchable nor outdated.
-    func activeGenerations() throws -> [String: Int] {
-        let sets = try activeSets()
-        completeSets = completeSets.filter { sets[$0.key] != nil }
-        var result: [String: Int] = [:]
-        for (id, set) in sets {
-            if try isComplete(id, set) { result[id] = set.generation }
-        }
-        return result
-    }
-
-    public func arrivingDocumentIDs() throws -> Set<String> {
-        let sets = try activeSets()
-        var arriving: Set<String> = []
-        for (id, set) in sets {
-            if try !isComplete(id, set) { arriving.insert(id) }
-        }
-        return arriving
-    }
-
-    public func refreshArrivals(of docIDs: Set<String>?) throws -> [String] {
-        let sets = try activeSets()
-        completeSets = completeSets.filter { sets[$0.key] != nil }
-        announcedSets = announcedSets.filter { sets[$0.key] != nil }
-        var became: [String] = []
-        for (id, set) in sets {
-            guard docIDs?.contains(id) ?? true, set.chunks != nil, announcedSets[id] != set else { continue }
-            if try isComplete(id, set) {
-                announcedSets[id] = set
-                became.append(id)
-            }
-        }
-        return became.sorted()
-    }
-
     // MARK: Diagnostics
 
     /// Query plan for `sql`; `vector` is bound to `$vector`, `text` to `$text`. Used to check index usage.
@@ -599,30 +525,6 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
             imageCount: doc.contains(key: "imageCount") ? doc.int(forKey: "imageCount") : nil,
             chunkCount: doc.contains(key: "chunkCount") ? doc.int(forKey: "chunkCount") : nil,
             activeImageCount: doc.contains(key: "activeImageCount") ? doc.int(forKey: "activeImageCount") : nil)
-    }
-
-    /// Chunks or images of one generation held in this database. Not traced: it is bookkeeping, not a user operation.
-    static func count(_ collection: String, in database: Database, docId: String, generation: Int) throws -> Int {
-        let query = try database.createQuery(
-            "SELECT COUNT(*) AS n FROM \(CouchbaseSchema.scope).\(collection) WHERE docId = $docId AND generation = $generation")
-        query.parameters = Parameters().setString(docId, forName: "docId").setInt(generation, forName: "generation")
-        return try query.execute().allResults().first?.int(forKey: "n") ?? 0
-    }
-
-    /// A document that was activated before the counts were recorded gets them from what this device holds, so a record
-    /// that reaches the server always carries them. A document being re-indexed is not affected: its active generation
-    /// is complete locally, and the counts describe that generation.
-    static func backfillActiveCounts(in database: Database, documents: Collection) throws {
-        let query = try database.createQuery(
-            "SELECT meta().id AS id, activeGeneration AS generation FROM \(CouchbaseSchema.scope).documents "
-                + "WHERE activeGeneration IS NOT MISSING AND chunkCount IS MISSING")
-        for row in try query.execute().allResults() {
-            guard let id = row.string(forKey: "id"), let doc = try documents.document(id: id)?.toMutable() else { continue }
-            let generation = row.int(forKey: "generation")
-            doc.setInt(try count(CouchbaseSchema.chunks, in: database, docId: id, generation: generation), forKey: "chunkCount")
-            doc.setInt(try count(CouchbaseSchema.images, in: database, docId: id, generation: generation), forKey: "activeImageCount")
-            try documents.save(document: doc)
-        }
     }
 
     static func chunk(from doc: Document) throws -> Chunk {

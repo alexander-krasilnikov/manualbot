@@ -18,13 +18,13 @@ import Testing
         try await a.importDocument("d1", title: "Pump manual", chunks: 3, images: 1)
         await a.sync.start(server.configuration)
         try await eventually("the library on the server") { try server.count("chunks") == 3 }
-        try await waitForState(a.sync, .upToDate)
+        try await waitForFirstSync(a.sync)
         try await Task.sleep(for: .milliseconds(500))
 
         let events = syncEvents(tracer)
-        let states = events.compactMap { event -> String? in if case .syncState(let text) = event.kind { text } else { nil } }
-        #expect(states.first == "connecting")
-        #expect(states.contains("up to date"))
+        let states = events.compactMap { event -> ReplicatorActivity? in if case .syncState(let state) = event.kind { state } else { nil } }
+        #expect(states.first == .connecting)
+        #expect(states.contains(.upToDate))
 
         var pushed: [String: Int] = [:]
         for event in events {
@@ -64,8 +64,8 @@ import Testing
         await a.sync.start(SyncConfiguration(endpoint: server.endpoint, username: "ipad1", password: "wrong"))
         try await waitForState(a.sync, .error(.credentialsRefused))
 
-        let states = syncEvents(tracer).compactMap { event -> String? in if case .syncState(let text) = event.kind { text } else { nil } }
-        #expect(states.contains { $0.hasPrefix("stopped: ") }, "\(states)")
+        let states = syncEvents(tracer).compactMap { event -> ReplicatorActivity? in if case .syncState(let state) = event.kind { state } else { nil } }
+        #expect(states.contains { if case .stopped(let reason) = $0 { reason != nil } else { false } }, "stopped with a reason: \(states)")
     }
 
     @Test func nothingIsReportedWhileTracingIsOff() async throws {
@@ -90,7 +90,7 @@ import Testing
         let tracer = RecordingTracer()
         let a = try SyncDevice(tracer: tracer); defer { Task { await a.cleanUp() } }
         await a.sync.start(server.configuration)
-        try await waitForState(a.sync, .upToDate)
+        try await waitForFirstSync(a.sync)
         try await a.importDocument("first", chunks: 2)
         try await eventually("the first document sent") { try server.contains("documents", id: "first") }
         try await Task.sleep(for: .seconds(1))

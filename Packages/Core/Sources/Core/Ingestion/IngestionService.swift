@@ -20,14 +20,13 @@ public enum IngestionError: Error, Equatable, LocalizedError {
         case .documentNotFound(let id): "Document \(id) no longer exists."
         case .photosUnavailable: "Photos cannot be analyzed with the embedding model in use."
         case .tooLarge(let bytes, let limit):
-            "The file is \(Self.size(bytes)), over the \(Self.size(limit)) limit for documents that can be shared."
+            "The file is \(Self.sizeText(bytes)), over the \(Self.sizeText(limit)) limit for documents that can be shared."
         }
     }
-}
 
-extension IngestionError {
-    /// Binary units, so the limit reads as the round number it is (20 MB, not 21 MB).
-    fileprivate static func size(_ bytes: Int64) -> String {
+    /// A size in binary units, so the limit reads as the round number it is (20 MB, not 21 MB). Also used wherever the
+    /// limit or a document's size is shown, so that they always agree.
+    public static func sizeText(_ bytes: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: bytes, countStyle: .memory)
     }
 }
@@ -56,6 +55,8 @@ public actor IngestionService {
     private var paused = false
     private var activeDocID: String?
     private var deleteRequested: Set<String> = []
+    /// Documents `enqueue` is in the middle of storing: their record exists before their job does.
+    private var importing: Set<String> = []
     /// The operation (for example a demo reset) that asked for a deferred delete, so the removal is reported under it.
     private var deleteRequesters: [String: TraceOperation] = [:]
     /// The last job state reported per document, so only changes of state are traced, not every progress tick.
@@ -125,11 +126,18 @@ public actor IngestionService {
         {
             throw IngestionError.tooLarge(bytes: bytes, limit: Self.maxOriginalBytes)
         }
-        if let requestedID, try await repository.document(id: requestedID) != nil { return requestedID }
+        if let requestedID {
+            // A delete of the same document that is waiting for the current batch to end must finish first, or the import
+            // would find the old record, do nothing, and the delete would then remove the document for good.
+            try await finishPendingDelete(of: requestedID)
+            if try await repository.document(id: requestedID) != nil { return requestedID }
+        }
         // Without an image model a photo cannot be analyzed: refuse it now, instead of keeping a document that will fail.
         if type == .image, imageFeatures == nil { throw IngestionError.photosUnavailable }
         let id = requestedID ?? UUID().uuidString
         let name = title ?? fileURL.deletingPathExtension().lastPathComponent
+        importing.insert(id)
+        defer { importing.remove(id) }
         // Always its own group, even inside a demo reset, so each import reads as a complete story.
         return try await inOperation(Self.operation(docId: id, generation: 1, title: name), replacing: true) {
             try await repository.upsert(DocumentRecord(id: id, title: name, type: type))
@@ -139,6 +147,24 @@ public actor IngestionService {
             return id
         }
     }
+
+    /// Waits for a delete of `docId` that is waiting for the batch being indexed to end. If nothing is indexing the document
+    /// any more (the run was stopped mid-batch, and a stopped run leaves the delete for the next one), it is carried out here.
+    private func finishPendingDelete(of docId: String) async throws {
+        while deleteRequested.contains(docId) {
+            if activeDocID != docId {
+                deleteRequested.remove(docId)
+                let requester = deleteRequesters.removeValue(forKey: docId)
+                try await removeEverything(docId, as: requester, replacing: false)
+                return
+            }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+    }
+
+    /// The documents being stored by `enqueue` right now. Between saving a document's record and saving its job, the record
+    /// has no job; a library list read then must not take it for a document another iPad is indexing.
+    public func importingDocumentIDs() -> Set<String> { importing }
 
     /// Builds a complete new set of chunks. The document stays searchable from its current set
     /// until the new one is ready and switched in.

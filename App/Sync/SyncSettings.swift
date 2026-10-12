@@ -12,7 +12,9 @@ final class SyncSettings {
 
     var address: String { didSet { defaults.set(address, forKey: Keys.address) } }
     var username: String { didSet { defaults.set(username, forKey: Keys.username) } }
-    var password: String { didSet { secrets.setSecret(password, for: Self.passwordAccount) } }
+    var password: String { didSet { passwordNotSaved = !secrets.setSecret(password, for: Self.passwordAccount) } }
+    /// The Keychain refused the password, so it is forgotten when the app closes. The Sync page says so.
+    private(set) var passwordNotSaved = false
     var isEnabled: Bool { didSet { defaults.set(isEnabled, forKey: Keys.enabled) } }
 
     @ObservationIgnored private let defaults: UserDefaults

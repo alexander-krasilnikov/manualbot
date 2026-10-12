@@ -34,6 +34,15 @@ public enum ModelRequestPurpose: String, Sendable {
     case search, download
 }
 
+/// What the replicator is doing, as the X-ray reports it.
+public enum ReplicatorActivity: Sendable, Equatable {
+    case connecting, syncing, upToDate
+    /// The connection was lost; it keeps trying.
+    case offline
+    /// It stopped, with the reason when it failed.
+    case stopped(reason: String?)
+}
+
 public enum QueryPurpose: String, Sendable {
     case vector, keyword, image
     /// The image index searched with the vector of the question's words instead of a photo's.
@@ -154,8 +163,8 @@ public enum TraceKind: Sendable, Equatable {
     /// The Models page asked a model repository for something: the only network use after setup, and only when the user
     /// asks. `subject` is the search text or the model's name. No document, question or answer is ever sent.
     case modelRequest(ModelRequestPurpose, host: String, subject: String)
-    /// The replicator changed state: connecting, syncing, up to date, offline, or stopped (with the reason, when it failed).
-    case syncState(String)
+    /// The replicator changed state.
+    case syncState(ReplicatorActivity)
     /// A batch of documents of one replicated collection was sent (`push`) or received.
     case syncReplicated(collection: String, count: Int, push: Bool)
     /// The server refused a record, or one could not be applied here.

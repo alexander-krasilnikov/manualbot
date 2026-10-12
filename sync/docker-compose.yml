@@ -15,7 +15,8 @@ services:
   couchbase-server:
     image: *couchbase-image
     ports:
-      - "${CB_CONSOLE_PORT:-18091}:8091"
+      # The web console has the administrator login only, and is for this machine.
+      - "127.0.0.1:${CB_CONSOLE_PORT:-18091}:8091"
     volumes:
       - couchbase-data:/opt/couchbase/var
     healthcheck:
@@ -33,6 +34,8 @@ services:
       couchbase-server:
         condition: service_healthy
     environment:
+      # The collections the app replicates (CouchbaseSchema.replicated); both init steps and sgw/database.json agree with it.
+      REPLICATED_COLLECTIONS: documents chunks images
       CB_HOST: couchbase-server
       CB_ADMIN_USER: ${CB_ADMIN_USER:-Administrator}
       CB_ADMIN_PASSWORD: ${CB_ADMIN_PASSWORD:-manualbot-admin}
@@ -78,6 +81,7 @@ services:
       sync-gateway:
         condition: service_healthy
     environment:
+      REPLICATED_COLLECTIONS: documents chunks images
       SGW_ADMIN: http://sync-gateway:4985
       IPAD_PASSWORD: ${IPAD_PASSWORD:-manualbot-ipad}
     volumes:

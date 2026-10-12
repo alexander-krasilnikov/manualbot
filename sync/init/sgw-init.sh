@@ -6,8 +6,20 @@ set -euo pipefail
 ADMIN="${SGW_ADMIN:-http://sync-gateway:4985}"
 DB=manualbot
 USERS=(ipad1 ipad2 ipad3)
-COLLECTIONS=(documents chunks images)
+# The collections the app replicates: CouchbaseSchema.replicated in the app. Defined once, in docker-compose.yml.
+read -r -a COLLECTIONS <<<"${REPLICATED_COLLECTIONS:?set in docker-compose.yml}"
 log() { echo "[sgw-init] $*"; }
+
+# This container reports healthy by the presence of this file, so it must not be left over from an earlier run.
+rm -f /tmp/ready
+
+# A string as a JSON string literal: backslash and double quote escaped, so that any password can be sent.
+json_string() {
+  local s="$1"
+  s="${s//\\/\\\\}"
+  s="${s//\"/\\\"}"
+  printf '"%s"' "$s"
+}
 
 # 1. The database. 412 means it exists: Sync Gateway keeps its configuration in the bucket.
 # A few tries: on a new cluster Sync Gateway can still fail for a moment to reach the query service.
@@ -21,7 +33,9 @@ case "${code}" in
   412) log "database ${DB} exists" ;;
   *) echo "creating the database failed (HTTP ${code}):" >&2; cat /tmp/create.out >&2; exit 1 ;;
 esac
-until [ "$(curl -s "${ADMIN}/${DB}/" | grep -o '"state":"[A-Za-z]*"' || true)" = '"state":"Online"' ]; do
+for waited in $(seq 0 2 120); do
+  [ "$(curl -s "${ADMIN}/${DB}/" | grep -o '"state":"[A-Za-z]*"' || true)" = '"state":"Online"' ] && break
+  if (( waited >= 120 )); then echo "database ${DB} did not come online within 120s" >&2; exit 1; fi
   log "waiting for ${DB} to come online"; sleep 2
 done
 
@@ -31,7 +45,7 @@ for collection in "${COLLECTIONS[@]}"; do
   access+="\"${collection}\":{\"admin_channels\":[\"library\"]},"
 done
 for user in "${USERS[@]}"; do
-  body="{\"password\":\"${IPAD_PASSWORD}\",\"collection_access\":{\"manualbot\":{${access%,}}}}"
+  body="{\"password\":$(json_string "${IPAD_PASSWORD}"),\"collection_access\":{\"manualbot\":{${access%,}}}}"
   code=$(curl -s -o /tmp/user.out -w '%{http_code}' -X PUT "${ADMIN}/${DB}/_user/${user}" -H 'Content-Type: application/json' --data "${body}")
   case "${code}" in
     200|201) log "account ${user} is ready" ;;

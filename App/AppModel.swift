@@ -41,7 +41,7 @@ final class AppModel {
 
     /// The Settings page showing, if any. It is presented from the root view, so that it stays when the workspace is
     /// rebuilt for a switch of models.
-    var presentedSettings: SettingsPage?
+    var presentedSettings: SettingsEntry?
     /// The embedding model in use, as it is named to the user.
     private var embedderTitle = ""
 
@@ -168,7 +168,7 @@ final class AppModel {
             let documents = (try? await core?.ingestion.outdatedDocuments(for: selection.profile.identity))?.count ?? 0
             return SwitchCost(
                 role: .embedder, documentsToReindex: documents, supportsPhotos: selection.profile.supportsImages, untested: !selection.isTested,
-                pausesSync: sync.isEnabled && selection.profile.identity != factory.fleetModel)
+                pausesSync: sync.isEnabled && selection.profile.identity != factory.fleetModel.identity)
         }
     }
 

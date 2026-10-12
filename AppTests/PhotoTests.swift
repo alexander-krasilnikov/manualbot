@@ -7,15 +7,6 @@ import PortsTesting
 import Testing
 @testable import ManualBot
 
-@MainActor private func eventually(_ timeout: Duration = .seconds(5), _ condition: @MainActor () async -> Bool) async -> Bool {
-    let deadline = ContinuousClock.now + timeout
-    while await !condition() {
-        if ContinuousClock.now > deadline { return false }
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-    return true
-}
-
 private let photoScratch = FileManager.default.temporaryDirectory.appendingPathComponent("photo-tests-\(UUID().uuidString)")
 
 private func write(_ data: Data, as name: String) throws -> URL {

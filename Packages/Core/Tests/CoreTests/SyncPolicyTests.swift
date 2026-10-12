@@ -4,7 +4,7 @@ import Testing
 @testable import Core
 
 @Suite struct SyncPolicyTests {
-    private let fleet = SyncPolicy.fleetModel
+    private let fleet = FleetModel.standard.identity
     private let other = EmbeddingModelIdentity(id: "other-embedder", version: "1", dimensions: 768)
 
     private func decide(
@@ -14,7 +14,7 @@ import Testing
     }
 
     @Test func theFleetModelIsTheAppsDefaultEmbedder() {
-        #expect(SyncPolicy.fleetModel == EmbedderProfile.embeddingGemma2.identity)
+        #expect(FleetModel.standard.identity == EmbedderProfile.embeddingGemma2.identity)
     }
 
     @Test func fleetModelWithNothingToRedoRuns() {

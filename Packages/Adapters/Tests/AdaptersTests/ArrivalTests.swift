@@ -1,5 +1,6 @@
 import Foundation
 import Ports
+@preconcurrency import CouchbaseLiteSwift
 import PortsTesting
 import Testing
 @testable import Adapters
@@ -136,6 +137,66 @@ import Testing
         try await received(f, chunks: 2, images: 0)       // the same ID comes back with its chunks still missing
         #expect(try await f.repo.keywordSearch(terms: ["alpha"], limit: 5, filter: filter()).isEmpty)
         #expect(try await f.repo.arrivingDocumentIDs() == ["d1"])
+    }
+
+    @Test func aSetFoundIncompleteIsCountedAgainOnlyWhenTheReplicatorNamesIt() async throws {
+        let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
+        try await received(f, chunks: 2, images: 0)
+        try await f.repo.writeChunks(chunks("d1", 0..<1))
+        #expect(try await f.repo.keywordSearch(terms: ["alpha"], limit: 5, filter: filter()).isEmpty)
+
+        // The last chunk arrives as the replicator writes it: straight into the collection, not through the repository.
+        let chunk = RepoFixture.chunk("d1", 1, 1, text: "unique alpha 1")
+        let doc = MutableDocument(id: chunk.id)
+        doc.setString(chunk.docId, forKey: "docId"); doc.setInt(chunk.generation, forKey: "generation")
+        doc.setInt(chunk.ordinal, forKey: "ordinal"); doc.setString(chunk.text, forKey: "text")
+        doc.setValue(chunk.embedding, forKey: "embedding"); doc.setString(chunk.embeddingModel, forKey: "embeddingModel")
+        try await f.repo.collections.chunks.save(document: doc)
+        #expect(try await f.repo.keywordSearch(terms: ["alpha"], limit: 5, filter: filter()).isEmpty,
+                "not counted again on every search: the replicator's report is what says something arrived")
+
+        #expect(try await f.repo.refreshArrivals(of: ["d1"]) == ["d1"])
+        #expect(try await f.repo.keywordSearch(terms: ["alpha"], limit: 5, filter: filter()).count == 2)
+    }
+
+    @Test func aRefreshOfEveryDocumentAlsoCountsIncompleteOnesAgain() async throws {
+        let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
+        try await received(f, chunks: 1, images: 0)
+        #expect(try await f.repo.arrivingDocumentIDs() == ["d1"])
+        let chunk = RepoFixture.chunk("d1", 1, 0, text: "unique alpha 0")
+        let doc = MutableDocument(id: chunk.id)
+        doc.setString(chunk.docId, forKey: "docId"); doc.setInt(chunk.generation, forKey: "generation")
+        doc.setInt(chunk.ordinal, forKey: "ordinal"); doc.setString(chunk.text, forKey: "text")
+        doc.setValue(chunk.embedding, forKey: "embedding"); doc.setString(chunk.embeddingModel, forKey: "embeddingModel")
+        try await f.repo.collections.chunks.save(document: doc)
+
+        #expect(try await f.repo.refreshArrivals(of: nil) == ["d1"])
+        #expect(try await f.repo.arrivingDocumentIDs().isEmpty)
+    }
+
+    @Test func aRenameDoesNotAnnounceTheDocumentAgainButARealReindexDoes() async throws {
+        let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
+        try await received(f, chunks: 2, images: 0)
+        try await f.repo.writeChunks(chunks("d1", 0..<2))
+        #expect(try await f.repo.refreshArrivals(of: ["d1"]) == ["d1"])
+
+        var record = try #require(try await f.repo.document(id: "d1"))
+        record.title = "Renamed on another iPad"
+        try await f.repo.upsert(record)
+        #expect(try await f.repo.refreshArrivals(of: ["d1"]).isEmpty, "a new revision of the same set is not news")
+
+        try await received(f, chunks: 3, images: 0, generation: 2)
+        try await f.repo.writeChunks(chunks("d1", 0..<3, generation: 2))
+        #expect(try await f.repo.refreshArrivals(of: ["d1"]) == ["d1"], "a new generation that became whole is")
+    }
+
+    @Test func aReplicatedRecordNamesTheDocumentItBelongsTo() {
+        #expect(CouchbaseSchema.documentID(ofRecord: "d1", in: "documents") == "d1")
+        #expect(CouchbaseSchema.documentID(ofRecord: "d1:2:7", in: "chunks") == "d1")
+        #expect(CouchbaseSchema.documentID(ofRecord: "d1:2:img:3", in: "images") == "d1")
+        #expect(CouchbaseSchema.documentID(ofRecord: "sample-x200-manual:1:0", in: "chunks") == "sample-x200-manual")
+        #expect(CouchbaseSchema.documentID(ofRecord: "not-a-chunk-id", in: "chunks") == nil)
+        #expect(CouchbaseSchema.documentID(ofRecord: "d1", in: "chats") == nil, "a device-local collection belongs to no document")
     }
 
     // MARK: Re-indexing sees only whole sets

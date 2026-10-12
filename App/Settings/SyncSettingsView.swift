@@ -13,18 +13,27 @@ struct SyncSettingsView: View {
                 TextField("Server address", text: $settings.address)
                     .textInputAutocapitalization(.never).autocorrectionDisabled().keyboardType(.URL)
                     .onSubmit { Task { await model.apply() } }
+                    .onChange(of: settings.address) { model.settingsEdited() }
                     .accessibilityIdentifier("syncAddress")
                 TextField("User name", text: $settings.username)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .onSubmit { Task { await model.apply() } }
+                    .onChange(of: settings.username) { model.settingsEdited() }
                     .accessibilityIdentifier("syncUsername")
                 SecureField("Password", text: $settings.password)
                     .onSubmit { Task { await model.apply() } }
+                    .onChange(of: settings.password) { model.settingsEdited() }
                     .accessibilityIdentifier("syncPassword")
             } header: {
                 Text("Server")
             } footer: {
-                Text("The Sync Gateway of your library, such as 192.168.1.20:4984. Only documents, their originals, and their search data are sent: chats stay on this iPad.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("The Sync Gateway of your library, such as 192.168.1.20:4984. Only documents, their originals, and their search data are sent: chats stay on this iPad.")
+                    if settings.passwordNotSaved {
+                        Text("The password could not be saved to the Keychain, so it is forgotten when the app closes.")
+                            .foregroundStyle(.red).accessibilityIdentifier("syncPasswordNotSaved")
+                    }
+                }
             }
 
             Section {
@@ -47,30 +56,25 @@ struct SyncSettingsView: View {
                 }
                 LabeledContent("Last synced", value: SyncText.lastSync(model.status.lastSync))
                     .accessibilityIdentifier("syncLastSync")
-                LabeledContent("Sent", value: "\(model.status.sent)").accessibilityIdentifier("syncSent")
-                LabeledContent("Received", value: "\(model.status.received)").accessibilityIdentifier("syncReceived")
+                LabeledContent("Documents sent", value: "\(model.status.sent)").accessibilityIdentifier("syncSent")
+                LabeledContent("Documents received", value: "\(model.status.received)").accessibilityIdentifier("syncReceived")
             }
 
             if !model.unshared.isEmpty {
                 Section {
                     ForEach(model.unshared) { document in
-                        LabeledContent(document.title, value: Self.size(document.bytes))
+                        LabeledContent(document.title, value: IngestionError.sizeText(document.bytes))
                             .accessibilityIdentifier("syncUnshared-\(document.title)")
                     }
                 } header: {
                     Text("Not shared")
                 } footer: {
-                    Text("The original of each is larger than \(Self.size(IngestionService.maxOriginalBytes)), the most that can be sent. They stay on this iPad, where they work as before.")
+                    Text("The original of each is larger than \(IngestionError.sizeText(IngestionService.maxOriginalBytes)), the most that can be sent. They stay on this iPad, where they work as before.")
                 }
             }
         }
         .navigationTitle("Sync")
         .onDisappear { Task { await model.apply() } }
         .accessibilityIdentifier("syncPage")
-    }
-
-    /// Binary units, so the limit reads 20 MB, as it does when a file is refused.
-    private static func size(_ bytes: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .memory)
     }
 }

@@ -5,16 +5,6 @@ import PortsTesting
 import Testing
 @testable import ManualBot
 
-@MainActor private func eventually(_ timeout: Duration = .seconds(10), _ condition: @MainActor () async -> Bool) async -> Bool {
-    let clock = ContinuousClock()
-    let deadline = clock.now + timeout
-    while clock.now < deadline {
-        if await condition() { return true }
-        try? await Task.sleep(for: .milliseconds(20))
-    }
-    return await condition()
-}
-
 /// Running sync under the user's settings and the fleet-model rule (library-sync spec), on a scripted replicator.
 @MainActor @Suite struct SyncModelTests {
     private let fleet = EmbeddingModelIdentity(id: "fleet", version: "1", dimensions: 32)
@@ -70,7 +60,7 @@ import Testing
         let model = SyncModel(settings: settings ?? self.settings())
         await model.attach(SyncModel.Library(
             sync: sync, ingestion: ingestion, embedding: embedding, embeddingName: embedding.id == fleet.id ? "Fleet Model" : "Other Model",
-            fleet: fleet, fleetName: "Fleet Model"))
+            fleet: FleetModel(identity: fleet, name: "Fleet Model")))
         return Rig(model: model, sync: sync, repo: repo, ingestion: ingestion)
     }
 
@@ -154,6 +144,33 @@ import Testing
 
         await rig.model.apply(restart: true)
         #expect(await rig.sync.configurations.count == 3, "asking to restart restarts it")
+    }
+
+    @Test func editingTheServerRestartsTheReplicatorOnlyOnceTheEditingHasStopped() async throws {
+        let settings = settings()
+        let rig = try await attach(settings: settings)
+        #expect(await rig.sync.configurations.count == 1)
+
+        // An address typed letter by letter: no restart per letter.
+        for address in ["1", "19", "192.168.1.2", "192.168.1.20:4984"] {
+            settings.address = address
+            rig.model.settingsEdited(after: .milliseconds(150))
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        #expect(await rig.sync.configurations.count == 1, "still typing")
+        #expect(await eventually { await rig.sync.configurations.count == 2 })
+        #expect(await rig.sync.configurations.last?.endpoint.absoluteString == "ws://192.168.1.20:4984/manualbot")
+    }
+
+    @Test func newCredentialsAfterARefusalAreTriedWithoutTurningSyncOffAndOn() async throws {
+        let settings = settings()
+        let rig = try await attach(settings: settings, sync: ScriptedLibrarySync(onStart: [.connecting, .error(.credentialsRefused)]))
+        #expect(await eventually { rig.model.state == .error(.credentialsRefused) })
+
+        settings.password = "the-right-one"
+        rig.model.settingsEdited(after: .milliseconds(50))
+        #expect(await eventually { await rig.sync.configurations.count == 2 }, "sync starts again by itself")
+        #expect(await rig.sync.configurations.last?.password == "the-right-one")
     }
 
     @Test func detachingStopsTheReplicatorBeforeTheLibraryCloses() async throws {

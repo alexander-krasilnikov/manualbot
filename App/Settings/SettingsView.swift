@@ -1,9 +1,14 @@
 import Ports
 import SwiftUI
 
-/// The pages of Settings. `root` is the list itself; opening Settings at `sync` goes straight to that page.
-enum SettingsPage: Hashable, Identifiable {
-    case root, models, sync
+/// The pages Settings pushes from its list.
+enum SettingsPage: Hashable {
+    case models, sync
+}
+
+/// How Settings is opened: at its list (the gear), or straight at the Sync page (the cloud).
+enum SettingsEntry: Identifiable {
+    case list, sync
 
     var id: Self { self }
 }
@@ -12,7 +17,7 @@ enum SettingsPage: Hashable, Identifiable {
 /// for a switch of models.
 struct SettingsView: View {
     let app: AppModel
-    let initial: SettingsPage
+    let entry: SettingsEntry
     @State private var path: [SettingsPage] = []
     @Environment(\.dismiss) private var dismiss
 
@@ -37,12 +42,11 @@ struct SettingsView: View {
                 switch page {
                 case .models: ModelSettingsView(model: app.settings)
                 case .sync: SyncSettingsView(model: app.sync)
-                case .root: EmptyView()
                 }
             }
             .toolbar { Button("Done") { dismiss() }.accessibilityIdentifier("settingsDone") }
         }
         .accessibilityIdentifier("settingsSheet")
-        .onAppear { if initial != .root, path.isEmpty { path = [initial] } }
+        .onAppear { if entry == .sync, path.isEmpty { path = [.sync] } }
     }
 }

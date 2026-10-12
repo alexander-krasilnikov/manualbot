@@ -52,6 +52,7 @@ public actor ScriptedLibrarySync: LibrarySync {
         current.state = state
         if let sent { current.sent = sent }
         if let received { current.received = received }
+        if sent != nil || received != nil { current.records += 1 }
         if state == .upToDate { current.lastSync = Date() }
         for continuation in subscribers.values { continuation.yield(current) }
     }

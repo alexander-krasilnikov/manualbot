@@ -12,8 +12,8 @@ import Synchronization
 /// and a chunk or image whose vector is not from the fleet model is never sent, whatever else happens.
 public actor CouchbaseLibrarySync: LibrarySync {
     private let repository: CouchbaseDocumentRepository
+    /// The tag every chunk and photo that is sent must carry: photos share the text model's vector space.
     private let fleetModelTag: String
-    private let fleetImageModelTag: String
     private let maxOriginalBytes: Int64
     private let originals: OriginalSizes
     private let tracer: any Tracer
@@ -26,15 +26,12 @@ public actor CouchbaseLibrarySync: LibrarySync {
     private var subscribers: [UUID: AsyncStream<SyncStatus>.Continuation] = [:]
 
     public init(
-        repository: CouchbaseDocumentRepository, fleetModelTag: String = SyncPolicy.fleetModel.tag,
-        fleetImageModelTag: String? = nil, maxOriginalBytes: Int64 = IngestionService.maxOriginalBytes,
-        tracer: any Tracer = NoTracer()
+        repository: CouchbaseDocumentRepository, fleetModelTag: String = FleetModel.standard.identity.tag,
+        maxOriginalBytes: Int64 = IngestionService.maxOriginalBytes, tracer: any Tracer = NoTracer()
     ) {
         self.tracer = tracer
         self.repository = repository
         self.fleetModelTag = fleetModelTag
-        // Photos share the text model's vector space, so by default they carry the same tag.
-        self.fleetImageModelTag = fleetImageModelTag ?? fleetModelTag
         self.maxOriginalBytes = maxOriginalBytes
         originals = OriginalSizes(limit: maxOriginalBytes, documents: repository.collections.documents)
     }
@@ -56,7 +53,7 @@ public actor CouchbaseLibrarySync: LibrarySync {
     }
 
     public func unsharedDocuments() async -> [UnsharedDocument] {
-        (try? await repository.originals(largerThan: maxOriginalBytes)) ?? []
+        (try? await repository.documentsTooLargeToShare(over: maxOriginalBytes)) ?? []
     }
 
     public func start(_ configuration: SyncConfiguration) {
@@ -66,7 +63,6 @@ public actor CouchbaseLibrarySync: LibrarySync {
 
         let collections = repository.collections
         let fleet = fleetModelTag
-        let fleetImages = fleetImageModelTag
         let sizes = originals
         var documents = CollectionConfiguration(collection: collections.documents)
         documents.pushFilter = { doc, flags in flags.contains(.deleted) || !sizes.isLarge(doc) }
@@ -78,7 +74,7 @@ public actor CouchbaseLibrarySync: LibrarySync {
         var images = CollectionConfiguration(collection: collections.images)
         images.pushFilter = { doc, flags in
             flags.contains(.deleted)
-                || (doc.string(forKey: "featureModel") == fleetImages && !sizes.isUnshared(docId: doc.string(forKey: "docId")))
+                || (doc.string(forKey: "featureModel") == fleet && !sizes.isUnshared(docId: doc.string(forKey: "docId")))
         }
 
         var config = ReplicatorConfiguration(
@@ -112,26 +108,24 @@ public actor CouchbaseLibrarySync: LibrarySync {
 
     private func replicatorChanged(activity: Replicator.ActivityLevel, error: (any Error)?) {
         guard replicator != nil else { return }
-        var described = ""
+        let reported: ReplicatorActivity
         switch activity {
-        case .connecting: current.state = .connecting; described = "connecting"
-        case .busy: current.state = .syncing; described = "syncing"
+        case .connecting: current.state = .connecting; reported = .connecting
+        case .busy: current.state = .syncing; reported = .syncing
         case .idle:
             current.state = .upToDate
             current.lastSync = Date()
-            described = "up to date"
-        case .offline: current.state = .error(.unreachable); described = "offline, retrying"
+            reported = .upToDate
+        case .offline: current.state = .error(.unreachable); reported = .offline
         case .stopped:
             current.state = error.map { .error(Self.failure(from: $0)) } ?? .off
-            described = error.map { "stopped: \($0.localizedDescription)" } ?? "stopped"
-        @unknown default: break
+            reported = .stopped(reason: error?.localizedDescription)
+        @unknown default: return
         }
         publish()
-        if !described.isEmpty {
-            trace(.syncState(described))
-            // A burst ends when the replicator has nothing left to do; the next one is a new group.
-            if activity != .connecting, activity != .busy { operation = nil }
-        }
+        trace(.syncState(reported))
+        // A burst ends when the replicator has nothing left to do; the next one is a new group.
+        if activity != .connecting, activity != .busy { operation = nil }
     }
 
     /// One document of a replication batch: its collection, its ID, and why it failed, if it did.
@@ -142,14 +136,17 @@ public actor CouchbaseLibrarySync: LibrarySync {
     }
 
     /// Counts what moved, and for what was received, lets the repository see which received documents are now whole.
+    /// `sent` and `received` count documents only; `records` counts everything, so a batch of chunks still shows as activity.
     private func replicated(_ items: [ReplicatedItem], isPush: Bool) async {
         guard replicator != nil, !items.isEmpty else { return }
-        let documents = items.filter { $0.error == nil }
-        if isPush { current.sent += documents.count } else { current.received += documents.count }
+        let done = items.filter { $0.error == nil }
+        let documents = done.filter { $0.collection == CouchbaseSchema.documents }.count
+        if isPush { current.sent += documents } else { current.received += documents }
+        current.records += done.count
         publish()
         if tracer.isEnabled {
             for collection in CouchbaseSchema.replicated {
-                let count = documents.filter { $0.collection == collection }.count
+                let count = done.filter { $0.collection == collection }.count
                 if count > 0 { trace(.syncReplicated(collection: collection, count: count, push: isPush)) }
             }
             for item in items {
@@ -157,16 +154,7 @@ public actor CouchbaseLibrarySync: LibrarySync {
             }
         }
         guard !isPush else { return }
-        var affected = Set<String>()
-        for item in documents {
-            let (collection, id) = (item.collection, item.id)
-            switch collection {
-            case CouchbaseSchema.documents: affected.insert(id)
-            case CouchbaseSchema.chunks: if let parts = Chunk.parseID(id) { affected.insert(parts.docId) }
-            case CouchbaseSchema.images: if let parts = ImageRecord.parseID(id) { affected.insert(parts.docId) }
-            default: break
-            }
-        }
+        let affected = Set(done.compactMap { CouchbaseSchema.documentID(ofRecord: $0.id, in: $0.collection) })
         let searchable = (try? await repository.refreshArrivals(of: affected)) ?? []
         for docId in searchable {
             let title = (try? await repository.document(id: docId))?.title ?? docId
@@ -228,11 +216,13 @@ private final class OriginalSizes: @unchecked Sendable {
         return big
     }
 
-    /// For a chunk or image: whether the document it belongs to is kept back.
+    /// For a chunk or image: whether the document it belongs to is kept back. Only an answer read from the document is
+    /// remembered: a document that cannot be read now is not assumed to be small.
     func isUnshared(docId: String?) -> Bool {
         guard let docId else { return false }
         if let known = large.withLock({ $0[docId] }) { return known }
-        let big = ((try? documents.document(id: docId)).map { Self.exceeds($0, limit) }) ?? false
+        guard let document = try? documents.document(id: docId) else { return false }
+        let big = Self.exceeds(document, limit)
         large.withLock { $0[docId] = big }
         return big
     }

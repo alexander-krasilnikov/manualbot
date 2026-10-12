@@ -3,6 +3,7 @@ import Foundation
 import Ports
 import PortsTesting
 import Testing
+import Core
 @testable import Adapters
 
 /// Stands in for Sync Gateway: a database behind a `URLEndpointListener`, with the replicated collections and basic
@@ -61,15 +62,19 @@ final class SyncTestServer: @unchecked Sendable {
 struct SyncDevice {
     let fixture: RepoFixture
     let sync: CouchbaseLibrarySync
+    /// The embedding model of this iPad. Its photos share the text model's vector space, so they carry the same tag.
+    let embedding: EmbeddingModelIdentity
 
     var repo: CouchbaseDocumentRepository { fixture.repo }
 
-    init(embedding: EmbeddingModelIdentity = RepoFixture.identity, imageFeatures: EmbeddingModelIdentity = RepoFixture.imageIdentity,
-         maxOriginalBytes: Int64 = 20 * 1024 * 1024, tracer: any Tracer = NoTracer()) throws {
-        fixture = try RepoFixture(embedding: embedding, imageFeatures: imageFeatures)
+    init(
+        embedding: EmbeddingModelIdentity = RepoFixture.identity, maxOriginalBytes: Int64 = IngestionService.maxOriginalBytes,
+        tracer: any Tracer = NoTracer()
+    ) throws {
+        self.embedding = embedding
+        fixture = try RepoFixture(embedding: embedding, imageFeatures: embedding)
         sync = CouchbaseLibrarySync(
-            repository: fixture.repo, fleetModelTag: embedding.tag, fleetImageModelTag: imageFeatures.tag,
-            maxOriginalBytes: maxOriginalBytes, tracer: tracer)
+            repository: fixture.repo, fleetModelTag: embedding.tag, maxOriginalBytes: maxOriginalBytes, tracer: tracer)
     }
 
     func cleanUp() async {
@@ -93,7 +98,7 @@ struct SyncDevice {
             if let chunkModel { chunk.embeddingModel = chunkModel }
             return chunk
         })
-        if images > 0 { try await repo.writeImages((0..<images).map { CouchbaseImageTests.image(id, generation, $0) }) }
+        if images > 0 { try await repo.writeImages((0..<images).map { CouchbaseImageTests.image(id, generation, $0, model: embedding.tag) }) }
         try await repo.activate(generation: generation, for: id)
     }
 
@@ -117,7 +122,23 @@ func eventually(
     Issue.record("Timed out waiting for \(message())", sourceLocation: sourceLocation)
 }
 
-/// Waits for `state` to be the sync's status.
+/// Waits for `state` to be the sync's status. On a timeout it says what the state was.
 func waitForState(_ sync: CouchbaseLibrarySync, _ state: SyncState, timeout: TimeInterval = 20, sourceLocation: SourceLocation = #_sourceLocation) async throws {
-    try await eventually("sync state \(state)", timeout: timeout, sourceLocation: sourceLocation) { await sync.status.state == state }
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if await sync.status.state == state { return }
+        try await Task.sleep(for: .milliseconds(100))
+    }
+    Issue.record("Timed out waiting for sync state \(state); it was \(await sync.status)", sourceLocation: sourceLocation)
+}
+
+/// Waits until the replicator has reached "up to date" at least once. The state itself can already be "syncing" again by the
+/// time it is read, so the moment it last had nothing to do (`lastSync`) is what says it got there.
+func waitForFirstSync(_ sync: CouchbaseLibrarySync, timeout: TimeInterval = 20, sourceLocation: SourceLocation = #_sourceLocation) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if await sync.status.lastSync != nil { return }
+        try await Task.sleep(for: .milliseconds(100))
+    }
+    Issue.record("Timed out waiting for the first sync; the status was \(await sync.status)", sourceLocation: sourceLocation)
 }

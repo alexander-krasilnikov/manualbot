@@ -16,9 +16,9 @@ struct RootView: View {
             }
         }
         .task { await app.run() }
-        .fullScreenCover(item: Bindable(app).presentedSettings) { page in
+        .fullScreenCover(item: Bindable(app).presentedSettings) { entry in
             // Settings is a screen of its own, not a small dialog.
-            SettingsView(app: app, initial: page)
+            SettingsView(app: app, entry: entry)
         }
         .onOpenURL { url in Task { await app.open([url]) } }
     }

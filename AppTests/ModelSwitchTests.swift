@@ -5,16 +5,6 @@ import PortsTesting
 import Testing
 @testable import ManualBot
 
-@MainActor private func eventually(_ timeout: Duration = .seconds(30), _ condition: @MainActor () async -> Bool) async -> Bool {
-    let clock = ContinuousClock()
-    let deadline = clock.now + timeout
-    while clock.now < deadline {
-        if await condition() { return true }
-        try? await Task.sleep(for: .milliseconds(20))
-    }
-    return await condition()
-}
-
 /// Switching the model in use (model-catalog spec: Activation confirmation, Immediate switch), on the stand-in services
 /// with a real database. The library's own task (`observe`) is started as a view would, to let re-indexing run.
 @MainActor @Suite(.serialized) struct ModelSwitchTests {
@@ -154,10 +144,10 @@ import Testing
         #expect(await eventually { running.app.sync.state == .upToDate }, "on the fleet model, sync runs: \(running.app.sync.state)")
 
         try await running.app.switchModel(to: embedderB.spec.id)
-        #expect(running.app.sync.state == .paused(.otherEmbedder(active: "Stub Text Embedder", fleet: SyncPolicy.fleetModelName)))
+        #expect(running.app.sync.state == .paused(.otherEmbedder(active: "Stub Text Embedder", fleet: FleetModel.standard.name)))
         #expect(await settle(&running))
         #expect(
-            running.app.sync.state == .paused(.otherEmbedder(active: "Stub Text Embedder", fleet: SyncPolicy.fleetModelName)),
+            running.app.sync.state == .paused(.otherEmbedder(active: "Stub Text Embedder", fleet: FleetModel.standard.name)),
             "re-indexing with the other model does not bring it back")
 
         try await running.app.switchModel(to: embedderA.spec.id)

@@ -1,3 +1,4 @@
+import Adapters
 import Ports
 import SwiftUI
 
@@ -125,8 +126,8 @@ struct XrayEventDetail: View {
                 LabeledText(purpose == .search ? "Searched for" : "Downloaded", subject)
                 LabeledText("From", host)
                 Text("Nothing about your documents, questions or answers is sent.").font(.callout)
-            case .syncState(let state):
-                Text("The replicator is now: \(state).").font(.callout)
+            case .syncState(let activity):
+                Text("The replicator is now: \(XrayText.activity(activity)).").font(.callout)
             case .syncReplicated(let collection, let count, let push):
                 LabeledText(push ? "Sent" : "Received", "\(count) in “\(collection)”")
                 Text("Indexes are not part of this: each iPad builds its own vector and keyword indexes from the documents it holds.")
@@ -136,7 +137,7 @@ struct XrayEventDetail: View {
                 LabeledText("Why", reason)
             case .syncDocumentSearchable(let docId, let title):
                 LabeledText("Document", title)
-                StoredDocumentLink(collection: "documents", id: docId, xray: xray)
+                StoredDocumentLink(collection: CouchbaseSchema.documents, id: docId, xray: xray)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

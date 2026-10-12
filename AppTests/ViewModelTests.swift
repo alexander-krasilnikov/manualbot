@@ -6,15 +6,6 @@ import PortsTesting
 import Testing
 @testable import ManualBot
 
-@MainActor private func eventually(_ timeout: Duration = .seconds(5), _ condition: @MainActor () async -> Bool) async -> Bool {
-    let deadline = ContinuousClock.now + timeout
-    while await !condition() {
-        if ContinuousClock.now > deadline { return false }
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-    return true
-}
-
 private let scratch = FileManager.default.temporaryDirectory.appendingPathComponent("vm-tests-\(UUID().uuidString)")
 
 private func file(_ name: String, _ text: String) throws -> URL {
@@ -93,6 +84,32 @@ private func file(_ name: String, _ text: String) throws -> URL {
         await library.refresh()
         #expect(status("arriving") == .ready)
         #expect(LibraryViewModel.Status.arriving.isWorking && !LibraryViewModel.Status.arriving.isReady)
+    }
+
+    @Test func aFinishedLocalJobDoesNotHideADocumentThatAnotherIPadHasSinceReplaced() {
+        // This iPad indexed the document (its job is ready); another iPad re-indexed it, and the new set is still arriving.
+        let record = DocumentRecord(id: "d", title: "T", type: .pdf, activeGeneration: 2, chunkCount: 9, activeImageCount: 0)
+        let job = IngestJobRecord(docId: "d", targetGeneration: 1, state: .ready, progress: 1)
+        #expect(LibraryViewModel.status(of: record, job: job, arriving: true) == .arriving)
+        #expect(!LibraryViewModel.status(of: record, job: job, arriving: true).isReady, "so it is not offered for search or pinning")
+        #expect(LibraryViewModel.status(of: record, job: job, arriving: false) == .ready)
+    }
+
+    @Test func aDocumentBeingImportedRightNowIsWaitingNotIndexedElsewhere() {
+        // Between saving a record and saving its job, the record has no job.
+        let record = DocumentRecord(id: "d", title: "T", type: .pdf)
+        #expect(LibraryViewModel.status(of: record, job: nil, importing: true) == .queued)
+        #expect(LibraryViewModel.status(of: record, job: nil, importing: false) == .indexingElsewhere)
+    }
+
+    @Test func aDocumentStuckOnAnotherDeviceCanBeIndexedHere() async throws {
+        let (library, repo, _) = make()
+        await repo.upsert(DocumentRecord(id: "elsewhere", title: "Elsewhere", type: .pdf))
+        await library.refresh()
+        #expect(library.items.first?.status == .indexingElsewhere)
+
+        await library.retry("elsewhere")
+        #expect(try await repo.job(docId: "elsewhere") != nil, "the user's Index here queues the work on this iPad")
     }
 
     @Test func aLocalImportIsNeverShownAsArriving() async throws {

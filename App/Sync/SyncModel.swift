@@ -17,9 +17,8 @@ final class SyncModel {
         /// The embedding model in use, and how it is named to the user.
         let embedding: EmbeddingModelIdentity
         let embeddingName: String
-        /// The model every iPad shares (the app's default embedder; only tests and stand-ins use another).
-        var fleet: EmbeddingModelIdentity = SyncPolicy.fleetModel
-        var fleetName: String = SyncPolicy.fleetModelName
+        /// The model every iPad shares.
+        var fleet = FleetModel.standard
     }
 
     let settings: SyncSettings
@@ -35,6 +34,7 @@ final class SyncModel {
     @ObservationIgnored private var library: Library?
     @ObservationIgnored private var started: SyncConfiguration?
     @ObservationIgnored private var tasks: [Task<Void, Never>] = []
+    @ObservationIgnored private var pendingApply: Task<Void, Never>?
     @ObservationIgnored private var applying = false
     @ObservationIgnored private var applyAgain = false
 
@@ -82,6 +82,7 @@ final class SyncModel {
     func detach() async {
         for task in tasks { task.cancel() }
         tasks = []
+        pendingApply?.cancel()
         if let sync = library?.sync, started != nil { await sync.stop() }
         started = nil
         library = nil
@@ -91,6 +92,17 @@ final class SyncModel {
     }
 
     // MARK: Applying the settings
+
+    /// Applies the settings once the user has stopped editing them for `delay`: a server address typed letter by letter must
+    /// not restart the replicator at every letter, but new credentials must take effect without anyone turning sync off and on.
+    func settingsEdited(after delay: Duration = .seconds(1)) {
+        pendingApply?.cancel()
+        pendingApply = Task { [weak self] in
+            try? await Task.sleep(for: delay)
+            guard !Task.isCancelled else { return }
+            await self?.apply()
+        }
+    }
 
     /// Brings the replicator in line with the settings and the fleet-model rule. Starts it, stops it, or leaves it, and
     /// restarts it when `restart` is set or the server or account changed. Safe to call as often as something changes.
@@ -115,7 +127,7 @@ final class SyncModel {
         let outdated = (try? await library.ingestion.outdatedDocuments(for: library.embedding))?.count ?? 0
         decision = SyncPolicy.decide(
             enabled: settings.isEnabled, activeModel: library.embedding, activeModelName: library.embeddingName,
-            outdatedDocuments: outdated, fleet: library.fleet, fleetName: library.fleetName)
+            outdatedDocuments: outdated, fleet: library.fleet)
         if decision == .run, let configuration = settings.configuration {
             if restart || started != configuration {
                 await library.sync.start(configuration)
@@ -129,7 +141,7 @@ final class SyncModel {
     }
 
     private func received(_ update: SyncStatus) async {
-        let changed = update.received != status.received || update.sent != status.sent || update.state != status.state
+        let changed = update.records != status.records || update.state != status.state
         status = update
         if update.state == .upToDate, let library { unshared = await library.sync.unsharedDocuments() }
         if changed { await onActivity?() }

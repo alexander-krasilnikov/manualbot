@@ -2,6 +2,7 @@
 import Foundation
 import Ports
 import PortsTesting
+import Core
 import Testing
 @testable import Adapters
 
@@ -26,7 +27,7 @@ private let gatewayURL = ProcessInfo.processInfo.environment["SYNC_GATEWAY_URL"]
         let a = try SyncDevice(); defer { Task { await a.cleanUp() } }
         let b = try SyncDevice(); defer { Task { await b.cleanUp() } }
         let id = "gateway-\(UUID().uuidString)"
-        let limit = 20 * 1024 * 1024
+        let limit = Int(IngestionService.maxOriginalBytes)
         try await a.importDocument(id, title: "At the limit", chunks: 5, images: 2, original: limit)
 
         await a.sync.start(configuration("ipad1"))
@@ -70,7 +71,7 @@ private let gatewayURL = ProcessInfo.processInfo.environment["SYNC_GATEWAY_URL"]
         let b = try SyncDevice(); defer { Task { await b.cleanUp() } }
         let big = "gateway-big-\(UUID().uuidString)"
         let small = "gateway-small-\(UUID().uuidString)"
-        try await a.importDocument(big, title: "Too big", chunks: 2, original: 20 * 1024 * 1024 + 1)
+        try await a.importDocument(big, title: "Too big", chunks: 2, original: Int(IngestionService.maxOriginalBytes) + 1)
         try await a.importDocument(small, title: "Fits", chunks: 2, original: 1024)
         #expect(await a.sync.unsharedDocuments().map(\.id) == [big])
 
@@ -100,7 +101,7 @@ private let gatewayURL = ProcessInfo.processInfo.environment["SYNC_GATEWAY_URL"]
     @Test func theRightPasswordReachesUpToDate() async throws {
         let a = try SyncDevice(); defer { Task { await a.cleanUp() } }
         await a.sync.start(configuration("ipad3"))
-        try await waitForState(a.sync, .upToDate, timeout: 30)
+        try await waitForFirstSync(a.sync, timeout: 30)
     }
 }
 

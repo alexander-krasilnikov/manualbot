@@ -55,7 +55,8 @@ The stub offers a second, text-only embedding model, to try a switch of embedder
 
 ## Models
 
-The first-run setup installs the default pair. The **Models** page (the gear in the library toolbar) is where you change it.
+The first-run setup installs the default pair. The **Models** page (**Settings**, the gear in the library toolbar, then *Models*)
+is where you change it.
 It lists what is **in use**, what is **installed** but not in use, the **embedding models** the app offers, and a search for
 **language and embedding models**.
 
@@ -114,9 +115,10 @@ for the app, with one command: `cd sync && docker compose up -d --wait`.
 
 - **What is shared.** Documents (with their original files), chunks and photos. Chats and messages stay on each iPad, and so do
   the vector and keyword indexes: each iPad builds its own from the documents it holds.
-- **One embedding model for everyone.** Shared vectors have to come from one model, the app's default (EmbeddingGemma 2). An
-  iPad that switches to another embedding model pauses sync, and says so on the Sync page and in the Models confirmation; it
-  resumes by itself once the iPad is back on the default and every document has been indexed with it.
+- **One embedding model for everyone** (the *fleet model* in the code). Shared vectors have to come from one model, the app's
+  default (EmbeddingGemma 2). An iPad that switches to another embedding model pauses sync, and says so on the Sync page and
+  in the Models confirmation; it resumes by itself once the iPad is back on the default and every document has been indexed
+  with it.
 - **Originals up to 20 MB.** That is the largest attachment Sync Gateway takes, so larger files are refused at import, with or
   without sync. A larger one imported by an older version stays on its iPad and is listed on the Sync page as not shared.
 - **Arriving documents.** A document received from another iPad is searchable only when all its chunks and photos have
@@ -306,9 +308,9 @@ The simulator needs an iOS 27 runtime; the app tests above name `iPad Pro 13-inc
 ## Layout
 
 - `App/`: SwiftUI app (library, chat, source viewer, model setup).
-- `Packages/Ports`: the interfaces between parts, plus test fakes.
-- `Packages/Core`: model-independent logic (chunking, retrieval, chat, ingestion).
-- `Packages/Adapters`: Couchbase Lite, LiteRT-LM (embedding and answers), Vision text recognition, extractors, downloader.
+- `Packages/Ports`: the interfaces between parts (including `LibrarySync`), plus test fakes.
+- `Packages/Core`: model-independent logic (chunking, retrieval, chat, ingestion, and `SyncPolicy`, which decides when sync may run).
+- `Packages/Adapters`: Couchbase Lite (including the replicator, `CouchbaseLibrarySync`), LiteRT-LM (embedding and answers), Vision text recognition, extractors, downloader.
 - `Packages/LiteRTLMKit`: vendored, patched Swift wrapper for LiteRT-LM (see its README).
 - `sync/`: Couchbase Server and Sync Gateway as a Docker Compose stack for trying sync (see its README).
 - `openspec/`: the change's proposal, specs, design and task list.

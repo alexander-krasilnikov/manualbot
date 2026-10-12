@@ -16,7 +16,7 @@ struct WorkspaceView: View {
                 LibraryView(
                     library: library,
                     onOpenExplorer: { app.demo.explorer.present() },
-                    onOpenSettings: { app.presentedSettings = .root },
+                    onOpenSettings: { app.presentedSettings = .list },
                     onOpenSync: { app.presentedSettings = .sync },
                     sync: app.sync,
                     settings: app.settings,

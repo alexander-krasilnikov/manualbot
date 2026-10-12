@@ -148,15 +148,6 @@ private func event(_ op: TraceOperation?, dimensions: Int = 1) -> TraceEvent {
 
 // MARK: - 5.x panel model and text
 
-@MainActor private func eventually(_ timeout: Duration = .seconds(5), _ condition: @MainActor () -> Bool) async -> Bool {
-    let deadline = ContinuousClock.now + timeout
-    while !condition() {
-        if ContinuousClock.now > deadline { return false }
-        try? await Task.sleep(for: .milliseconds(10))
-    }
-    return true
-}
-
 private final class CountingInspector: TraceInspector, @unchecked Sendable {
     private let lock = NSLock()
     private var plans = 0
@@ -206,9 +197,9 @@ private final class CountingInspector: TraceInspector, @unchecked Sendable {
         defer { task.cancel() }
         let sync = TraceOperation(id: "sync-1", kind: .sync, title: "Sync")
         let kinds: [TraceKind] = [
-            .syncState("connecting"), .syncReplicated(collection: "chunks", count: 4, push: false),
+            .syncState(.connecting), .syncReplicated(collection: "chunks", count: 4, push: false),
             .syncRefused(collection: "documents", id: "d1", reason: "forbidden"),
-            .syncDocumentSearchable(docId: "d1", title: "Pump manual"), .syncState("up to date"),
+            .syncDocumentSearchable(docId: "d1", title: "Pump manual"), .syncState(.upToDate),
         ]
         for kind in kinds { tracer.record(TraceEvent(operation: sync, kind: kind)) }
         #expect(await eventually { model.log.groups.first?.events.count == kinds.count })

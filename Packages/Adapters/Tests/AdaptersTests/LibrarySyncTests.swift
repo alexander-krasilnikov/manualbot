@@ -7,7 +7,7 @@ import Testing
 
 /// Replication of the shared library, against an in-process server.
 @Suite(.serialized) struct LibrarySyncTests {
-    // MARK: 5.1 replication and status
+    // MARK: Replication and status
 
     @Test func aDocumentWithItsChunksAndImagesReplicatesAndTheStatusReachesUpToDate() async throws {
         let server = try SyncTestServer(); defer { server.cleanUp() }
@@ -15,14 +15,15 @@ import Testing
         try await a.importDocument("d1", chunks: 5, images: 2)
 
         await a.sync.start(server.configuration)
-        try await waitForState(a.sync, .upToDate)
+        try await waitForFirstSync(a.sync)
 
         try await eventually("everything on the server") {
             try server.count("documents") == 1 && server.count("chunks") == 5 && server.count("images") == 2
         }
         let status = await a.sync.status
         #expect(status.lastSync != nil)
-        #expect(status.sent >= 8)
+        #expect(status.sent == 1, "one document was sent, not its chunks and photos")
+        #expect(status.records >= 8, "but every record that moved is counted as activity")
         #expect(try server.contains("chunks", id: "d1:1:0"))
     }
 
@@ -48,6 +49,10 @@ import Testing
         try await eventually("the manual searchable on the second device") { try await b.keywordHits() == 6 }
         #expect(try await b.repo.document(id: "d1")?.title == "Pump manual")
         #expect(try await b.repo.arrivingDocumentIDs().isEmpty)
+        try await eventually("one document received, with its chunks and photo counted as activity") {
+            let status = await b.sync.status
+            return status.received == 1 && status.records >= 8
+        }
         #expect(try await b.repo.jobs().isEmpty, "nothing was indexed on the second device")
         #expect(try await b.repo.activeImages(docId: "d1").count == 1)
     }
@@ -127,7 +132,7 @@ import Testing
         let server = try SyncTestServer(); defer { server.cleanUp() }
         let a = try SyncDevice(); defer { Task { await a.cleanUp() } }
         await a.sync.start(server.configuration)
-        try await waitForState(a.sync, .upToDate)
+        try await waitForFirstSync(a.sync)
         await a.sync.stop()
         #expect(await a.sync.status.state == .off)
 
@@ -147,7 +152,7 @@ import Testing
         try await eventually("it syncs with the right credentials") { try server.count("documents") == 1 }
     }
 
-    // MARK: 5.2 what is held back
+    // MARK: What is held back
 
     @Test func aDocumentWithAnOriginalOverTheLimitStaysOnTheDevice() async throws {
         let server = try SyncTestServer(); defer { server.cleanUp() }
@@ -203,7 +208,7 @@ import Testing
         let a = try SyncDevice(); defer { Task { await a.cleanUp() } }
         try await a.repo.upsert(DocumentRecord(id: "d1", title: "Mixed", type: .pdf))
         try await a.repo.writeImages([
-            CouchbaseImageTests.image("d1", 1, 0),
+            CouchbaseImageTests.image("d1", 1, 0, model: RepoFixture.identity.tag),
             CouchbaseImageTests.image("d1", 1, 1, model: "some-other-model@1/768"),
         ])
         await a.sync.start(server.configuration)
@@ -213,7 +218,7 @@ import Testing
         #expect(try server.count("images") == 1)
     }
 
-    // MARK: 5.3 arrival
+    // MARK: Arrival
 
     /// Writes a document into the server as it is while another device is still sending it: the record, which names
     /// 3 chunks, and `chunks` of them.
@@ -262,7 +267,7 @@ import Testing
         #expect(try await b.repo.arrivingDocumentIDs().isEmpty)
     }
 
-    // MARK: 5.4 deletes and re-index
+    // MARK: Deletes and re-index
 
     @Test func aDeleteOnOneDeviceRemovesTheDocumentChunksAndImagesOnTheOther() async throws {
         let server = try SyncTestServer(); defer { server.cleanUp() }
@@ -307,7 +312,7 @@ import Testing
         #expect(try await b.repo.images(docId: "d1", generation: 2).count == 2)
     }
 
-    // MARK: 5.5 device-local data
+    // MARK: Device-local data
 
     @Test func chatsMessagesJobsAndLocalMetaNeverReachTheServer() async throws {
         let server = try SyncTestServer(); defer { server.cleanUp() }

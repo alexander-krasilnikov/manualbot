@@ -93,18 +93,23 @@ final class LibraryViewModel {
         guard let records = try? await documents.documents() else { return }
         let jobByDoc = Dictionary(((try? await jobs.jobs()) ?? []).map { ($0.docId, $0) }, uniquingKeysWith: { a, _ in a })
         let arriving = (try? await documents.arrivingDocumentIDs()) ?? []
+        let importing = await ingestion.importingDocumentIDs()
         items = records.map { record in
             Item(id: record.id, title: record.title, type: record.type, pageCount: record.pageCount,
                  imageCount: record.imageCount ?? 0, importedAt: record.importedAt,
-                 status: Self.status(of: record, job: jobByDoc[record.id], arriving: arriving.contains(record.id)))
+                 status: Self.status(
+                    of: record, job: jobByDoc[record.id], arriving: arriving.contains(record.id), importing: importing.contains(record.id)))
         }.sorted { $0.importedAt > $1.importedAt }
     }
 
-    /// A document this device imported always has a job. One with no job was received from another device: it is arriving
-    /// while its active set is incomplete here, and being indexed elsewhere while it has no active set at all.
-    static func status(of record: DocumentRecord, job: IngestJobRecord?, arriving: Bool = false) -> Status {
+    /// A document this device imports gets a job right after its record, so one with no job (and not being imported at this
+    /// moment) was received from another device: it is arriving while its active set is incomplete here, and being indexed
+    /// elsewhere while it has no active set at all. A document is arriving whatever its local job says: a job that finished
+    /// here does not make a set that another iPad has since replaced searchable.
+    static func status(of record: DocumentRecord, job: IngestJobRecord?, arriving: Bool = false, importing: Bool = false) -> Status {
         let searchable = record.activeGeneration != nil && !arriving
         guard let job else {
+            if importing { return .queued }
             if record.activeGeneration == nil { return .indexingElsewhere }
             return arriving ? .arriving : .ready
         }
@@ -114,7 +119,7 @@ final class LibraryViewModel {
         case .recognizingText: return searchable ? .updating(job.progress) : .recognizing(job.progress)
         case .analyzingImages: return searchable ? .updating(job.progress) : .analyzing(job.progress)
         case .embedding: return searchable ? .updating(job.progress) : .embedding(job.progress)
-        case .ready: return .ready
+        case .ready: return arriving ? .arriving : .ready
         // A failed re-index leaves the previous index in place, so the document stays searchable.
         case .failed: return searchable ? .ready : .failed(job.error ?? "Indexing failed.")
         }

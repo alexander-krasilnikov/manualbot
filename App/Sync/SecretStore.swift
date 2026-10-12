@@ -4,8 +4,9 @@ import Security
 /// Where a secret is kept. The password of the sync account is the only one.
 protocol SecretStore: Sendable {
     func secret(for account: String) -> String?
-    /// Stores `value`, or removes the secret when it is `nil` or empty.
-    func setSecret(_ value: String?, for account: String)
+    /// Stores `value`, or removes the secret when it is `nil` or empty. `false` when it could not be stored or removed.
+    @discardableResult
+    func setSecret(_ value: String?, for account: String) -> Bool
 }
 
 /// Keeps secrets in the Keychain, available after the first unlock, on this device only.
@@ -25,19 +26,19 @@ struct KeychainSecretStore: SecretStore {
         return String(data: data, encoding: .utf8)
     }
 
-    func setSecret(_ value: String?, for account: String) {
+    func setSecret(_ value: String?, for account: String) -> Bool {
         guard let value, !value.isEmpty else {
-            SecItemDelete(query(account) as CFDictionary)
-            return
+            let status = SecItemDelete(query(account) as CFDictionary)
+            return status == errSecSuccess || status == errSecItemNotFound
         }
         let data = Data(value.utf8)
         let update = [kSecValueData as String: data]
-        if SecItemUpdate(query(account) as CFDictionary, update as CFDictionary) == errSecItemNotFound {
-            var add = query(account)
-            add[kSecValueData as String] = data
-            add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-            SecItemAdd(add as CFDictionary, nil)
-        }
+        let updated = SecItemUpdate(query(account) as CFDictionary, update as CFDictionary)
+        guard updated == errSecItemNotFound else { return updated == errSecSuccess }
+        var add = query(account)
+        add[kSecValueData as String] = data
+        add[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        return SecItemAdd(add as CFDictionary, nil) == errSecSuccess
     }
 }
 
@@ -48,7 +49,8 @@ final class InMemorySecretStore: SecretStore, @unchecked Sendable {
 
     func secret(for account: String) -> String? { lock.withLock { secrets[account] } }
 
-    func setSecret(_ value: String?, for account: String) {
+    func setSecret(_ value: String?, for account: String) -> Bool {
         lock.withLock { secrets[account] = (value?.isEmpty ?? true) ? nil : value }
+        return true
     }
 }
