@@ -103,7 +103,7 @@ enum XrayText {
         case .wordsMatchedPhotos:
             "Whether typed words match a photo is decided by a distance threshold of its own, and a match only adds the photo and the text beside it, so it never makes a question answerable on its own."
         case .modelRequest:
-            "The only network use after setup is a model search or download that you ask for on the Models page, and documents, questions and answers never leave the device."
+            "The only network use after setup is what you ask for: a model search or download on the Models page, a manual downloaded from the catalog, or sync to your own server. Documents, questions and answers never leave the device."
         case .syncState:
             "Couchbase Lite's replicator runs in the background and keeps retrying, so the app works the same with or without a connection."
         case .syncReplicated:

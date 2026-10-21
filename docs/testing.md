@@ -33,9 +33,9 @@ repository or into `LocalModels/`, which git ignores):
 | `ANSWER_EVAL_REPORT`, `ANSWER_EVAL_MODEL` | a Markdown file, a name | save the answer evaluation's report and name the model in it |
 | `RUN_BENCHMARKS=1` | | 20,000-chunk retrieval benchmark and 5,000-photo search benchmark (add `EMBEDDER_MODEL_PATH`) |
 | `RUN_SPIKES=1` | | the EmbeddingGemma 2 spike (output size, input limits, templates, latency), and the minimum-runtime-version spike (add both model paths) |
-| `RUN_NETWORK_TESTS=1` | | the model header probe against the real Hugging Face host |
+| `RUN_NETWORK_TESTS=1` | | the model header probe against the real Hugging Face host, and two real manual catalog downloads (a National Laboratory of the Rockies paper and a manufacturer manual) through the app's downloader, checked against the catalog's recorded checksums (`ManualCatalogNetworkTests`) |
 | `IMAGE_EVAL_DIR` | a folder of photos (below) | photo and words-to-photo search evaluation on those photos |
-| `SYNC_GATEWAY_URL` | `ws://localhost:4984/manualbot`, with the stack in `sync/` running | in `Packages/Adapters`: replication through a real Sync Gateway, including an original of exactly 20 MB (`SYNC_GATEWAY_PASSWORD` if you changed the accounts' password) |
+| `SYNC_GATEWAY_URL` | `ws://localhost:4984/manualbot`, with the stack in `sync/` running | in `Packages/Adapters`: replication through a real Sync Gateway, including an original of exactly 20 MB and the origin of a catalog document (`SYNC_GATEWAY_PASSWORD` if you changed the accounts' password) |
 
 For the iOS simulator, prefix the variables with `TEST_RUNNER_`.
 
@@ -70,6 +70,30 @@ IMAGE_EVAL_DIR=~/image-eval EMBEDDER_MODEL_PATH=…/embeddinggemma-2-text-vision
 It reports the share of query photos and of descriptions whose expected photo is in the top three, and, for each candidate
 threshold, how many matches are kept and how many unrelated photos or descriptions are rejected. Use it to set
 `imageMaxDistance` and `textToImageMaxDistance`.
+
+## Reading the log after a crash
+
+Answering a question writes its steps to the system log under the subsystem `com.manualbot.app` (`Diagnostics` in
+Ports). The lines are always on, and the system keeps them after the app ends. Questions and answers are never logged,
+only their sizes. The categories are:
+
+- `chat`: one line per step of a question, tagged with an ask id (`ask 9C017F70: …`). The steps are started, rewritten,
+  retrieved (with relevance and best distance), generating, first text, and generation ended. The last line is the
+  outcome: answered, or which of the three not-found cases applied.
+- `retrieval`: embedding the query and the searches.
+- `generation`: loading the model, then each request queued, running, first piece, and how it ended (end of stream,
+  stop sequence, cancelled, runtime error).
+- `database`: each vector and keyword query, with the thread it ran on and its time.
+
+After a crash in the Simulator, read the last minutes. The last line before the gap is the step that was running:
+
+```sh
+xcrun simctl spawn booted log show --last 10m --style compact \
+  --predicate 'subsystem == "com.manualbot.app"'
+```
+
+Use plain `log show` with the same predicate for the package tests on the Mac, or Console.app for a connected iPad.
+Instruments' Points of Interest shows each generation as a `Generate` interval.
 
 ## Documentation screenshots
 

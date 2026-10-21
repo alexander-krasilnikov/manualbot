@@ -31,14 +31,23 @@ struct DocumentContentsView: View {
         }
         .overlay { placeholder }
         .safeAreaInset(edge: .top, spacing: 0) {
-            Picker("Contents", selection: Bindable(model).kind) {
-                Text("Chunks \(model.chunks.count)").tag(DocumentContentsModel.Kind.chunks)
-                Text("Images \(model.images.count)").tag(DocumentContentsModel.Kind.images)
+            VStack(spacing: 6) {
+                if let origin = item?.origin {
+                    // A document from the manual catalog says where it was downloaded from.
+                    Label("Downloaded from \(origin.host)", systemImage: "globe")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("documentOrigin")
+                }
+                Picker("Contents", selection: Bindable(model).kind) {
+                    Text("Chunks \(model.chunks.count)").tag(DocumentContentsModel.Kind.chunks)
+                    Text("Images \(model.images.count)").tag(DocumentContentsModel.Kind.images)
+                }
+                .pickerStyle(.segmented)
+                .accessibilityIdentifier("contentsKind")
             }
-            .pickerStyle(.segmented)
             .padding(.horizontal).padding(.vertical, 8)
             .background(.bar)
-            .accessibilityIdentifier("contentsKind")
         }
         .navigationTitle(model.title)
         .navigationBarTitleDisplayMode(.inline)

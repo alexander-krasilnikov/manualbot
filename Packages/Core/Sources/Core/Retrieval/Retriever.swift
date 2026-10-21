@@ -131,7 +131,11 @@ public struct Retriever: Sendable {
     }
 
     /// `photo` is analyzed only when this retriever was given photo services; otherwise the question is searched as text.
-    public func retrieve(_ question: String, scope: Set<String>? = nil, photo: CGImage? = nil) async throws -> RetrievalResult {
+    /// `maxDistance` replaces the configured text cutoff for this question (the answer style); the image cutoffs stay.
+    public func retrieve(
+        _ question: String, scope: Set<String>? = nil, photo: CGImage? = nil, maxDistance: Double? = nil
+    ) async throws -> RetrievalResult {
+        let cutoff = maxDistance ?? configuration.maxDistance
         let filter = SearchFilter(documentIDs: scope, embeddingModel: embedder.identity.tag)
 
         var query = question
@@ -150,15 +154,27 @@ public struct Retriever: Sendable {
         var wordMatches: [ScoredImage] = []
         var terms: [String] = []
         if photoQuery == nil || !query.isEmpty {
+            let log = Diagnostics.retrieval
+            let embedStart = ContinuousClock.now
+            log.notice("embedding the query, \(query.count) chars")
             let vector = try await tracer.measure(
                 { try await embedder.embed([query], kind: .query)[0] }, event: { .queryEmbedded(dimensions: $0.count) })
             terms = QueryTerms.keywords(from: query)
             if terms.isEmpty { tracer.emit(.keywordSearchSkipped) }
+            let searchStart = ContinuousClock.now
+            log.notice("""
+                embedded in \(embedStart.duration(to: searchStart).seconds, format: .fixed(precision: 3))s, searching with \
+                \(terms.count) keywords
+                """)
 
             async let semantic = search.vectorSearch(vector, limit: configuration.candidatesPerSearch, filter: filter)
             async let keyword = terms.isEmpty ? [] : search.keywordSearch(terms: terms, limit: configuration.candidatesPerSearch, filter: filter)
             async let byWords = photosMatching(words: vector, scope: scope)
             (vectorHits, keywordHits, wordMatches) = try await (semantic, keyword, byWords)
+            log.notice("""
+                searched in \(searchStart.duration(to: .now).seconds, format: .fixed(precision: 3))s: \(vectorHits.count) vector, \
+                \(keywordHits.count) keyword, \(wordMatches.count) photo hits
+                """)
         }
 
         let reached = try await chunks(reachedBy: imageMatches)
@@ -198,9 +214,9 @@ public struct Retriever: Sendable {
 
         let best = vectorHits.map(\.score).min()
         let bestImage = imageMatches.map(\.score).min()
-        let outcome = relevance(best: best, chunks: chunks, terms: terms, bestImage: bestImage)
+        let outcome = relevance(best: best, chunks: chunks, terms: terms, bestImage: bestImage, maxDistance: cutoff)
         tracer.emit(.relevance(
-            bestDistance: best, threshold: configuration.maxDistance, outcome: outcome,
+            bestDistance: best, threshold: cutoff, outcome: outcome,
             bestImageDistance: photoQuery == nil ? nil : bestImage,
             imageThreshold: photoQuery == nil ? nil : configuration.imageMaxDistance))
 
@@ -280,8 +296,10 @@ public struct Retriever: Sendable {
 
     /// Relevant when the closest chunk is near enough in meaning, or when an identifier from the
     /// question (an error code, a part number) appears verbatim in one of the top chunks.
-    func relevance(best: Double?, chunks: [RetrievedChunk], terms: [String], bestImage: Double? = nil) -> RelevanceOutcome {
-        if let best, best <= configuration.maxDistance { return .passedOnDistance }
+    func relevance(
+        best: Double?, chunks: [RetrievedChunk], terms: [String], bestImage: Double? = nil, maxDistance: Double? = nil
+    ) -> RelevanceOutcome {
+        if let best, best <= (maxDistance ?? configuration.maxDistance) { return .passedOnDistance }
         let codes = QueryTerms.codes(in: terms)
         for retrieved in chunks.prefix(configuration.suggestionCount) {
             if let code = codes.first(where: { QueryTerms.contains(retrieved.chunk.text, code: $0) }) {

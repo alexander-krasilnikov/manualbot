@@ -1,6 +1,9 @@
 import Foundation
 import LiteRTLM
 import Ports
+import Synchronization
+
+private let log = Diagnostics.generation
 
 public enum GeneratorError: Error, LocalizedError, Equatable {
     case modelMissing(String)
@@ -38,6 +41,8 @@ public final class LiteRTGenerator: Generator, @unchecked Sendable {
     private let seed: Int
     private let holder = EngineHolder()
     private let queue = AsyncMutex()
+    /// Numbers requests in the log.
+    private let requests = Atomic(0)
 
     /// The KV-cache size the app asks for. A language model that supports less cannot give full answers and is rejected.
     public static let defaultContextTokens = 4096
@@ -70,17 +75,26 @@ public final class LiteRTGenerator: Generator, @unchecked Sendable {
 
     public func generate(_ request: GenerationRequest) -> AsyncThrowingStream<String, Error> {
         AsyncThrowingStream { continuation in
+            let n = requests.add(1, ordering: .relaxed).newValue
+            let queued = ContinuousClock.now
+            log.notice("""
+                request \(n): queued, system \(request.system.count) + prompt \(request.prompt.count) chars, \
+                max \(request.maxTokens) tokens, temperature \(request.temperature, format: .fixed(precision: 1))
+                """)
             let task = Task { [self] in
                 do {
                     try await queue.withLock {
                         try Task.checkCancellation()
+                        log.notice("request \(n): running after waiting \(Self.since(queued), privacy: .public)")
                         let engine = try await holder.engine(path: modelPath, cache: cacheDirectory, contextTokens: contextTokens, backend: backend)
-                        try await stream(request, on: engine, to: continuation)
+                        try await stream(request, number: n, on: engine, to: continuation)
                     }
                     continuation.finish()
                 } catch is CancellationError {
+                    log.notice("request \(n): cancelled before it ran")
                     continuation.finish()
                 } catch {
+                    log.error("request \(n): failed: \(String(describing: error), privacy: .public)")
                     continuation.finish(throwing: error)
                 }
             }
@@ -89,23 +103,37 @@ public final class LiteRTGenerator: Generator, @unchecked Sendable {
     }
 
     private func stream(
-        _ request: GenerationRequest, on engine: Engine, to continuation: AsyncThrowingStream<String, Error>.Continuation
+        _ request: GenerationRequest, number n: Int, on engine: Engine,
+        to continuation: AsyncThrowingStream<String, Error>.Continuation
     ) async throws {
         let conversation = try await engine.createConversation(with: ConversationConfig(
             systemMessage: Message(request.system, role: .system),
             samplerConfig: try SamplerConfig(topK: 40, topP: 0.95, temperature: request.temperature, seed: seed)))
+        log.notice("request \(n): conversation created, sending the prompt")
 
+        let started = ContinuousClock.now
         var produced = ""
+        var pieces = 0
+        var ending = "end of stream"
+        defer {
+            log.notice("""
+                request \(n): \(ending, privacy: .public) after \(Self.since(started), privacy: .public), \(pieces) pieces, \
+                \(produced.count) chars
+                """)
+        }
         try await withTaskCancellationHandler {
             do {
                 for try await chunk in conversation.sendMessageStream(Message(request.prompt), maxOutputTokens: request.maxTokens) {
                     let piece = chunk.toString
                     guard !piece.isEmpty else { continue }
+                    if pieces == 0 { log.notice("request \(n): first piece after \(Self.since(started), privacy: .public)") }
+                    pieces += 1
                     produced += piece
                     if let cut = Self.stopIndex(in: produced, stops: request.stop) {
                         let keep = String(produced[..<cut])
                         let already = produced.count - piece.count
                         if keep.count > already { continuation.yield(String(keep.dropFirst(already))) }
+                        ending = "stop sequence"
                         try? conversation.cancel()
                         return
                     }
@@ -113,12 +141,19 @@ public final class LiteRTGenerator: Generator, @unchecked Sendable {
                 }
             } catch {
                 // Stopping generation surfaces as a "CANCELLED" error from the runtime; that is a normal end.
-                if Task.isCancelled || String(describing: error).contains("CANCELLED") { return }
+                if Task.isCancelled || String(describing: error).contains("CANCELLED") { ending = "cancelled"; return }
+                ending = "runtime error"
                 throw error
             }
         } onCancel: {
+            log.notice("request \(n): cancelling the conversation")
             try? conversation.cancel()
         }
+    }
+
+    /// `1.234s`, for the log.
+    private static func since(_ start: ContinuousClock.Instant) -> String {
+        String(format: "%.3fs", start.duration(to: .now).seconds)
     }
 
     static func stopIndex(in text: String, stops: [String]) -> String.Index? {
@@ -133,14 +168,28 @@ private actor EngineHolder {
     func engine(path: String, cache: String, contextTokens: Int, backend: GeneratorBackend) async throws -> Engine {
         if let loaded { return loaded }
         guard FileManager.default.fileExists(atPath: path) else { throw GeneratorError.modelMissing(path) }
+        let started = ContinuousClock.now
+        log.notice("""
+            loading the model \((path as NSString).lastPathComponent, privacy: .public) on the \
+            \(backend == .gpu ? "GPU" : "CPU", privacy: .public), \(contextTokens) context tokens
+            """)
         let engine = Engine(engineConfig: try EngineConfig(
             modelPath: path, backend: backend == .gpu ? .gpu : .cpu(), maxNumTokens: contextTokens, cacheDir: cache))
-        try await engine.initialize()
+        do {
+            try await engine.initialize()
+        } catch {
+            log.error("the model failed to load: \(String(describing: error), privacy: .public)")
+            throw error
+        }
+        log.notice("the model loaded in \(String(format: "%.3fs", started.duration(to: .now).seconds), privacy: .public)")
         loaded = engine
         return engine
     }
 
-    func reset() { loaded = nil }
+    func reset() {
+        if loaded != nil { log.notice("unloading the model") }
+        loaded = nil
+    }
 }
 
 /// A first-in, first-out async lock. (Actors are re-entrant, so they cannot serialize work that awaits.)

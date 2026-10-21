@@ -7,11 +7,13 @@ import PortsTesting
 enum AppEnvironmentError: LocalizedError {
     case manifestMissing
     case catalogMissing
+    case manualCatalogMissing
 
     var errorDescription: String? {
         switch self {
         case .manifestMissing: "The model manifest is missing from the app bundle."
         case .catalogMissing: "The embedder catalog is missing from the app bundle."
+        case .manualCatalogMissing: "The manual catalog is missing from the app bundle."
         }
     }
 }
@@ -20,12 +22,15 @@ enum AppEnvironmentError: LocalizedError {
 ///
 /// UI tests launch with `-uiTestModelStub <scenario>` (fake downloads: `happy`, `llmFailsOnce`, `lowStorage`),
 /// optionally `-uiTestSeed` (five sample documents already indexed, among them a photo and a PDF with a photo) or
-/// `-uiTestSeedDemo` (the two Couchbase PDFs that Reset demo imports), `-uiTestPhoto sample` (the attach button attaches the
+/// `-uiTestSeedDemo` (the two Couchbase PDFs that Reset demo imports), `-uiTestCatalogFailing <entry id>,<entry id>` (those
+/// catalog entries cannot be downloaded: the publisher refuses), `-uiTestCatalogSlow` (catalog downloads take a few seconds,
+/// so they can be cancelled; the downloads themselves are always a stub), `-uiTestPhoto sample` (the attach button attaches the
 /// demo's sample photo instead of the X200 nameplate), `-uiTestSlow`
 /// (answers stream slowly), `-uiTestSearch <scenario>` (what the Models page finds: `results`, the default, or `offline`)
 /// and `-uiTestSync <scenario>` (what sync does: `off`, the default, `syncing`, `upToDate`, `paused` or `error`; any other
 /// than `off` also fills in the sync settings and turns sync on; `live` runs the real replicator against `localhost:4984` as
-/// the account named by `-uiTestSyncUser <name>`, `ipad1` by default). A stub launch never touches the real defaults or Keychain.
+/// the account named by `-uiTestSyncUser <name>`, `ipad1` by default). A stub launch never touches the real defaults or Keychain:
+/// its catalog notices and answer style live in a throwaway suite.
 @MainActor
 enum AppEnvironment {
     static func makeAppModel() throws -> AppModel {
@@ -34,6 +39,12 @@ enum AppEnvironment {
         if arguments.contains("-uiTestModelStub") {
             let scenario = Self.value(of: "-uiTestModelStub", in: arguments) ?? "happy"
             let models = ModelSetupViewModel(store: stubStore(scenario: scenario))
+            let failing = Set((Self.value(of: "-uiTestCatalogFailing", in: arguments) ?? "").split(separator: ",").map(String.init))
+            let downloader = StubManualDownloader(failing: failing, slow: arguments.contains("-uiTestCatalogSlow"))
+            // Notices already accepted are not carried from one launch to the next.
+            let suite = "uitest-catalog-\(UUID().uuidString)"
+            let catalogDefaults = UserDefaults(suiteName: suite) ?? .standard
+            catalogDefaults.removePersistentDomain(forName: suite)
             var options = StubServiceFactory.Options()
             options.seedDocuments = arguments.contains("-uiTestSeed")
             options.seedDemoSamples = arguments.contains("-uiTestSeedDemo")
@@ -45,9 +56,19 @@ enum AppEnvironment {
             return AppModel(
                 models: models, factory: StubServiceFactory(options: options, tracer: demo.tracer),
                 catalog: StubServiceFactory.catalog, finder: stubFinder(scenario: search), demo: demo,
-                syncSettings: stubSyncSettings(options.sync, user: Self.value(of: "-uiTestSyncUser", in: arguments)))
+                syncSettings: stubSyncSettings(options.sync, user: Self.value(of: "-uiTestSyncUser", in: arguments)),
+                manualCatalog: try Self.manualCatalog(), manualDownloader: downloader, catalogDefaults: catalogDefaults,
+                answerSettings: AnswerSettings(defaults: catalogDefaults))
         }
         return try liveModel(demo: demo)
+    }
+
+    /// The curated list of public PDFs that ships with the app.
+    static func manualCatalog() throws -> ManualCatalog {
+        guard let url = Bundle.main.url(forResource: "ManualCatalog", withExtension: "json") else {
+            throw AppEnvironmentError.manualCatalogMissing
+        }
+        return try ManualCatalog.decode(from: Data(contentsOf: url))
     }
 
     /// The value after a launch flag, such as `happy` after `-uiTestModelStub`; `nil` when the flag is absent or last.
@@ -96,7 +117,9 @@ enum AppEnvironment {
         // The Models page searches the public litert-community models, and reads the start of each file to judge it.
         let finder = ModelCandidateFinder(
             search: HuggingFaceModelSearch(), probe: RangeModelHeaderProbe(), runtimeVersion: LiteRTModelValidator.bundledRuntimeVersion)
-        return AppModel(models: ModelSetupViewModel(store: store), factory: factory, catalog: catalog, finder: finder, demo: demo)
+        return AppModel(
+            models: ModelSetupViewModel(store: store), factory: factory, catalog: catalog, finder: finder, demo: demo,
+            manualCatalog: try manualCatalog(), manualDownloader: URLSessionManualDownloader())
     }
 
     /// What the Models page finds in UI tests: a language model that passes, a file that holds an embedding model, and one

@@ -25,10 +25,11 @@ steps happen in the app see [demo.md](demo.md).
   simulator). The one Apple framework left is Vision's text recognition, which reads scanned pages, photos and nameplates:
   it ships with the operating system, needs no model of its own, and replacing it (a second runtime, hand-written
   pre- and post-processing) was judged not worth it.
-- Offline: after the models are downloaded, nothing needs the network. There are two exceptions, both under your control: the
-  Models page, when you ask it to search for or download another model (see [Models](using.md#models)), and sync, which is off
-  until you turn it on and then talks only to the server you name (see [Sync](using.md#sync)). Questions, answers and chats never
-  leave the iPad.
+- Offline: after the models are downloaded, nothing needs the network. There are three exceptions, all under your control: the
+  Models page, when you ask it to search for or download another model (see [Models](using.md#models)); the manual catalog, which
+  downloads a PDF from its publisher when you import that entry (see [Manual catalog](using.md#manual-catalog)); and sync,
+  which is off until you turn it on and then talks only to the server you name (see [Sync](using.md#sync)). Documents,
+  questions, answers and chats never leave the iPad.
 - Targets: iPadOS 26 on M4/M5 iPads.
 
 ## The parts
@@ -116,6 +117,13 @@ Indexes (`chunks_vec`, `chunks_fts`, `images_vec`) are never replicated: each iP
 holds, so a received document is searchable without being embedded again. Shared vectors must all come from one embedding
 model, so sync pauses while an iPad uses another one (`SyncPolicy`). See [Sync](using.md#sync) for how it behaves and
 [`sync/`](../sync/README.md) for a local server.
+
+**Database thread.** All Couchbase Lite work (queries, saves, and opening the database) runs on one thread that lives as
+long as the app (`DatabaseThread`, the executor of `CouchbaseDocumentRepository`). The vector search extension bundles an
+OpenMP runtime that cleans up after each thread it ran on when that thread exits. On a GCD worker thread that the system
+retires, that cleanup crashed the app, so vector work never runs on a thread that can exit. See the "Search stability"
+requirement in [hybrid-retrieval](../openspec/specs/hybrid-retrieval/spec.md) and the change
+`fix-vector-search-thread-crash`.
 
 ## Where the code is
 

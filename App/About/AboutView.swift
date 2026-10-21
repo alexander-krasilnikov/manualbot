@@ -10,7 +10,7 @@ struct AboutView: View {
         NavigationStack {
             List {
                 Section {
-                    Text("ManualBot answers questions about your documents entirely on this iPad. Your documents, questions and answers never leave the device.")
+                    Text("ManualBot answers questions about your documents entirely on this iPad. Your documents, questions and answers never leave the device. The app goes online only for what you ask: a model, a manual from the catalog, or syncing your library.")
                 }
                 Section("Models") {
                     ForEach(settings?.installed ?? []) { row in

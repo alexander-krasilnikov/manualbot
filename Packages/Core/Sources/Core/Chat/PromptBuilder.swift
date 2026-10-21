@@ -15,6 +15,29 @@ public enum PromptBuilder {
         4. Be concise. Quote exact values, part numbers and steps as written.
         """
 
+    /// The Conversational answer style, when the documents do not answer: talk about the app, never about facts.
+    public static let conversationalSystemPrompt = """
+        You are ManualBot, an offline assistant that answers questions from the user's own manuals and documents.
+        Nothing in the user's documents matched this message.
+        Rules:
+        1. Reply in at most two short sentences, in the same language as the user's message.
+        2. You may say what you are, what you can do, and suggest asking about something in their documents.
+        3. Never state facts about the world, products, or the documents. Never answer the question itself.
+        """
+
+    /// The Open answer style, when the documents do not answer: general knowledge, clearly not from the documents.
+    public static let openSystemPrompt = """
+        You are ManualBot, an offline assistant. Nothing in the user's documents answers this question, so answer it from \
+        general knowledge.
+        Rules:
+        1. Reply in the same language as the user's question.
+        2. Be concise. If you are not sure, say so plainly instead of guessing.
+        3. Do not claim that the answer comes from the user's documents, and do not add citation markers.
+        """
+
+    /// The prompt of a reply without documents: the question alone, so no document text can be passed off as cited.
+    public static func fallbackPrompt(question: String) -> String { question }
+
     public static let rewriteSystemPrompt = """
         Rewrite the user's last question as one standalone search query that makes sense without the conversation. \
         Resolve pronouns and references using the conversation. Output only the query, nothing else.

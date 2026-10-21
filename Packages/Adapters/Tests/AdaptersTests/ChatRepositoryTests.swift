@@ -50,6 +50,13 @@ private func exerciseChatRepository(_ repo: any ChatRepository) async throws {
     try await repo.rename(chatId: "nope", to: "x")
     try await repo.setPinnedDocuments(chatId: "nope", ["d1"])
     try await repo.deleteChat(id: "nope")
+
+    // A reply not from the documents keeps that mark
+    let c = try await repo.createChat(title: "Chatty", now: t0)
+    let chatty = MessageRecord(id: "m3", chatId: c.id, role: .assistant, text: "I answer from your manuals.",
+                               createdAt: t0.addingTimeInterval(300), fromDocuments: false)
+    try await repo.upsert(message: chatty)
+    #expect(try await repo.message(id: "m3")?.fromDocuments == false)
 }
 
 @Suite struct ChatRepositoryTests {

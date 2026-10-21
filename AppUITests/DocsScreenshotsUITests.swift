@@ -50,6 +50,23 @@ final class DocsScreenshotsUITests: UITestCase {
         waitFor(element(app, "explorer"))
     }
 
+    /// The catalog on its Couchbase category: the two bundled sample whitepapers already show "In library".
+    func testManualCatalog() {
+        let app = readyApp()
+        // The library's narrow column keeps Import in the system's "More" menu, as a submenu.
+        app.navigationBars["Library"].buttons["More"].tap()
+        let importMenu = app.buttons["Import"]
+        waitFor(importMenu)
+        importMenu.tap()
+        element(app, "importCatalog").tap()
+        waitFor(app.navigationBars["Manual catalog"])
+        let category = element(app, "catalogCategory-Couchbase")
+        waitFor(category)
+        category.tap()
+        waitFor(element(app, "catalogRow-couchbase-capella-datasheet"))
+        save(app, "manual-catalog")
+    }
+
     func testLibrary() {
         let app = readyApp()
         app.buttons["doc-\(manual)"].tap()

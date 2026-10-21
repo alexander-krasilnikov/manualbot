@@ -96,6 +96,7 @@ public enum CouchbaseSchema {
     static func prepare(
         _ database: Database, embedding: EmbeddingModelIdentity, imageFeatures: EmbeddingModelIdentity = defaultImageFeatures
     ) throws -> Collections {
+        assert(DatabaseThread.shared.isCurrent, "Vector indexes must be prepared on the database thread")
         func collection(_ name: String) throws -> Collection {
             try database.createCollection(name: name, scope: scope)
         }

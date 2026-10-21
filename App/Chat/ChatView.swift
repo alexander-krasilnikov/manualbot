@@ -264,6 +264,12 @@ struct MessageView: View {
         } else {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 8) {
+                    if !message.fromDocuments {
+                        // Open lists the closest chunks below its reply; Conversational lists nothing.
+                        Label("Not from your documents", systemImage: message.citations.isEmpty ? "bubble.left" : "globe")
+                            .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                            .accessibilityIdentifier("notFromDocumentsLabel")
+                    }
                     Text(Self.linked(message.text, citations: message.citations))
                         .textSelection(.enabled)
                         .environment(\.openURL, OpenURLAction { url in
@@ -282,10 +288,10 @@ struct MessageView: View {
                         ImageMatchGrid(matches: message.imageMatches, photos: photos, onOpen: onOpenMatch)
                     }
                     if !message.citations.isEmpty {
-                        Text(message.notFound ? "Closest chunks" : message.matchesOnly ? "Chunks from those pages" : "Sources")
+                        Text(isSuggestion ? "Closest chunks" : message.matchesOnly ? "Chunks from those pages" : "Sources")
                             .font(.caption.bold()).foregroundStyle(.secondary)
                         ForEach(message.citations, id: \.n) { citation in
-                            CitationChip(citation: citation, isSuggestion: message.notFound) { onOpen(citation) }
+                            CitationChip(citation: citation, isSuggestion: isSuggestion) { onOpen(citation) }
                         }
                     }
                     if !citedPhotos.isEmpty && !message.matchesOnly {
@@ -303,9 +309,12 @@ struct MessageView: View {
         }
     }
 
+    /// The chunks listed are suggestions, not sources: the reply did not come from them.
+    private var isSuggestion: Bool { message.notFound || !message.fromDocuments }
+
     /// Each photo stored on a cited page or section, and each cited photo chunk, once, beside the sources.
     private func loadCitedPhotos() async {
-        guard !message.notFound, !message.matchesOnly else { return }
+        guard !isSuggestion, !message.matchesOnly else { return }
         var found: [CitedPhoto] = []
         for citation in message.citations {
             for photo in await photos.cited(citation) where !found.contains(where: { $0.id == photo.id }) {

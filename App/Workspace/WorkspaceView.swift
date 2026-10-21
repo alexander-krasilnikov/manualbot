@@ -20,6 +20,7 @@ struct WorkspaceView: View {
                     onOpenSync: { app.presentedSettings = .sync },
                     sync: app.sync,
                     settings: app.settings,
+                    catalog: app.catalogModel,
                     makeContents: { item in contents(for: item) },
                     onContentsDeleted: { model in
                         if source.previewedDocument == model.docId { source.showDeleted(title: model.title) }

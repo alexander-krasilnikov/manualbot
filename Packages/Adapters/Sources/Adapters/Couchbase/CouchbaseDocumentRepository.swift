@@ -33,14 +33,21 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var config = DatabaseConfiguration()
         config.directory = directory.path
-        let opened = try Database(name: name, config: config)
-        let prepared = try CouchbaseSchema.prepare(opened, embedding: embedding, imageFeatures: imageFeatures)
-        try Self.backfillActiveCounts(in: opened, documents: prepared.documents)
+        // Preparing the schema can create or rebuild a vector index, which must not run on the caller's thread either.
+        let (opened, prepared) = try DatabaseThread.shared.runAndWait {
+            let opened = try Database(name: name, config: config)
+            let prepared = try CouchbaseSchema.prepare(opened, embedding: embedding, imageFeatures: imageFeatures)
+            try Self.backfillActiveCounts(in: opened, documents: prepared.documents)
+            return (opened, prepared)
+        }
         database = opened
         collections = prepared
         self.embedding = embedding
         self.imageFeatures = imageFeatures
     }
+
+    /// Every call runs on the database thread (see `DatabaseThread`).
+    public nonisolated var unownedExecutor: UnownedSerialExecutor { DatabaseThread.shared.asUnownedSerialExecutor() }
 
     public func close() throws { try database.close() }
 
@@ -57,6 +64,14 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
         Self.set(document.chunkCount, forKey: "chunkCount", in: doc)
         Self.set(document.activeImageCount, forKey: "activeImageCount", in: doc)
         doc.setDouble(document.importedAt.timeIntervalSince1970, forKey: "importedAt")
+        // Flat fields, like the rest of the record, so that they replicate and an older device simply ignores them.
+        if let origin = document.origin {
+            doc.setString(origin.entryId, forKey: "originEntryId")
+            doc.setString(origin.url.absoluteString, forKey: "originUrl")
+        } else {
+            doc.removeValue(forKey: "originEntryId")
+            doc.removeValue(forKey: "originUrl")
+        }
         try collections.documents.save(document: doc)
         tracer.emit(.documentSaved(collection: CouchbaseSchema.documents, id: document.id))
     }
@@ -524,7 +539,14 @@ public actor CouchbaseDocumentRepository: DocumentRepository, IngestJobStore, Ch
             importedAt: Date(timeIntervalSince1970: doc.double(forKey: "importedAt")),
             imageCount: doc.contains(key: "imageCount") ? doc.int(forKey: "imageCount") : nil,
             chunkCount: doc.contains(key: "chunkCount") ? doc.int(forKey: "chunkCount") : nil,
-            activeImageCount: doc.contains(key: "activeImageCount") ? doc.int(forKey: "activeImageCount") : nil)
+            activeImageCount: doc.contains(key: "activeImageCount") ? doc.int(forKey: "activeImageCount") : nil,
+            origin: origin(from: doc))
+    }
+
+    private static func origin(from doc: Document) -> DocumentOrigin? {
+        guard let entryId = doc.string(forKey: "originEntryId"), let url = doc.string(forKey: "originUrl").flatMap(URL.init(string:))
+        else { return nil }
+        return DocumentOrigin(entryId: entryId, url: url)
     }
 
     static func chunk(from doc: Document) throws -> Chunk {

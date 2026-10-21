@@ -73,7 +73,7 @@ Asking a question SHALL produce events for: the photo analysis when a photo is a
 - **THEN** the group shows the original question and the standalone query used for search
 
 #### Scenario: Photo question
-- **WHEN** the presenter sends a nameplate photo with a question
+- **WHEN** the presenter sends a photo with a question
 - **THEN** the group shows the photo analysis with the recognized text, the text searches, the image search query over the image index with its row funnel, and fusion with three lists
 
 ### Requirement: Query details
@@ -148,11 +148,15 @@ The panel SHALL offer: a text size control, independent of the system text size,
 - **THEN** the indicator shows offline, and importing and asking still work and are traced
 
 ### Requirement: Reset demo
-The X-ray panel SHALL offer a reset action that, after a confirmation naming what will be deleted, deletes every document and chat and imports a fixed set of bundled sample documents, including at least one PDF, one photo, and one document that contains a photo. The reset MUST be traced as its own operation. Cancelling the confirmation MUST change nothing. When sync is on, the confirmation MUST say that the documents are deleted from every device that shares the library.
+The X-ray panel SHALL offer a reset action that, after a confirmation naming what will be deleted, deletes every document and chat and imports a fixed set of bundled sample documents: the Couchbase whitepapers *Couchbase Under the Hood* and *Capella Architecture Overview*, as PDFs, at least one of which contains a photo. The chat SHALL offer a sample photo that matches a photo in the sample documents. The reset MUST be traced as its own operation. Cancelling the confirmation MUST change nothing. When sync is on, the confirmation MUST say that the documents are deleted from every device that shares the library.
 
 #### Scenario: Reset
 - **WHEN** the presenter confirms reset
-- **THEN** the library contains only the sample documents, which become ready, the chat list is empty, and the X-ray log shows the deletions and the imports
+- **THEN** the library contains only the two sample PDFs, which become ready, the chat list is empty, and the X-ray log shows the deletions and the imports
+
+#### Scenario: Sample photo finds its page
+- **WHEN** after a reset the presenter sends the sample photo alone
+- **THEN** the first photo the reply lists is the debugger figure of *Couchbase Under the Hood*, page 28, with its document and page
 
 #### Scenario: Reset with sync on
 - **WHEN** the presenter chooses reset while sync is on

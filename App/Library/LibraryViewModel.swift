@@ -42,6 +42,8 @@ final class LibraryViewModel {
         var imageCount: Int = 0
         var importedAt: Date
         var status: Status
+        /// Where the document came from when it was imported from the manual catalog.
+        var origin: DocumentOrigin?
     }
 
     private(set) var items: [Item] = []
@@ -98,7 +100,8 @@ final class LibraryViewModel {
             Item(id: record.id, title: record.title, type: record.type, pageCount: record.pageCount,
                  imageCount: record.imageCount ?? 0, importedAt: record.importedAt,
                  status: Self.status(
-                    of: record, job: jobByDoc[record.id], arriving: arriving.contains(record.id), importing: importing.contains(record.id)))
+                    of: record, job: jobByDoc[record.id], arriving: arriving.contains(record.id), importing: importing.contains(record.id)),
+                 origin: record.origin)
         }.sorted { $0.importedAt > $1.importedAt }
     }
 
@@ -141,6 +144,12 @@ final class LibraryViewModel {
                 rejections.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
         }
+        await refresh()
+        Task { await ingestion.run() }
+    }
+
+    /// A document was queued by the manual catalog, which stores it itself: show it, and start indexing.
+    func didImportFromCatalog() async {
         await refresh()
         Task { await ingestion.run() }
     }

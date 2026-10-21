@@ -3,7 +3,7 @@ import SwiftUI
 
 /// The pages Settings pushes from its list.
 enum SettingsPage: Hashable {
-    case models, sync
+    case models, answers, sync
 }
 
 /// How Settings is opened: at its list (the gear), or straight at the Sync page (the cloud).
@@ -13,7 +13,7 @@ enum SettingsEntry: Identifiable {
     var id: Self { self }
 }
 
-/// Settings: the Models page and the Sync page. Presented from the root view, so it stays while the workspace is rebuilt
+/// Settings: the Models, Answer style and Sync pages. Presented from the root view, so it stays while the workspace is rebuilt
 /// for a switch of models.
 struct SettingsView: View {
     let app: AppModel
@@ -28,6 +28,14 @@ struct SettingsView: View {
                     Label("Models", systemImage: "cpu")
                 }
                 .accessibilityIdentifier("settingsModelsRow")
+                NavigationLink(value: SettingsPage.answers) {
+                    LabeledContent {
+                        Text(app.answers.style.stop.name).foregroundStyle(.secondary)
+                    } label: {
+                        Label("Answer style", systemImage: "text.bubble")
+                    }
+                }
+                .accessibilityIdentifier("settingsAnswersRow")
                 NavigationLink(value: SettingsPage.sync) {
                     LabeledContent {
                         Text(SyncText.summary(app.sync.state)).foregroundStyle(.secondary)
@@ -41,6 +49,7 @@ struct SettingsView: View {
             .navigationDestination(for: SettingsPage.self) { page in
                 switch page {
                 case .models: ModelSettingsView(model: app.settings)
+                case .answers: AnswerStyleView(settings: app.answers)
                 case .sync: SyncSettingsView(model: app.sync)
                 }
             }

@@ -65,9 +65,9 @@ private struct PhotoHarness {
         chatID = try await repo.createChat().id
     }
 
-    func ask(_ question: String, photo: CGImage? = samplePhoto()) async throws -> [ChatEvent] {
+    func ask(_ question: String, photo: CGImage? = samplePhoto(), style: AnswerStyle = .balanced) async throws -> [ChatEvent] {
         var events: [ChatEvent] = []
-        for try await event in service.ask(question, in: chatID, photo: photo) { events.append(event) }
+        for try await event in service.ask(question, in: chatID, photo: photo, style: style) { events.append(event) }
         return events
     }
 
@@ -128,6 +128,15 @@ private struct PhotoHarness {
         let reply = try #require(h.reply(events))
         #expect(reply.notFound && !reply.matchesOnly && reply.imageMatches.isEmpty)
         #expect(h.generator.callCount == 0)
+    }
+
+    @Test func aPhotoAloneIsUnchangedUnderTheOpenStyle() async throws {
+        let open = AnswerStyle(offset: 0.08)
+        let nothing = try await PhotoHarness(recognized: [], imageDistance: nil, textDistance: nil)
+        #expect(try #require(nothing.reply(try await nothing.ask("", style: open))).notFound)
+        let matching = try await PhotoHarness(recognized: [])
+        #expect(try #require(matching.reply(try await matching.ask("", style: open))).matchesOnly)
+        #expect(nothing.generator.callCount == 0 && matching.generator.callCount == 0)
     }
 
     @Test func aQuestionWithAPhotoThatMatchesNothingIsAlsoNotFound() async throws {

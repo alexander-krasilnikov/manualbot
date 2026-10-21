@@ -21,6 +21,20 @@ public struct EmbeddingModelIdentity: Sendable, Codable, Hashable {
     public var tag: String { "\(id)@\(version)/\(dimensions)" }
 }
 
+/// Where a document came from when it was imported from the manual catalog.
+public struct DocumentOrigin: Sendable, Codable, Hashable {
+    public var entryId: String
+    public var url: URL
+
+    public init(entryId: String, url: URL) {
+        self.entryId = entryId
+        self.url = url
+    }
+
+    /// The publisher's host, shown with the document.
+    public var host: String { url.host ?? url.absoluteString }
+}
+
 public struct DocumentRecord: Sendable, Codable, Hashable, Identifiable {
     public var id: String
     public var title: String
@@ -36,12 +50,16 @@ public struct DocumentRecord: Sendable, Codable, Hashable, Identifiable {
     /// `nil` for a record written before these were recorded.
     public var chunkCount: Int?
     public var activeImageCount: Int?
+    /// Set on a document imported from the manual catalog: its entry and the address it was downloaded from. `nil` for a
+    /// document that was imported from a file, and for a record written before the catalog existed.
+    public var origin: DocumentOrigin?
 
     public init(
         id: String, title: String, type: DocumentType, pageCount: Int? = nil,
         activeGeneration: Int? = nil, importedAt: Date = Date(), imageCount: Int? = nil,
-        chunkCount: Int? = nil, activeImageCount: Int? = nil
+        chunkCount: Int? = nil, activeImageCount: Int? = nil, origin: DocumentOrigin? = nil
     ) {
+        self.origin = origin
         self.imageCount = imageCount
         self.chunkCount = chunkCount
         self.activeImageCount = activeImageCount
@@ -156,7 +174,8 @@ public struct MessageRecord: Sendable, Codable, Hashable, Identifiable {
     public var role: MessageRole
     public var text: String
     public var standaloneQuery: String?
-    /// For an answer, the chunks it cites. For a not-found reply, the closest chunks offered as suggestions.
+    /// For an answer, the chunks it cites. For a not-found reply, or one not from the documents (Open style), the closest
+    /// chunks offered as suggestions.
     public var citations: [Citation]
     public var stopped: Bool
     /// The documents did not contain an answer.
@@ -169,12 +188,16 @@ public struct MessageRecord: Sendable, Codable, Hashable, Identifiable {
     public var imageMatches: [ImageMatch]
     /// The reply lists matches only: the photo had no typed question, so nothing was generated.
     public var matchesOnly: Bool
+    /// `false` for a reply the model wrote without the documents (the Conversational and Open answer styles). It carries
+    /// no citations of its own and is shown as not from the documents.
+    public var fromDocuments: Bool
 
     public init(
         id: String, chatId: String, role: MessageRole, text: String, standaloneQuery: String? = nil,
         citations: [Citation] = [], stopped: Bool = false, notFound: Bool = false, createdAt: Date = Date(),
-        hasAttachment: Bool = false, imageMatches: [ImageMatch] = [], matchesOnly: Bool = false
+        hasAttachment: Bool = false, imageMatches: [ImageMatch] = [], matchesOnly: Bool = false, fromDocuments: Bool = true
     ) {
+        self.fromDocuments = fromDocuments
         self.hasAttachment = hasAttachment
         self.imageMatches = imageMatches
         self.matchesOnly = matchesOnly
@@ -193,7 +216,7 @@ public struct MessageRecord: Sendable, Codable, Hashable, Identifiable {
     // synced records still load.
     enum CodingKeys: String, CodingKey {
         case id, chatId, role, text, standaloneQuery, citations, stopped, notFound, createdAt
-        case hasAttachment, imageMatches, matchesOnly
+        case hasAttachment, imageMatches, matchesOnly, fromDocuments
     }
 
     public init(from decoder: Decoder) throws {
@@ -210,6 +233,7 @@ public struct MessageRecord: Sendable, Codable, Hashable, Identifiable {
         hasAttachment = try c.decodeIfPresent(Bool.self, forKey: .hasAttachment) ?? false
         imageMatches = try c.decodeIfPresent([ImageMatch].self, forKey: .imageMatches) ?? []
         matchesOnly = try c.decodeIfPresent(Bool.self, forKey: .matchesOnly) ?? false
+        fromDocuments = try c.decodeIfPresent(Bool.self, forKey: .fromDocuments) ?? true
     }
 }
 

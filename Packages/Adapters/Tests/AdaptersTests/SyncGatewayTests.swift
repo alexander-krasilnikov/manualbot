@@ -49,6 +49,21 @@ private let gatewayURL = ProcessInfo.processInfo.environment["SYNC_GATEWAY_URL"]
         try await eventually("the document gone from the second device", timeout: 60) { try await b.repo.document(id: id) == nil }
     }
 
+    @Test func theOriginOfACatalogDocumentReachesTheOtherDeviceThroughTheStack() async throws {
+        let a = try SyncDevice(); defer { Task { await a.cleanUp() } }
+        let b = try SyncDevice(); defer { Task { await b.cleanUp() } }
+        let id = "gateway-origin-\(UUID().uuidString)"
+        let origin = DocumentOrigin(entryId: "nrel-wind", url: URL(string: "https://docs.nlr.gov/docs/fy13osti/wind.pdf")!)
+        try await a.importDocument(id, title: "From the catalog", chunks: 2, origin: origin)
+        await a.sync.start(configuration("ipad1"))
+        await b.sync.start(configuration("ipad2"))
+        try await eventually("the catalog document on the second device", timeout: 60) { try await b.repo.document(id: id) != nil }
+        #expect(try await b.repo.document(id: id)?.origin == origin)
+
+        try await a.repo.deleteDocument(id: id)
+        try await eventually("the document gone from the second device", timeout: 60) { try await b.repo.document(id: id) == nil }
+    }
+
     @Test func aRenameOnOneDeviceReachesTheOtherThroughTheStack() async throws {
         let a = try SyncDevice(); defer { Task { await a.cleanUp() } }
         let b = try SyncDevice(); defer { Task { await b.cleanUp() } }

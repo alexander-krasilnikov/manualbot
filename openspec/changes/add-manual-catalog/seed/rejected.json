@@ -1,0 +1,583 @@
+[
+  {
+    "category": "Automotive",
+    "title": "Hyundai Tucson (NX4) 2025 owner's manual",
+    "url": "https://ownersmanual.hyundai.com/full_pdf/NX4/2025/en_US",
+    "reason": "too large",
+    "bytes": 43205071
+  },
+  {
+    "category": "Automotive",
+    "title": "Hyundai Kona (SX2) 2025 owner's manual",
+    "url": "https://ownersmanual.hyundai.com/full_pdf/SX2/2025/en_US",
+    "reason": "too large",
+    "bytes": 34861525
+  },
+  {
+    "category": "Automotive",
+    "title": "Hyundai Tucson PHEV (NX4PHEV) 2026 owner's manual",
+    "url": "https://ownersmanual.hyundai.com/full_pdf/NX4PHEV/2026/en_US",
+    "reason": "too large",
+    "bytes": 46949202
+  },
+  {
+    "category": "Automotive",
+    "title": "Hyundai Palisade (LX2) 2025 owner's manual",
+    "url": "https://ownersmanual.hyundai.com/full_pdf/LX2/2025/en_US",
+    "reason": "too large",
+    "bytes": 68747322
+  },
+  {
+    "category": "Automotive",
+    "title": "Hyundai Elantra (CN7) 2025 owner's manual",
+    "url": "https://ownersmanual.hyundai.com/full_pdf/CN7/2025/en_US",
+    "reason": "too large",
+    "bytes": 111983648
+  },
+  {
+    "category": "Automotive",
+    "title": "2017 Mazda3 owner's manual",
+    "url": "https://www.mazdausa.com/siteassets/global-resources/vehicle-resources/owner-manuals/2017/mazda3/2017-mazda3-owners-manual.pdf",
+    "reason": "too large",
+    "bytes": 29573609
+  },
+  {
+    "category": "Automotive",
+    "title": "Tesla Model 3 / Y / S owner's manual PDFs",
+    "url": "https://www.tesla.com/ownersmanual/model3/en_us/Owners_Manual.pdf",
+    "reason": "HTTP 403 to non-browser clients (bot protection)",
+    "bytes": null
+  },
+  {
+    "category": "Automotive",
+    "title": "Ford owner guides on fordservicecontent.com",
+    "url": "https://www.fordservicecontent.com/Ford_Content/Catalog/owner_information/Everest_OG_Feb_2009.pdf",
+    "reason": "HTTP 403 (Akamai bot protection)",
+    "bytes": null
+  },
+  {
+    "category": "Military",
+    "title": "TM 9-2320-391-10-3 M1078 series (FMTV) PMCS",
+    "url": "https://archive.org/download/m-1078-81-a-1-pmcs/M1078-81A1_PMCS.pdf",
+    "reason": "DISTRIBUTION STATEMENT C + export-control (AECA/EAR) warning on cover - restricted",
+    "bytes": 16769895
+  },
+  {
+    "category": "Military",
+    "title": "TM 9-2320-452-10 JLTV PMCS",
+    "url": "https://archive.org/download/jltv-daily-to-monthly-pmcs/JLTV_daily_to_monthly_pmcs.pdf",
+    "reason": "Image-only scan; distribution statement could not be verified (recent JLTV TMs are often restricted) - left out",
+    "bytes": 15868575
+  },
+  {
+    "category": "Military",
+    "title": "TM 9-879 Harley-Davidson WLA (1943)",
+    "url": "https://archive.org/download/TM9-879/TM9-879.pdf",
+    "reason": "Image-only scan; WWII-era marking (possibly 'RESTRICTED') not verifiable - kept only as Motorcycle alternate, not selected",
+    "bytes": 19648909
+  },
+  {
+    "category": "Military",
+    "title": "TM 55-1031 Hercules DFXB-DFXE diesel engines (1944)",
+    "url": "https://archive.org/download/TM55-1031/TM55-1031.pdf",
+    "reason": "too large",
+    "bytes": 25477928
+  },
+  {
+    "category": "Military",
+    "title": "TM 9-2320-365-10, -429-10, -427-10, -342-10-1, -338-10 truck operator manuals",
+    "url": "https://archive.org/download/tm-9-2320-365-10/TM-9-2320-365-10.pdf",
+    "reason": "too large (33-120 MB each)",
+    "bytes": 48800000
+  },
+  {
+    "category": "Military",
+    "title": "TM 9-2320-279-20-1 HEMTT vol. 1",
+    "url": "https://archive.org/download/tm-9-2320-279-20-1/TM-9-2320-279-20-1.pdf",
+    "reason": "too large",
+    "bytes": 21300000
+  },
+  {
+    "category": "Military",
+    "title": "TM 9-6115-641-24 / -749-24&P / -750-24&P / -752-24&P / -639-13&P generator maintenance TMs",
+    "url": "https://archive.org/download/5kw-mep-802-tqg-9-6115-641-24-apr-12-pin-071751/5kw%20MEP802%20TQG%209-6115-641-24%20%20Apr%2012%20pin%20071751.pdf",
+    "reason": "too large (24-120 MB)",
+    "bytes": 29800000
+  },
+  {
+    "category": "Military",
+    "title": "TM 9-6115-663-13&P 60 kW MJQ-41 / PU-805/806",
+    "url": "https://archive.org/download/60kw-mjq-41-pu-805-pu-806-and-b-models-tm-9-6115-663-13-p-pin-071919/60kwMJQ41%20PU805%20PU806%20and%20B%20models%20TM_9-6115-663-13%26P%20pin%20071919.pdf",
+    "reason": "archive.org repeatedly returned an HTML error page; not verified",
+    "bytes": 13300000
+  },
+  {
+    "category": "Military",
+    "title": "Engineman 3 & 2 / Machinist's Mate rate training manuals (archive.org)",
+    "url": "https://archive.org/download/ERIC_ED178727/ERIC_ED178727.pdf",
+    "reason": "too large (52-546 MB)",
+    "bytes": 52500000
+  },
+  {
+    "category": "Motorcycle",
+    "title": "Honda Powersports owner's manuals (cdn.powersports.honda.com)",
+    "url": "https://cdn.powersports.honda.com/documentum/MWOM/ml.remawmom.amlp2424omen.pdf",
+    "reason": "HTTP 403 for every user agent tried (bot protection)",
+    "bytes": null
+  },
+  {
+    "category": "Motorcycle",
+    "title": "Yamaha MT-07 owner's manual (cdn.yamaha-motor.eu)",
+    "url": "https://cdn.yamaha-motor.eu/owner-manuals/Motorcycles/P1WS28199E2E.PDF",
+    "reason": "HTTP 403",
+    "bytes": null
+  },
+  {
+    "category": "Motorcycle",
+    "title": "Royal Enfield Classic 350 owner's manual (USA)",
+    "url": "https://www.royalenfield.com/content/dam/open-pdf/royal-enfield-classic-350-owners-manual-usa.pdf",
+    "reason": "too large (measured by streaming)",
+    "bytes": 25042703
+  },
+  {
+    "category": "Motorcycle",
+    "title": "Royal Enfield Classic 350 BS-VI owner's manual",
+    "url": "https://www.royalenfield.com/content/dam/open-pdf/royal-enfield-owners-manual-classic-350-BSVI-english.pdf",
+    "reason": "too large (measured by streaming)",
+    "bytes": 26858222
+  },
+  {
+    "category": "Motorcycle",
+    "title": "Iowa DOT motorcycle manual",
+    "url": "https://iowadot.gov/media/7175/download",
+    "reason": "HTTP 403",
+    "bytes": null
+  },
+  {
+    "category": "Ships / commercial marine",
+    "title": "USCG NVIC / Marine Safety documents (dco.uscg.mil)",
+    "url": "https://www.dco.uscg.mil/Portals/9/DCO%20Documents/5p/5ps/NVIC/2004/n7-04.pdf",
+    "reason": "HTTP 403 to non-browser clients (WAF)",
+    "bytes": null
+  },
+  {
+    "category": "Ships / commercial marine",
+    "title": "Yanmar JH series marine engine operation manual",
+    "url": "https://www.yanmar.com/marine/wp-content/uploads/2020/05/0AJHM-EN0025_2019.12.pdf",
+    "reason": "HTTP 403 (bot protection)",
+    "bytes": null
+  },
+  {
+    "category": "Ships / commercial marine",
+    "title": "Wartsila product guides (W20/W26/W32/W34DF)",
+    "url": "https://www.wartsila.com/docs/default-source/product-files/engines/ms-engine/product-guide-o-e-w26.pdf",
+    "reason": "HTTP 404 - URLs from search index are stale",
+    "bytes": null
+  },
+  {
+    "category": "Ships / commercial marine",
+    "title": "Caterpillar / Volvo Penta / John Deere marine O&M manuals",
+    "url": "",
+    "reason": "No official free PDF found; only paid or aggregator/pirate copies - excluded on provenance grounds",
+    "bytes": null
+  },
+  {
+    "category": "Yachts / recreational boats",
+    "title": "Beneteau Swift Trawler 47 owner's manual",
+    "url": "https://portal.booking-manager.com/wbm2/bmdoc/14668261006300089_USER_MANUAL_Swift_Trawler_47.pdf",
+    "reason": "too large; also third-party host",
+    "bytes": 20566390
+  },
+  {
+    "category": "Yachts / recreational boats",
+    "title": "Flying Scot owner's manual 2014",
+    "url": "https://flyingscot.com/wp-content/uploads/2017/04/Owners-Manual-2014.pdf",
+    "reason": "HTTP 403",
+    "bytes": null
+  },
+  {
+    "category": "Yachts / recreational boats",
+    "title": "Seldén 'Hints and advice on rigging and tuning'",
+    "url": "https://pearson323.com/documents/selden_tuning.pdf",
+    "reason": "Only third-party copies found; manual states no reproduction without Seldén permission - not checked/excluded",
+    "bytes": null
+  },
+  {
+    "category": "Manufacturing / industrial",
+    "title": "Haas Mill NGC Operator's Manual 2020 (96-8210)",
+    "url": "https://www.haascnc.com/content/dam/haascnc/en/service/manual/operator/english---mill-ngc---operator%27s-manual---2020.pdf",
+    "reason": "too large",
+    "bytes": 94433588
+  },
+  {
+    "category": "Manufacturing / industrial",
+    "title": "UR e-Series Service Manual (SW5.21 / SW5.25)",
+    "url": "https://www.universal-robots.com/manuals/EN/PDF/SW5_25/service-manual_e-series/e-Series_Service_Manual_en.pdf",
+    "reason": "too large",
+    "bytes": 23243459
+  },
+  {
+    "category": "Manufacturing / industrial",
+    "title": "Rockwell Micro800 / Micro820 user manuals (2080-UM002, 2080-UM005)",
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/2080-um005_-en-e.pdf",
+    "reason": "too large (23-40 MB)",
+    "bytes": 23247391
+  },
+  {
+    "category": "Manufacturing / industrial",
+    "title": "Rockwell PowerFlex 520-series user manual",
+    "url": "https://literature.rockwellautomation.com/idc/groups/literature/documents/um/520-um001_-en-e.pdf",
+    "reason": "too large",
+    "bytes": 34469932
+  },
+  {
+    "category": "Manufacturing / industrial",
+    "title": "AutomationDirect CLICK PLC user manual",
+    "url": "https://cdn.automationdirect.com/static/manuals/c0userm/c0userm.pdf",
+    "reason": "too large",
+    "bytes": 39965647
+  },
+  {
+    "category": "Manufacturing / industrial",
+    "title": "Miller Electric owner's manuals",
+    "url": "https://www.millerwelds.com/files/owners-manuals/o275k_mil.pdf",
+    "reason": "HTTP 404 (URL pattern changed)",
+    "bytes": null
+  },
+  {
+    "category": "Manufacturing / industrial",
+    "title": "Atlas Copco GA compressor instruction books",
+    "url": "",
+    "reason": "No official public PDF found; only Scribd/aggregator copies",
+    "bytes": null
+  },
+  {
+    "category": "Field service maintenance",
+    "title": "FAA Aviation Maintenance Technician Handbook - General",
+    "url": "https://www.faa.gov/sites/faa.gov/files/regulations_policies/handbooks_manuals/aviation/amt_general_handbook.pdf",
+    "reason": "too large",
+    "bytes": 68068392
+  },
+  {
+    "category": "Field service maintenance",
+    "title": "PNNL-19634 (FEMP O&M related report)",
+    "url": "https://www.pnnl.gov/main/publications/external/technical_reports/PNNL-19634.pdf",
+    "reason": "too large",
+    "bytes": 21068185
+  },
+  {
+    "category": "Field service maintenance",
+    "title": "EPA Section 608 technician certification material",
+    "url": "https://www.epa.gov/sites/default/files/2015-08/documents/608_certification_study_guide.pdf",
+    "reason": "HTTP 403 (epa.gov WAF)",
+    "bytes": null
+  },
+  {
+    "category": "Field service maintenance",
+    "title": "Generac 8-20 kW owner's manual (RPI copy)",
+    "url": "https://sites.ecse.rpi.edu/courses/CStudio/ham_radio_docs/Generac/Generac%20Owners%20Manual%208-20kW-r3-13-2012.pdf",
+    "reason": "HTTP 404",
+    "bytes": null
+  },
+  {
+    "category": "Field service maintenance",
+    "title": "Shippensburg Univ. elevator maintenance specification / UBC Division 14 guidelines",
+    "url": "https://www.ship.edu/globalassets/facilities/su-design-guide-appendix-10-14240-elevator-maintenance-specification.pdf",
+    "reason": "HTTP 404",
+    "bytes": null
+  },
+  {
+    "category": "Wind turbines",
+    "title": "NREL documents on www.nrel.gov",
+    "url": "https://www.nrel.gov/docs/fy07osti/42005.pdf",
+    "reason": "Host no longer resolves (lab renamed National Laboratory of the Rockies); same paths work on docs.nlr.gov",
+    "bytes": null
+  },
+  {
+    "category": "Wind turbines",
+    "title": "NEG Micon service manual (commissiemer.nl)",
+    "url": "https://commissiemer.nl/docs/mer/p12/p1287/1287-96onderhoudsplan3.pdf",
+    "reason": "HTTP 404",
+    "bytes": null
+  },
+  {
+    "category": "Wind turbines",
+    "title": "SD PUC docket exhibit (Vestas)",
+    "url": "https://puc.sd.gov/commission/dockets/electric/2018/EL18-026/prefiledexhibits/fuerniss/9.pdf",
+    "reason": "Is a SWPPP appendix, not an O&M manual",
+    "bytes": 1993308
+  },
+  {
+    "category": "Wind turbines",
+    "title": "Small wind turbine manuals mirrored from manualzilla on archive.org",
+    "url": "https://archive.org/download/manualzilla-id-7380937/7380937.pdf",
+    "reason": "Aggregator mirror - provenance unclear",
+    "bytes": null
+  },
+  {
+    "category": "Motorcycle",
+    "title": "Yamaha 2026 Motorcycles digital brochure (EICMA 2025)",
+    "url": "https://www.yamaha-motor.eu/content/dam/yme/language-masters/en/eicma-2025/digital-brochures/2026_EICMA_MC_BROCHURE_EN.pdf",
+    "reason": "too large",
+    "bytes": 22333806
+  },
+  {
+    "category": "Motorcycle",
+    "title": "Royal Enfield Interceptor 650 owner's manual",
+    "url": "https://www.royalenfield.com/content/dam/open-pdf/royal-enfield-interceptor-650-owners-manual.pdf",
+    "reason": "too large (measured by streaming)",
+    "bytes": 35403234
+  },
+  {
+    "category": "Motorcycle",
+    "title": "Royal Enfield Super Meteor 650 owner's manual",
+    "url": "https://www.royalenfield.com/content/dam/open-pdf/royal-enfield-super-meteor-650-owners-manual.pdf",
+    "reason": "too large (measured by streaming)",
+    "bytes": 38456823
+  },
+  {
+    "category": "Field service maintenance",
+    "title": "Fluke EWS mini catalog (EMEA)",
+    "url": "https://media.fluke.com/273a89d5-fad1-4b0d-86ad-b2d601176eb8_original%20file.pdf",
+    "reason": "too large",
+    "bytes": 34789552
+  },
+  {
+    "category": "Field service maintenance",
+    "title": "Fluke 2015-2016 Test Tools Catalog",
+    "url": "https://content.fluke.com/pdf/catalog/catalog-eng/files/assets/common/downloads/publication.pdf",
+    "reason": "Verified (18.9 MB) but a 2015 edition; superseded by the 2024 catalog",
+    "bytes": 18871684
+  },
+  {
+    "category": "Field service maintenance",
+    "title": "Fluke industrial product guide / calibration catalog (dam-assets.fluke.com)",
+    "url": "https://dam-assets.fluke.com/s3fs-public/13523-eng-01-A.pdf",
+    "reason": "HTTP 403 (bot protection)",
+    "bytes": null
+  },
+  {
+    "category": "Ships / commercial marine",
+    "title": "MAN Energy Solutions Marine Engine Programme",
+    "url": "https://pdfcoffee.com/marine-engine-programme-2020-pdf-pdf-free.html",
+    "reason": "Only found on a third-party mirror (pdfcoffee); not on man-es.com",
+    "bytes": null
+  },
+  {
+    "category": "Ships / commercial marine",
+    "title": "Caterpillar Marine Power Solutions catalog 2020/2021 (emc.cat.com)",
+    "url": "https://emc.cat.com/n/api/pubdirect?media_string_id=LEDM3457-26.pdf",
+    "reason": "Server returned HTML (200) instead of a PDF",
+    "bytes": null
+  },
+  {
+    "category": "Ships / commercial marine",
+    "title": "Waertsilae 32 / 46F product guide",
+    "url": "https://brandhub.wartsila.com/m/39438d6bb2d10bd3/original/Wartsila-46F-Product-guide.pdf",
+    "reason": "Verified (4.2 MB, 206 pages) but is an engineering product guide (early-design data) rather than a catalog; not selected",
+    "bytes": 4187546
+  },
+  {
+    "category": "Wind turbines",
+    "title": "Siemens Gamesa SG 14-236 DD offshore brochure",
+    "url": "https://www.siemensgamesa.com/-/media/siemensgamesa/downloads/en/products-and-services/offshore/brochures/siemens-gamesa-offshore-wind-turbine-brochure-sg-14-236-dd.pdf",
+    "reason": "URL now redirects to the HTML home page (document moved)",
+    "bytes": null
+  },
+  {
+    "category": "Wind turbines",
+    "title": "Suzlon S82 / S97-S111 product brochures",
+    "url": "https://www.suzlon.com/pdf/product/Suzlon-S82-product-brochure.pdf",
+    "reason": "HTTP 404",
+    "bytes": null
+  },
+  {
+    "category": "Wind turbines",
+    "title": "GE Vernova onshore platform brochures",
+    "url": "https://www.gevernova.com/hydropower/node/100",
+    "reason": "Page only; no direct PDF link found",
+    "bytes": null
+  },
+  {
+    "category": "Military",
+    "title": "Army Weapon Systems Handbook 2018 (army.mil)",
+    "url": "https://www.army.mil/e2/c/downloads/558424.pdf",
+    "reason": "HTTP 403 to non-browser clients",
+    "bytes": null
+  },
+  {
+    "category": "Military",
+    "title": "Weapon Systems Handbook Army 2018 (archive.org mirror)",
+    "url": "https://archive.org/download/weapon-systems-handbook-army-2018/Weapon_Systems_handbook_Army_2018.pdf",
+    "reason": "too large",
+    "bytes": 38800000
+  },
+  {
+    "category": "Military",
+    "title": "US Army Official 2020-2021 Weapon Systems Handbook (archive.org mirror)",
+    "url": "https://archive.org/download/official-2020-2021-weapon-systems-handbook/official%202020-2021_Weapon_Systems_Handbook.pdf",
+    "reason": "too large",
+    "bytes": 39900000
+  },
+  {
+    "category": "Military",
+    "title": "The United States DOD Fact File (archive.org)",
+    "url": "https://archive.org/download/TheUnitedStatesDODFactFile/The%20United%20States%20DOD%20Fact%20File.pdf",
+    "reason": "16.2 MB, 442 pages, but image-only scan with unclear provenance and no readable distribution statement - left out",
+    "bytes": 16200000
+  },
+  {
+    "category": "Military",
+    "title": "USMC Concepts and Programs 2010 / 2013 (marines.mil)",
+    "url": "https://www.marines.mil/Portals/1/Publications/U.S.%20Marine%20Corps%20Concepts%20and%20Programs%202010_2.pdf",
+    "reason": "HTTP 403 to non-browser clients; older editions had restricted distribution",
+    "bytes": null
+  },
+  {
+    "category": "Military",
+    "title": "NAVSEA PEO Ships SNA2020 deck (navsea.navy.mil)",
+    "url": "https://www.navsea.navy.mil/Portals/103/Documents/Exhibits/SNA2020/SNA2020-PEO_Ships-MattSermon.pdf",
+    "reason": "HTTP 403 to non-browser clients",
+    "bytes": null
+  },
+  {
+    "category": "Military",
+    "title": "MARCORSYSCOM Infantry Combat Equipment information sheets",
+    "url": "https://www.marcorsyscom.marines.mil/Portals/105/PfM/GCES/PM_ICE/Pistolman%20Set%20PIS_2018.pdf",
+    "reason": "HTTP 403 to non-browser clients",
+    "bytes": null
+  },
+  {
+    "category": "Military",
+    "title": "TM 43-0001-xx Army ammunition / equipment data sheets (archive.org)",
+    "url": "https://archive.org/download/TM_43-0001-27/TM_43-0001-27.pdf",
+    "reason": "Ammunition/munitions data sheets: restriction status of individual editions unclear, and not an equipment catalog of interest - excluded",
+    "bytes": null
+  },
+  {
+    "category": "Military",
+    "title": "ndia.dtic.mil other NDIA decks",
+    "url": "https://ndia.dtic.mil/wp-content/uploads/2009/combatvehicle/Ogg.pdf",
+    "reason": "PEO GCS 2009 deck is Distribution A but 25.2 MB - too large",
+    "bytes": 25248687
+  },
+  {
+    "category": "Couchbase",
+    "title": "Couchbase Under the Hood - landing page",
+    "url": "https://info.couchbase.com/Architectural-Overview_Guided-LP.html",
+    "reason": "Form-gated HTML landing page (lead form). The same paper is, however, downloadable directly from info.couchbase.com/rs/302-GJY-034/images/Couchbase_Under_The_Hood_WP.pdf, which was selected.",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Engagement Database Whitepaper - landing page",
+    "url": "https://info.couchbase.com/engagement_database_white_paper.html",
+    "reason": "Form-gated HTML landing page; no direct PDF link found",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Couchbase document pages (couchbase.com/document/...), resources hub, product pages",
+    "url": "https://www.couchbase.com/document/altoros-dbaas-benchmark-couchbase-delivers-best-tco/",
+    "reason": "HTTP 403 to curl and WebFetch (bot protection); these 'document' pages are usually lead-form gated. Direct PDFs were found via Wayback copies and info.couchbase.com instead.",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Capella architecture whitepaper landing (couchbase.com/content/capella/capella_architecture_whitepaper)",
+    "url": "https://www.couchbase.com/content/capella/capella_architecture_whitepaper",
+    "reason": "HTTP 403; direct PDF on info.couchbase.com was used instead",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "NoSQL Technical Comparison Report: Couchbase Server, Cassandra, MongoDB (Altoros 2017)",
+    "url": "https://info.couchbase.com/rs/302-GJY-034/images/NoSQL_Technical_Comparison_Report_Couchbase_Server_Cassandra_MongoDB_2017.pdf",
+    "reason": "URL now redirects to the couchbase.com home page (withdrawn); full report is behind a form at Altoros",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Couchbase on AWS Wavelength datasheet",
+    "url": "https://info.couchbase.com/rs/302-GJY-034/images/CB-on-AWS-Wavelength-Datasheet.pdf",
+    "reason": "Redirects to couchbase.com home page (withdrawn)",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "IoT data management datasheet (2018)",
+    "url": "https://info.couchbase.com/rs/302-GJY-034/images/IoT-Data-Mngmnt_datasheet_2018M7.pdf",
+    "reason": "Redirects to couchbase.com home page (withdrawn)",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Managed Cloud datasheet (2018)",
+    "url": "https://info.couchbase.com/rs/302-GJY-034/images/Managed_Cloud_Datasheet_2018M6.pdf",
+    "reason": "Redirects to couchbase.com home page (withdrawn)",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Customer 360 datasheet (2018)",
+    "url": "https://info.couchbase.com/rs/302-GJY-034/images/Customer360_datasheet_2018M7.pdf",
+    "reason": "Redirects to couchbase.com home page (withdrawn)",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Sample RFP: NoSQL database evaluation criteria",
+    "url": "https://info.couchbase.com/rs/302-GJY-034/images/SampleRFP_NoSQL_Database_Evaluation_Criteria.pdf",
+    "reason": "Redirects to couchbase.com home page (withdrawn)",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Altoros: Analysis of Database Query Languages (SQL, N1QL, MongoDB)",
+    "url": "https://info.couchbase.com/rs/302-GJY-034/images/Report_Altoros_Analysis_Database_Query_Languages.pdf",
+    "reason": "Redirects to couchbase.com home page (withdrawn)",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Altoros: Performance Evaluation of NoSQL Databases / DBaaS with YCSB",
+    "url": "https://info.couchbase.com/rs/302-GJY-034/images/Altoros_Report_Performance_Evaluation_NoSQL_Dbaas_YCSB.pdf",
+    "reason": "Redirects to couchbase.com home page (withdrawn)",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "erwin data modeling whitepaper",
+    "url": "https://info.couchbase.com/rs/302-GJY-034/images/Erwin-Data-Modeling-Whitepaper.pdf",
+    "reason": "Redirects to couchbase.com home page (withdrawn)",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Best Practices for Data Protection and Security in the Couchbase Data Platform",
+    "url": "",
+    "reason": "No direct PDF found (listed on the security page; gated)",
+    "bytes": null
+  },
+  {
+    "category": "Couchbase",
+    "title": "Couchbase Server / Sync Gateway / Couchbase Lite current documentation as PDF",
+    "url": "https://docs.couchbase.com/",
+    "reason": "Couchbase does not offer PDF exports of the current docs (HTML only; forum thread and docs bug confirm). Only legacy PDFs exist (Server 3.0 guide, selected).",
+    "bytes": null
+  },
+  {
+    "category": "Yachts / recreational boats",
+    "title": "Yanmar full line-up marine diesel catalog",
+    "url": "https://www.yanmar.com/media/global/com/product/marinecommercial/catalog/pdf/full_line_up/full_line_up.pdf",
+    "reason": "HTTP 403 (bot protection)",
+    "bytes": null
+  },
+  {
+    "category": "Yachts / recreational boats",
+    "title": "Catalina 400 brochure (C400bro10-04)",
+    "url": "http://www.catalinayachts.com/wp-content/uploads/2016/12/C400bro10-04.pdf",
+    "reason": "Listed with an http:// URL only in search results; the https variant was not verified",
+    "bytes": 1292118
+  }
+]

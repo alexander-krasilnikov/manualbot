@@ -37,6 +37,8 @@ struct LibraryView: View {
     var sync: SyncModel?
     /// Where About reads the installed models from.
     var settings: ModelSettingsViewModel?
+    /// The manual catalog, offered next to the Files import. Without it there is no catalog entry in the menu.
+    var catalog: CatalogViewModel?
     /// Builds the contents model for a document, or `nil` if contents cannot be shown yet.
     var makeContents: ((LibraryViewModel.Item) -> DocumentContentsModel?)?
     /// Called when the document whose contents were open is deleted.
@@ -44,6 +46,7 @@ struct LibraryView: View {
     let onOpen: (String) -> Void
 
     @State private var importing = false
+    @State private var showCatalog = false
     @State private var renaming: LibraryViewModel.Item?
     @State private var newName = ""
     @State private var deleting: LibraryViewModel.Item?
@@ -117,9 +120,14 @@ struct LibraryView: View {
                 ContentUnavailableView {
                     Label("No documents yet", systemImage: "doc.text.magnifyingglass")
                 } description: {
-                    Text("Import PDF, Word, text or photo files, or drop them here. Everything stays on this iPad.")
+                    Text("Import PDF, Word, text or photo files, drop them here, or download public manuals from the catalog. Your documents are stored on this iPad.")
                 } actions: {
                     Button("Import documents") { importing = true }.buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("emptyImportFiles")
+                    if catalog != nil {
+                        Button("Manual catalog") { showCatalog = true }.buttonStyle(.bordered)
+                            .accessibilityIdentifier("emptyImportCatalog")
+                    }
                 }
             }
         }
@@ -142,10 +150,21 @@ struct LibraryView: View {
                     Button("Settings", systemImage: "gearshape", action: onOpenSettings).accessibilityIdentifier("settingsButton")
                 }
                 Button("About", systemImage: "info.circle") { showAbout = true }.accessibilityIdentifier("aboutButton")
-                Button("Import", systemImage: "plus") { importing = true }.accessibilityIdentifier("importButton")
+                Menu {
+                    Button("Files…", systemImage: "folder") { importing = true }.accessibilityIdentifier("importFiles")
+                    if catalog != nil {
+                        Button("Manual catalog…", systemImage: "books.vertical") { showCatalog = true }.accessibilityIdentifier("importCatalog")
+                    }
+                } label: {
+                    Label("Import", systemImage: "plus")
+                }
+                .accessibilityIdentifier("importButton")
             }
         }
         .sheet(isPresented: $showAbout) { AboutView(settings: settings) }
+        .sheet(isPresented: $showCatalog) {
+            if let catalog { CatalogView(model: catalog).presentationSizing(.page) }
+        }
         .fileImporter(isPresented: $importing, allowedContentTypes: SupportedTypes.picker, allowsMultipleSelection: true) { result in
             if case .success(let urls) = result { Task { await library.importFiles(urls) } }
         }

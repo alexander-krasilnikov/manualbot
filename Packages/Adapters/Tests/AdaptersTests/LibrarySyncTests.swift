@@ -38,6 +38,19 @@ import Testing
         }
     }
 
+    @Test func theOriginOfACatalogDocumentReachesTheOtherDevice() async throws {
+        let server = try SyncTestServer(); defer { server.cleanUp() }
+        let a = try SyncDevice(); defer { Task { await a.cleanUp() } }
+        let b = try SyncDevice(); defer { Task { await b.cleanUp() } }
+        let origin = DocumentOrigin(entryId: "nrel-wind", url: URL(string: "https://docs.nlr.gov/docs/fy13osti/wind.pdf")!)
+        try await a.importDocument("catalog-nrel-wind", title: "Wind", chunks: 3, origin: origin)
+        await a.sync.start(server.configuration)
+        await b.sync.start(server.configuration)
+
+        try await eventually("the catalog document searchable on the second device") { try await b.keywordHits() == 3 }
+        #expect(try await b.repo.document(id: "catalog-nrel-wind")?.origin == origin)
+    }
+
     @Test func aSecondDeviceReceivesTheLibraryAndFindsItWithoutIndexingIt() async throws {
         let server = try SyncTestServer(); defer { server.cleanUp() }
         let a = try SyncDevice(); defer { Task { await a.cleanUp() } }

@@ -74,9 +74,11 @@ struct RealStackTests {
         return ids
     }
 
-    private func ask(_ stack: Stack, _ chatID: String, _ question: String) async throws -> MessageRecord {
+    private func ask(
+        _ stack: Stack, _ chatID: String, _ question: String, style: AnswerStyle = .balanced
+    ) async throws -> MessageRecord {
         var reply: MessageRecord?
-        for try await event in stack.chat.ask(question, in: chatID) { if case .completed(let m) = event { reply = m } }
+        for try await event in stack.chat.ask(question, in: chatID, style: style) { if case .completed(let m) = event { reply = m } }
         return try #require(reply)
     }
 
@@ -133,6 +135,19 @@ struct RealStackTests {
             print("REAL offtopic “\(question)”:", reply.notFound ? "NOT FOUND" : "ANSWERED: \(reply.text)")
             #expect(reply.notFound, "“\(question)” should be refused, got: \(reply.text)")
         }
+    }
+
+    @Test func aQuestionAboutTheAssistantGetsAShortReplyUnderConversational() async throws {
+        let stack = try await makeStack()
+        defer { try? FileManager.default.removeItem(at: stack.root) }
+        _ = try await ingest(stack, [("x200-manual.md", manual), ("warranty.txt", warranty)])
+        let chat = try await stack.repo.createChat()
+        let reply = try await ask(stack, chat.id, "Sprichst du italienisch?", style: AnswerStyle(offset: 0.04))
+        print("REAL conversational:", reply.text)
+        #expect(!reply.fromDocuments && !reply.notFound && reply.citations.isEmpty, "reply: \(reply.text)")
+        let sentences = reply.text.split(whereSeparator: { ".!?".contains($0) })
+            .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        #expect((1...2).contains(sentences.count), "at most two sentences: \(reply.text)")
     }
 
     @Test func distancesForCalibration() async throws {
