@@ -6,11 +6,14 @@ photos) entirely on the device, and every answer cites the page or section it ca
 ## What it does
 
 - **Import** PDF, Word, text files and photos; scanned pages and text on photos are read too.
+- **Start from a catalog**: 70 curated public manuals, product catalogs and whitepapers in nine industries (cars,
+  motorcycles, ships, yachts, factories, wind turbines, field service, military, Couchbase), a few taps from your library.
+  The list ships with the app; a PDF is downloaded from its publisher only when you import it.
 - **Ask in a chat**, with words, a photo, or both. Answers come only from your documents, with citations; if the
   documents don't say, the app says so instead of guessing.
 - **Find photos** by how they look or by what you type, even photos nobody captioned.
-- **Work offline**: after the models are downloaded, nothing needs the network, and questions, answers and chats never
-  leave the iPad.
+- **Work offline**: once the models are downloaded, nothing needs the network except what you ask for (another model, a
+  catalog PDF from its publisher, sync). Documents, questions, answers and chats never leave the iPad.
 - **Share a library** between iPads through your own Sync Gateway, if you want to.
 - **Show its work**: the X-ray panel traces every database step behind an action, and a database explorer shows what
   is stored.
@@ -103,7 +106,8 @@ documents, two Couchbase whitepapers. To try the app without the models, add the
 
 | | |
 |---|---|
-| [Using ManualBot](docs/using.md) | set up, models, sync, photos |
+| [Using ManualBot](docs/using.md) | set up, the manual catalog, models, sync, photos |
+| [Manual catalog](docs/manual-catalog.md) | the curated list, its selection rules, and the script that checks and rebuilds it |
 | [Demo](docs/demo.md) | X-ray, the database explorer, document contents, and the eight-step talk track |
 | [How ManualBot works](docs/architecture.md) | the parts, the import and answer pipelines, what syncs |
 | [Testing](docs/testing.md) | tests, model evaluations, regenerating these screenshots |

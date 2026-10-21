@@ -115,8 +115,10 @@ public actor IngestionService {
     /// `id` names the document instead of a new random ID, so the same file imported on several devices that share a
     /// library (the bundled samples) is one document. When a document with that ID exists, nothing is imported and the
     /// ID is returned: its record, index and original are left as they are.
+    ///
+    /// `origin` is set by the manual catalog and recorded on the new document, where it stays through re-indexing.
     @discardableResult
-    public func enqueue(fileURL: URL, title: String? = nil, id requestedID: String? = nil) async throws -> String {
+    public func enqueue(fileURL: URL, title: String? = nil, id requestedID: String? = nil, origin: DocumentOrigin? = nil) async throws -> String {
         guard let type = supportedType(fileURL) else {
             throw IngestionError.unsupportedType(fileURL.pathExtension.isEmpty ? "unknown" : fileURL.pathExtension)
         }
@@ -140,7 +142,7 @@ public actor IngestionService {
         defer { importing.remove(id) }
         // Always its own group, even inside a demo reset, so each import reads as a complete story.
         return try await inOperation(Self.operation(docId: id, generation: 1, title: name), replacing: true) {
-            try await repository.upsert(DocumentRecord(id: id, title: name, type: type))
+            try await repository.upsert(DocumentRecord(id: id, title: name, type: type, origin: origin))
             try await repository.attachOriginal(fileURL: fileURL, contentType: Self.contentType(for: type, fileURL: fileURL), to: id)
             try await save(IngestJobRecord(docId: id, targetGeneration: 1))
             wakeRequested = true

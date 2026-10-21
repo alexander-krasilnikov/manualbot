@@ -85,10 +85,10 @@ struct SyncDevice {
     /// Imports a document as ingestion would: record, original, chunks, images, then the switch to the new set.
     func importDocument(
         _ id: String, title: String = "Manual", chunks: Int = 4, images: Int = 0, original: Int = 100, generation: Int = 1,
-        chunkModel: String? = nil
+        chunkModel: String? = nil, origin: DocumentOrigin? = nil
     ) async throws {
         if generation == 1 {
-            try await repo.upsert(DocumentRecord(id: id, title: title, type: .pdf))
+            try await repo.upsert(DocumentRecord(id: id, title: title, type: .pdf, origin: origin))
             let file = fixture.root.appendingPathComponent("\(id).pdf")
             try Data(repeating: 7, count: original).write(to: file)
             try await repo.attachOriginal(fileURL: file, contentType: "application/pdf", to: id)

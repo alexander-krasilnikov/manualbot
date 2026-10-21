@@ -26,8 +26,12 @@ final class AppModel {
     let demo: DemoSession
     /// Sync of the library with a server: its settings, and the replicator of the library that is open.
     let sync: SyncModel
+    /// The answer style, applied to every question.
+    let answers: AnswerSettings
     private(set) var preparation = Preparation.waitingForModels
     private(set) var library: LibraryViewModel?
+    /// The manual catalog, once the library is up: it imports through the same services.
+    private(set) var catalogModel: CatalogViewModel?
     private(set) var chat: ChatViewModel?
     private(set) var source: SourceViewerModel?
 
@@ -35,6 +39,9 @@ final class AppModel {
     /// The embedding models the app has a profile for. The one in use is looked up here when the services are built.
     private let catalog: EmbedderCatalog
     private let finder: ModelCandidateFinder
+    private let manualCatalog: ManualCatalog
+    private let manualDownloader: any ManualDownloading
+    private let catalogDefaults: UserDefaults
     private var core: CoreServices?
     private var chatService: ChatService?
     private var building = false
@@ -51,8 +58,14 @@ final class AppModel {
 
     init(
         models: ModelSetupViewModel, factory: any ServiceFactory, catalog: EmbedderCatalog,
-        finder: ModelCandidateFinder = AppModel.offlineFinder, demo: DemoSession? = nil, syncSettings: SyncSettings? = nil
+        finder: ModelCandidateFinder = AppModel.offlineFinder, demo: DemoSession? = nil, syncSettings: SyncSettings? = nil,
+        manualCatalog: ManualCatalog = ManualCatalog(entries: []), manualDownloader: any ManualDownloading = FakeManualDownloader(),
+        catalogDefaults: UserDefaults = .standard, answerSettings: AnswerSettings? = nil
     ) {
+        self.answers = answerSettings ?? AnswerSettings()
+        self.manualCatalog = manualCatalog
+        self.manualDownloader = manualDownloader
+        self.catalogDefaults = catalogDefaults
         self.sync = SyncModel(settings: syncSettings ?? SyncSettings())
         self.models = models
         self.factory = factory
@@ -116,11 +129,19 @@ final class AppModel {
                 _ = try? await retriever.retrieve("index warm-up")
             }
             library?.photosExplanation = core.photosExplanation
+            if let library {
+                catalogModel = CatalogViewModel(
+                    catalog: manualCatalog, library: library,
+                    importer: CatalogImporter(downloader: manualDownloader, ingestion: core.ingestion, repository: core.repository),
+                    network: demo.network, defaults: catalogDefaults)
+            }
             source = SourceViewerModel(documents: core.repository, extractor: core.extractor, tracer: demo.tracer)
             chat = ChatViewModel(chats: core.repository, documents: core.repository, ingestion: core.ingestion)
             chat?.stubPhoto = factory.stubPhoto
             chat?.photosAvailable = core.supportsPhotos
             chat?.photosExplanation = core.photosExplanation
+            chat?.answers = answers
+            answers.tunedDistance = core.retriever.configuration.maxDistance
             demo.xray.resetAction = { [weak self] in await self?.resetDemo() }
             demo.xray.syncEnabled = { [weak self] in self?.sync.isEnabled ?? false }
             sync.onActivity = { [weak self] in await self?.library?.refresh() }
@@ -225,6 +246,8 @@ final class AppModel {
         core = nil
         chatService = nil
         library = nil
+        catalogModel?.stop()
+        catalogModel = nil
         source = nil
         chat = nil
         demo.xray.inspector = nil

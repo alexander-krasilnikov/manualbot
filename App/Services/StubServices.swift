@@ -191,7 +191,8 @@ final class StubServiceFactory: ServiceFactory, @unchecked Sendable {
     }
 }
 
-/// Answers from the first numbered chunk and cites it; rewrites follow-ups to themselves.
+/// Answers from the first numbered chunk and cites it; rewrites follow-ups to themselves; replies without documents with
+/// one fixed sentence.
 struct StubGenerator: Generator {
     var slow = false
 
@@ -216,10 +217,39 @@ struct StubGenerator: Generator {
             return request.prompt.components(separatedBy: "Last question: ").last?
                 .components(separatedBy: "\n").first ?? ""
         }
+        if [PromptBuilder.conversationalSystemPrompt, PromptBuilder.openSystemPrompt].contains(request.system) {
+            return "I answer questions about the manuals in your library."  // a reply without documents
+        }
         guard let first = request.prompt.components(separatedBy: "\n").first(where: { $0.hasPrefix("[1] ") }) else { return "NOT_FOUND" }
         let body = first.drop(while: { $0 != ")" }).dropFirst().trimmingCharacters(in: .whitespaces)
         let sentence = body.split(separator: ".").first.map(String.init) ?? body
         // Repeat the sentence a few times so the answer is long enough to stop part-way.
         return (0..<6).map { _ in "\(sentence) [1]." }.joined(separator: " ")
+    }
+}
+
+/// Serves a small generated PDF for any catalog entry, so UI tests import from the catalog without a network. Entries in
+/// `failing` are refused as a publisher that blocks automatic downloads would.
+struct StubManualDownloader: ManualDownloading {
+    var failing: Set<String> = []
+    /// Takes about twelve seconds, with progress, so a test can see and cancel a download.
+    var slow = false
+
+    func download(_ entry: ManualCatalogEntry, progress: @escaping @Sendable (Double) -> Void) async throws -> ManualDownload {
+        let steps = slow ? 30 : 2
+        for step in 1...steps {
+            try await Task.sleep(for: .milliseconds(slow ? 400 : 20))
+            progress(Double(step) / Double(steps))
+        }
+        if failing.contains(entry.id) { throw ManualDownloadError.blocked }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("\(entry.id).pdf")
+        let data = SampleDocuments.makePDF(pages: [
+            "\(entry.title), published by \(entry.publisher).",
+            "Check the oil level before every start and replace the filter at each service interval.",
+        ])
+        try data.write(to: file)
+        return ManualDownload(fileURL: file, bytes: Int64(data.count), sha256: entry.sha256)
     }
 }

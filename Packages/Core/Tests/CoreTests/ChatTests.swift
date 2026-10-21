@@ -51,6 +51,16 @@ private func chunk(_ n: Int, doc: String = "Manual A", page: Int? = 42, heading:
         #expect(prompt.hasSuffix("Last question: What about the X100?\n\nStandalone query:"))
         #expect(prompt.count < 700)
     }
+
+    @Test func promptsWithoutDocumentsCarryNoChunksOrCitationRules() {
+        for system in [PromptBuilder.conversationalSystemPrompt, PromptBuilder.openSystemPrompt] {
+            #expect(!system.contains("Chunks:") && !system.contains("[1]") && !system.contains(PromptBuilder.notFoundMarker))
+            #expect(system.contains("same language"))
+        }
+        #expect(PromptBuilder.conversationalSystemPrompt.contains("at most two short sentences"))
+        #expect(PromptBuilder.conversationalSystemPrompt.contains("Never state facts"))
+        #expect(PromptBuilder.fallbackPrompt(question: "Sprichst du italienisch?") == "Sprichst du italienisch?")
+    }
 }
 
 // MARK: - 7.5 Citation validation
@@ -195,10 +205,12 @@ private struct Harness {
 
     init(
         answer: [String], relevantDistance: Double? = 0.2, pinned: [String] = [], maxAnswerTokens: Int = 512,
-        tracer: any Tracer = NoTracer()
+        tracer: any Tracer = NoTracer(), withoutDocuments: [String] = ["I answer questions about your manuals."]
     ) async throws {
         generator = ScriptedGenerator { request in
-            request.maxTokens == 64 ? ["What about the X100 reset?"] : answer
+            if request.maxTokens == 64 { return ["What about the X100 reset?"] }
+            let fallback = [PromptBuilder.conversationalSystemPrompt, PromptBuilder.openSystemPrompt].contains(request.system)
+            return fallback ? withoutDocuments : answer
         }
         let modelTag = embedder.identity.tag
         func chunk(_ n: Int, _ text: String) -> Chunk {
@@ -220,9 +232,9 @@ private struct Harness {
         chatID = try await repo.createChat(pinnedDocIds: pinned).id
     }
 
-    func ask(_ question: String) async throws -> [ChatEvent] {
+    func ask(_ question: String, style: AnswerStyle = .balanced) async throws -> [ChatEvent] {
         var events: [ChatEvent] = []
-        for try await event in service.ask(question, in: chatID) { events.append(event) }
+        for try await event in service.ask(question, in: chatID, style: style) { events.append(event) }
         return events
     }
 
@@ -479,3 +491,100 @@ private struct Harness {
         #expect(a.notFound == b.notFound)
     }
 }
+
+// MARK: - Answer styles
+
+@Suite struct AnswerStyleChatTests {
+    private let strict = AnswerStyle(offset: -0.06)
+    private let conversational = AnswerStyle(offset: 0.04)
+    private let open = AnswerStyle(offset: 0.08)
+
+    @Test func strictAndBalancedNeverAskTheModelWhenNothingIsRelevant() async throws {
+        for style in [strict, AnswerStyle.balanced] {
+            let h = try await Harness(answer: ["never"], relevantDistance: nil)
+            let reply = try #require(h.reply(try await h.ask("Sprichst du italienisch?", style: style)))
+            #expect(reply.notFound && reply.fromDocuments)
+            #expect(h.generator.callCount == 0)
+        }
+    }
+
+    @Test func theCutoffFollowsTheStyle() async throws {
+        // 0.27 passes the tuned 0.28 but not Strict's 0.22.
+        let balanced = try await Harness(answer: ["Hold it [1]."], relevantDistance: 0.27)
+        #expect(try #require(balanced.reply(try await balanced.ask("reset?"))).notFound == false)
+        let strictHarness = try await Harness(answer: ["Hold it [1]."], relevantDistance: 0.27)
+        #expect(try #require(strictHarness.reply(try await strictHarness.ask("reset?", style: strict))).notFound)
+        #expect(strictHarness.generator.callCount == 0)
+    }
+
+    @Test func conversationalRepliesBrieflyWithoutTheDocuments() async throws {
+        let h = try await Harness(answer: ["never"], relevantDistance: nil, withoutDocuments: ["Ich beantworte ", "Fragen zu deinen Handbüchern."])
+        let events = try await h.ask("Sprichst du italienisch?", style: conversational)
+
+        #expect(h.generator.callCount == 1)
+        let request = try #require(h.generator.requests.first)
+        #expect(request.system == PromptBuilder.conversationalSystemPrompt)
+        #expect(request.prompt == "Sprichst du italienisch?" && !request.prompt.contains("Unrelated text."))
+        #expect(request.maxTokens == 96)
+        let reply = try #require(h.reply(events))
+        #expect(reply.text == "Ich beantworte Fragen zu deinen Handbüchern.")
+        #expect(!reply.fromDocuments && !reply.notFound && reply.citations.isEmpty)
+        #expect(h.text(events) == reply.text)
+        #expect(try await h.repo.messages(chatId: h.chatID).last == reply)
+    }
+
+    @Test func openAnswersAfterANotFoundMarkerAndListsTheClosestChunks() async throws {
+        let h = try await Harness(answer: ["NOT_FOUND"], withoutDocuments: ["Rome is the capital of Italy."])
+        let reply = try #require(h.reply(try await h.ask("What is the capital of Italy?", style: open)))
+
+        #expect(h.generator.requests.map(\.system) == [PromptBuilder.answerSystemPrompt, PromptBuilder.openSystemPrompt])
+        #expect(h.generator.requests[1].maxTokens == 512)
+        #expect(reply.text == "Rome is the capital of Italy." && !reply.fromDocuments && !reply.notFound)
+        #expect(reply.citations.map(\.snippet) == ["Hold the button for ten seconds.", "Release it when the light blinks."])
+    }
+
+    @Test func openDiscardsAnUncitedAnswerAndRestartsTheStream() async throws {
+        let h = try await Harness(answer: ["Sure, trust me."], withoutDocuments: ["From general knowledge: yes."])
+        let events = try await h.ask("Well?", style: open)
+        let reply = try #require(h.reply(events))
+        #expect(reply.text == "From general knowledge: yes." && !reply.fromDocuments)
+        let restart = try #require(events.firstIndex(of: .restart))
+        #expect(events[..<restart].contains(.delta("Sure, trust me.")), "the uncited answer streamed first")
+        #expect(events[restart...].contains(.delta("From general knowledge: yes.")))
+    }
+
+    @Test func aRelevantQuestionUnderOpenIsAnsweredFromTheDocuments() async throws {
+        let h = try await Harness(answer: ["Hold the button [1]."])
+        let reply = try #require(h.reply(try await h.ask("How do I reset it?", style: open)))
+        #expect(reply.fromDocuments && reply.citations.map(\.n) == [1])
+        #expect(h.generator.callCount == 1)
+    }
+
+    @Test func markersInAReplyWithoutDocumentsAreRemoved() async throws {
+        let h = try await Harness(answer: ["never"], relevantDistance: nil, withoutDocuments: ["Probably yes [1]."])
+        let reply = try #require(h.reply(try await h.ask("Is it so?", style: open)))
+        #expect(reply.text == "Probably yes.")
+    }
+
+    @Test func aFailingReplyWithoutDocumentsGivesTheNotFoundReply() async throws {
+        struct Failing: Generator {
+            func generate(_ request: GenerationRequest) -> AsyncThrowingStream<String, Error> {
+                AsyncThrowingStream { $0.finish(throwing: URLError(.cannotConnectToHost)) }
+            }
+        }
+        let h = try await Harness(answer: [], relevantDistance: nil)
+        let service = ChatService(
+            chats: h.repo, retriever: Retriever(embedder: h.embedder, search: h.search, repository: h.repo), generator: Failing())
+        var reply: MessageRecord?
+        for try await event in service.ask("Hallo?", in: h.chatID, style: conversational) {
+            if case .completed(let m) = event { reply = m }
+        }
+        #expect(reply?.notFound == true && reply?.fromDocuments == true)
+    }
+
+    @Test func anEmptyReplyWithoutDocumentsGivesTheNotFoundReply() async throws {
+        let h = try await Harness(answer: [], relevantDistance: nil, withoutDocuments: ["  "])
+        #expect(try #require(h.reply(try await h.ask("Hallo?", style: conversational))).notFound)
+    }
+}
+

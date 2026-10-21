@@ -69,6 +69,7 @@ import Testing
         let message = #"{"id":"m","chatId":"c","role":"assistant","text":"hi","citations":[{"n":1,"chunkId":"d:1:0","docId":"d","docTitle":"T","snippet":"s"}],"stopped":false,"notFound":false,"createdAt":1}"#
         let decoded = try JSONDecoder().decode(MessageRecord.self, from: Data(message.utf8))
         #expect(!decoded.hasAttachment && decoded.imageMatches.isEmpty && !decoded.matchesOnly)
+        #expect(decoded.fromDocuments, "a reply stored before answer styles existed came from the documents")
         #expect(decoded.citations[0].imageId == nil)
 
         let job = #"{"docId":"d","targetGeneration":2,"state":"embedding","progress":0.5,"nextOrdinal":16,"enqueuedAt":1}"#
@@ -83,7 +84,7 @@ import Testing
         let match = ImageMatch(imageId: "d:1:img:0", docId: "d", docTitle: "Manual", page: 14, distance: 0.2)
         let message = MessageRecord(
             id: "m", chatId: "c", role: .assistant, text: "x", createdAt: Date(timeIntervalSince1970: 5),
-            hasAttachment: true, imageMatches: [match], matchesOnly: true)
+            hasAttachment: true, imageMatches: [match], matchesOnly: true, fromDocuments: false)
         let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .secondsSince1970
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .secondsSince1970
         #expect(try decoder.decode(MessageRecord.self, from: encoder.encode(message)) == message)

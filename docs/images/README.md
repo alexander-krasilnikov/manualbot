@@ -15,6 +15,7 @@ Re-run it after a UI change; it overwrites these files.
 | `contents-image.png` | contents of *Couchbase Under the Hood*, the debugger figure on page 28 selected | `demo.md` (talk track 7) |
 | `explorer-document.png` | database explorer, a document with its sync attributes expanded | `demo.md` |
 | `explorer-query.png` | database explorer, the keyword-search starter run in the SQL++ console | `README.md`, `demo.md` (talk track 6) |
+| `manual-catalog.png` | the manual catalog on the Couchbase category, a bundled sample whitepaper shown as "In library" | `using.md` |
 | `models.png` | Settings → Models | `using.md` |
 | `sync.png` | Settings → Sync, up to date (stand-in replicator) | `using.md` |
 
@@ -44,6 +45,12 @@ Talk-track step 8 (airplane mode) has no screenshot: a simulator cannot go offli
 
 `App/Resources/sample-photo.jpg`, the sample photo itself, is made from page 28 of the bundled whitepaper by
 `swift scripts/make-sample-photo.swift`.
+
+## App icon
+
+`app-icon.png` is the app icon as the home screen shows it (masked, for use in docs). The icon itself is
+`App/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png`, one 1024 px image without transparency, which iPadOS
+scales for every size.
 
 ## Diagrams
 

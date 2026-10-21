@@ -58,6 +58,46 @@ struct RepoFixture {
         #expect(read.pageCount == nil && read.activeGeneration == nil && read.imageCount == nil)
     }
 
+    @Test func theOriginOfACatalogDocumentRoundTrips() async throws {
+        let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
+        let origin = DocumentOrigin(entryId: "nrel-wind", url: URL(string: "https://docs.nlr.gov/docs/fy13osti/wind.pdf")!)
+        let doc = DocumentRecord(id: "catalog-nrel-wind", title: "Wind", type: .pdf, importedAt: Date(timeIntervalSince1970: 1_700_000_000), origin: origin)
+        try await f.repo.upsert(doc)
+        #expect(try await f.repo.document(id: doc.id) == doc)
+        #expect(try await f.repo.documents().first?.origin == origin)
+
+        // Saving the record again without an origin removes it, so the fields never go stale.
+        var imported = doc
+        imported.origin = nil
+        try await f.repo.upsert(imported)
+        #expect(try await f.repo.document(id: doc.id)?.origin == nil)
+    }
+
+    @Test func aDocumentStoredBeforeOriginsExistedHasNone() async throws {
+        let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
+        try await f.repo.upsert(DocumentRecord(id: "d1", title: "From a file", type: .pdf))
+        #expect(try await f.repo.document(id: "d1")?.origin == nil)
+    }
+
+    @Test func theOriginSurvivesAReindex() async throws {
+        let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
+        let origin = DocumentOrigin(entryId: "a", url: URL(string: "https://example.com/a.pdf")!)
+        try await f.repo.upsert(DocumentRecord(id: "catalog-a", title: "A", type: .pdf, origin: origin))
+        try await f.repo.writeChunks([RepoFixture.chunk("catalog-a", 1, 0)])
+        try await f.repo.activate(generation: 1, for: "catalog-a")
+
+        // What re-indexing does: write a new generation, read the record again, record the page count, and switch.
+        try await f.repo.writeChunks([RepoFixture.chunk("catalog-a", 2, 0), RepoFixture.chunk("catalog-a", 2, 1)])
+        var record = try #require(try await f.repo.document(id: "catalog-a"))
+        record.pageCount = 12
+        try await f.repo.upsert(record)
+        try await f.repo.activate(generation: 2, for: "catalog-a")
+
+        let after = try #require(try await f.repo.document(id: "catalog-a"))
+        #expect(after.activeGeneration == 2 && after.pageCount == 12)
+        #expect(after.origin == origin)
+    }
+
     @Test func chunkRoundTripsWithVector() async throws {
         let f = try RepoFixture(); defer { Task { await f.cleanUp() } }
         try await f.repo.upsert(DocumentRecord(id: "d1", title: "T", type: .pdf))

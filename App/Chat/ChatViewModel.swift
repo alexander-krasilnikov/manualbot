@@ -37,6 +37,8 @@ final class ChatViewModel {
     private let documentRepository: any DocumentRepository
     private let ingestion: IngestionService
     private var service: ChatService?
+    /// The answer style each question is asked with; Balanced when there is none.
+    var answers: AnswerSettings?
     private var generation: Task<Void, Never>?
 
     init(chats: any ChatRepository, documents: any DocumentRepository, ingestion: IngestionService) {
@@ -150,10 +152,11 @@ final class ChatViewModel {
 
         let task = Task {
             do {
-                for try await event in service.ask(question, in: chatID, photo: photo) {
+                for try await event in service.ask(question, in: chatID, photo: photo, style: answers?.style ?? .balanced) {
                     switch event {
                     case .query: await self.reloadMessages()
                     case .delta(let piece): self.streaming = (self.streaming ?? "") + piece
+                    case .restart: self.streaming = ""
                     case .completed: await self.reloadMessages()
                     }
                 }

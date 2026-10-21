@@ -84,13 +84,23 @@ extension CouchbaseDocumentRepository: ChunkSearching {
         parseID: (String) -> (docId: String, generation: Int)?, load: (Document) throws -> T, model: (T) -> String,
         makeSQL: (_ window: Int, _ parameters: Parameters) -> (sql: String, shown: [String: String])
     ) throws -> [(value: T, score: Double)] {
+        assert(DatabaseThread.shared.isCurrent, "Vector search must run on the database thread")
         var window = limit * Self.firstWindow
         while true {
             let parameters = Parameters()
             let (sql, shown) = makeSQL(window, parameters)
             let query = try database.createQuery(sql)
             query.parameters = parameters
+            Diagnostics.database.notice("""
+                \(String(describing: purpose), privacy: .public) search in \(collection.name, privacy: .public): \
+                window \(window), on \(Thread.current.name ?? "unnamed thread", privacy: .public)
+                """)
+            let queryStart = ContinuousClock.now
             let (rows, seconds) = try timed { try query.execute().allResults() }
+            Diagnostics.database.notice("""
+                \(String(describing: purpose), privacy: .public) search returned \(rows.count) rows in \
+                \(queryStart.duration(to: .now).seconds * 1000, format: .fixed(precision: 1)) ms
+                """)
 
             var found: [(value: T, score: Double)] = []
             var notVisible = 0

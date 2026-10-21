@@ -145,6 +145,19 @@ private func chunk(_ doc: String, _ ordinal: Int, _ text: String) -> Chunk {
         #expect(farTracer.kinds.contains(.relevance(bestDistance: 0.9, threshold: 0.76, outcome: .failed)))
     }
 
+    @Test func aCutoffGivenForTheQuestionReplacesTheConfiguredOne() async throws {
+        let search = ScriptedSearch()
+        search.vectorHits = [ScoredChunk(chunk: chunk("a", 0, "Hold the reset button."), score: 0.29)]
+        let tracer = RecordingTracer()
+        let retriever = try await make(search, tracer: tracer)
+
+        #expect(try await retriever.retrieve("reset", maxDistance: 0.30).relevant)
+        #expect(try await !retriever.retrieve("reset", maxDistance: 0.28).relevant)
+        #expect(try await retriever.retrieve("reset").relevant, "without one, the configured 0.76 applies")
+        #expect(tracer.kinds.contains(.relevance(bestDistance: 0.29, threshold: 0.28, outcome: .failed)))
+        #expect(tracer.kinds.contains(.relevance(bestDistance: 0.29, threshold: 0.30, outcome: .passedOnDistance)))
+    }
+
     @Test func embeddingTheQuestionReportsDimensionsAndTime() async throws {
         let tracer = RecordingTracer()
         _ = try await make(ScriptedSearch(), tracer: tracer).retrieve("reset")

@@ -40,6 +40,32 @@ reports, with a stand-in replicator that never reaches a server; any value but `
 sync on). Stub scenarios: `happy`, `llmFailsOnce`, `lowStorage`.
 The stub offers a second, text-only embedding model, to try a switch of embedder.
 
+## Manual catalog
+
+A new library is empty, so the app offers a bundled list of 70 public manuals, product catalogs and whitepapers in nine
+categories: Automotive, Motorcycle, Ships, Yachts, Manufacturing, Wind turbines, Field service, Military and Couchbase.
+Open it from **Import → Manual catalog…** in the library's toolbar, or from the empty library.
+
+![The manual catalog on the Couchbase category: kind, size and pages of each entry, with a bundled sample whitepaper already shown as In library](images/manual-catalog.png)
+
+- **Find.** Pick a category on the left, filter by kind (manual, catalog or whitepaper; categories with none are hidden), or
+  search: the text is matched against title, publisher and category. Tap an entry for its publisher, licence note and the
+  address the file comes from.
+- **Import.** Tap Import on an entry, or tick several and tap Import N. Each downloads on its own, and one that fails does not
+  stop the others. A row shows its state: not imported, downloading (with Cancel), queued for indexing, in the library, or
+  failed with the reason and Retry. The document is then an ordinary one: indexed, searchable, shared by sync.
+- **Already there.** An entry whose document is in the library, imported here or on another iPad that shares the library, shows
+  "In library" and is not downloaded again. Deleting the document makes the entry importable again.
+- **Network.** Browsing and searching send nothing. The first download from a publisher's host names it and asks first; after
+  that the host is remembered. Only the host of an entry you import is contacted, and nothing about you or your library is
+  sent. Offline you can browse, but importing is disabled with an explanation.
+- **When it fails.** A publisher can refuse automatic downloads (the row offers **Open in browser**, and you can import the
+  saved file with Files as usual), move the file (the link no longer leads to a PDF), or be slow; a file over 20 MB is not
+  downloaded. Nothing partial is kept.
+
+Everything in the list is the publisher's own file, linked and never copied; each entry shows its licence note. How the list is
+chosen and kept current is in [manual-catalog.md](manual-catalog.md).
+
 ## Models
 
 ![The Models page: the models in use, installed models, the embedding models offered and the search](images/models.png)
@@ -78,7 +104,7 @@ model with photos is back in use.
 
 **Deleting.** Any installed model that is not in use can be deleted; the one in use cannot.
 
-**Network.** Searching and downloading on this page are the only network use after setup, and only when you ask. Nothing
+**Network.** Searching and downloading on this page are the only network use of the Models page, and only when you ask (the [manual catalog](#manual-catalog) and [sync](#sync) have their own). Nothing
 about your documents, questions or answers is sent. The X-ray panel shows each request as a *Model search* or
 *Model download* operation, and importing documents and asking questions record none. **About** lists every installed model with its licence as its
 publisher states it, and links to the full terms.
@@ -90,6 +116,26 @@ video are not used). All three are one model with different encoders loaded and 
 To add an embedding model to the list (and so make it tested), give it an entry in `App/Resources/EmbedderCatalog.json` with a profile, and settle
 the profile with the retrieval and photo evaluations first (`EvalTests`, `ImageEvalTests`): the model has to meet the recall baselines
 in the `hybrid-retrieval` and `image-search` specs.
+
+## Answer style
+
+Settings → **Answer style** has one slider that sets how readily the app answers. Its position is the relevance distance a
+passage must be within to be used, shown with two decimals; lower is stricter. The four named stops along it also decide
+what happens when your documents don't answer the question. That covers three cases: nothing was close enough, the
+language model found no answer in the passages, or its answer cited none of them.
+
+| Stop | Distance (EmbeddingGemma 2) | When the documents don't answer |
+|---|---|---|
+| Strict | 0.22 – 0.25 | "I couldn't find an answer" with the closest passages. The language model is not asked. |
+| **Balanced** (default) | 0.26 – 0.30, starting at 0.28 | The same. |
+| Conversational | 0.31 – 0.34 | A short reply in your language about what the app can do. It states no facts and lists no passages. |
+| Open | 0.35 – 0.38 | An answer from the language model's general knowledge, with the closest passages below. It can be wrong. |
+
+Replies under Conversational and Open that don't come from your documents are marked **Not from your documents** and have
+no sources, and the mark stays after a relaunch. Answers that do come from your documents are cited as usual at every
+stop. The setting is remembered as a distance from the embedding model's tuned value, so after a switch to another
+embedding model Balanced is still that model's tuned point. **Reset to Balanced** returns to the default, which is how the
+app behaved before the setting existed. The evaluations always run at Balanced.
 
 ## Sync
 

@@ -59,6 +59,14 @@ highlighted, and **Show chunk** on an image jumps to the chunk that makes it sea
 again when a re-index finishes; X-ray shows that read as one "Contents of …" step. Nothing is written, and previews run
 no queries, so stepping through chunks adds nothing to the X-ray log.
 
+## Manual catalog
+
+To fill an empty library without hunting for files, open **Import → Manual catalog…** (also on the empty library). Pick a
+category, search "outboard", or filter to catalogs, and import one or several entries. The first download from a host names it
+first. The two Couchbase whitepapers that Reset demo imports are in the catalog too: they show "In library", because an entry
+and a bundled sample are one document. Imported documents show the publisher's host under their contents. Details:
+[manual-catalog.md](manual-catalog.md).
+
 ## Talk track
 
 Start with **Reset demo**; the questions below are answered from the two whitepapers.

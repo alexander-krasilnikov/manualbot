@@ -18,7 +18,7 @@ struct ModelSettingsView: View {
                     LabeledContent("Available storage", value: Format.bytes(model.storageAvailable))
                         .accessibilityIdentifier("storageAvailable")
                 } footer: {
-                    Text("Models are stored on this iPad only. Searching for and downloading a model are the only times the app uses the network after setup.")
+                    Text("Models are stored on this iPad only. On this page, searching for and downloading a model are the only times the app uses the network.")
                 }
             }
             .disabled(model.isSwitching)
